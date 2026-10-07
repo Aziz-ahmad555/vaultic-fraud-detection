@@ -1,4 +1,4 @@
-# Python
+﻿# Python
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -14,7 +14,7 @@ __pycache__/
 .vscode/
 
 # Runtime data: local database and per-user models trained live
-instance/*.db
+instance/**/*.db
 models_store/user_model_*.joblib
 scoring_latency.log
 
