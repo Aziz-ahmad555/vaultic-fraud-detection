@@ -7,11 +7,14 @@ Run:  python -m vaultic.eval.tune --name B5 --features b5 --trials-per-arm 25 --
 
 Boosting models (xgboost, lightgbm) get Optuna:
 Two studies with the same budget and sampler seed: no class weighting, and
-scale_pos_weight = (#legit / #fraud) on the training period. Each trial trains on train with
-early stopping on validation PR-AUC (aucpr) and is scored by validation PR-AUC; the test
-period is never loaded into the model. Studies are stored in
-experiments/tuning/<name>/study.db (resumable). Writes a summary to
-research/tuning_<name>.md and the tuned config experiments/configs/<config-id>.yaml.
+scale_pos_weight = (#legit / #fraud) on the training period. Each trial trains on train; every
+CHECK_EVERY rounds the validation PR-AUC (scikit-learn average precision) is computed, and it
+drives both Optuna's median pruning and early stopping (EARLY_STOPPING rounds without
+improvement). The libraries' own per-round validation evaluation is not used: on this data it
+cost ~3.3 s per round, 92% of a trial (research/decisions.md D27). The test period is never
+loaded into the model. Studies are stored in experiments/tuning/<name>/study.db (resumable).
+Writes a summary to research/tuning_<name>.md and the tuned config
+experiments/configs/<config-id>.yaml.
 """
 
 from __future__ import annotations
@@ -35,17 +38,18 @@ from vaultic.views.tabular import resolve_device
 
 TUNING_DIR = REPO_ROOT / "experiments" / "tuning"
 ARMS = ("none", "scale_pos_weight")
-MAX_TREES = 1000
-EARLY_STOPPING = 50
-REPORT_EVERY = 25  # boosting rounds between pruning checks
-STARTUP_TRIALS = 5  # trials that always run to completion before pruning starts
+MAX_TREES = 2000
+EARLY_STOPPING = 100  # rounds without a better validation PR-AUC
+CHECK_EVERY = 25  # rounds between validation PR-AUC checks (pruning and early stopping)
+STARTUP_TRIALS = 5  # trials per arm that always run to completion before pruning starts
+LEARNING_RATE = (0.02, 0.3)
 
 
 def suggest_params(trial) -> dict:
     """XGBoost search space."""
     return {
         "max_depth": trial.suggest_int("max_depth", 3, 10),
-        "learning_rate": trial.suggest_float("learning_rate", 0.05, 0.3, log=True),
+        "learning_rate": trial.suggest_float("learning_rate", *LEARNING_RATE, log=True),
         "min_child_weight": trial.suggest_float("min_child_weight", 1.0, 50.0, log=True),
         "subsample": trial.suggest_float("subsample", 0.5, 1.0),
         "colsample_bytree": trial.suggest_float("colsample_bytree", 0.3, 1.0),
@@ -55,27 +59,11 @@ def suggest_params(trial) -> dict:
     }
 
 
-def _pruning_callback(trial):
-    """Report validation aucpr every REPORT_EVERY rounds; stop the trial if Optuna prunes it."""
-    import optuna
-    from xgboost.callback import TrainingCallback
-
-    class Prune(TrainingCallback):
-        def after_iteration(self, model, epoch, evals_log):
-            if epoch % REPORT_EVERY == 0:
-                trial.report(evals_log["validation_0"]["aucpr"][-1], epoch)
-                if trial.should_prune():
-                    raise optuna.TrialPruned(f"pruned at round {epoch}")
-            return False
-
-    return Prune()
-
-
 def suggest_params_lightgbm(trial) -> dict:
     """LightGBM search space, mirroring the XGBoost one (leaves instead of depth)."""
     return {
         "num_leaves": trial.suggest_int("num_leaves", 15, 255, log=True),
-        "learning_rate": trial.suggest_float("learning_rate", 0.05, 0.3, log=True),
+        "learning_rate": trial.suggest_float("learning_rate", *LEARNING_RATE, log=True),
         "min_child_samples": trial.suggest_int("min_child_samples", 5, 200, log=True),
         "subsample": trial.suggest_float("subsample", 0.5, 1.0),
         "colsample_bytree": trial.suggest_float("colsample_bytree", 0.3, 1.0),
@@ -85,18 +73,60 @@ def suggest_params_lightgbm(trial) -> dict:
     }
 
 
-def _lightgbm_pruning_callback(trial):
-    """Same rule as XGBoost: report validation average precision every REPORT_EVERY rounds."""
-    import optuna
+class ValidationMonitor:
+    """Validation PR-AUC every CHECK_EVERY rounds, shared by XGBoost and LightGBM.
 
-    def callback(env):
-        if env.iteration % REPORT_EVERY == 0:
-            value = next(r[2] for r in env.evaluation_result_list if r[1] == "average_precision")
-            trial.report(value, env.iteration)
-            if trial.should_prune():
-                raise optuna.TrialPruned(f"pruned at round {env.iteration}")
+    Each check reports to Optuna (which may prune the trial) and tracks the best tree count;
+    check() returns True when EARLY_STOPPING rounds passed without improvement.
+    """
 
-    return callback
+    def __init__(self, y_va: np.ndarray, trial=None):
+        self.y_va = np.asarray(y_va)
+        self.trial = trial
+        self.best_score = -np.inf
+        self.best_trees = 0
+
+    def check(self, trees: int, proba: np.ndarray) -> bool:
+        score = pr_auc(self.y_va, proba)
+        if score > self.best_score:
+            self.best_score, self.best_trees = score, trees
+        if self.trial is not None:
+            import optuna
+
+            self.trial.report(score, trees)
+            if self.trial.should_prune():
+                raise optuna.TrialPruned(f"pruned at {trees} trees")
+        return trees - self.best_trees >= EARLY_STOPPING
+
+
+def fit_trial(
+    params, X_tr, y_tr, X_va, y_va, seed=0, trial=None, device="cpu"
+) -> tuple[float, int]:
+    from xgboost import XGBClassifier
+    from xgboost.callback import TrainingCallback
+
+    X_check = np.ascontiguousarray(X_va, dtype=np.float32)
+    monitor = ValidationMonitor(y_va, trial)
+
+    class Check(TrainingCallback):
+        def after_iteration(self, model, epoch, evals_log):
+            trees = epoch + 1
+            if trees % CHECK_EVERY:
+                return False
+            proba = model.inplace_predict(X_check, iteration_range=(0, trees))
+            return monitor.check(trees, proba)
+
+    model = XGBClassifier(
+        n_estimators=MAX_TREES,
+        callbacks=[Check()],
+        tree_method="hist",
+        device=device,
+        random_state=seed,
+        n_jobs=-1,
+        **params,
+    )
+    model.fit(X_tr, y_tr)
+    return float(monitor.best_score), int(monitor.best_trees)
 
 
 def fit_trial_lightgbm(
@@ -104,12 +134,18 @@ def fit_trial_lightgbm(
 ) -> tuple[float, int]:
     import lightgbm
 
-    callbacks = [lightgbm.early_stopping(EARLY_STOPPING, first_metric_only=True, verbose=False)]
-    if trial is not None:
-        callbacks.append(_lightgbm_pruning_callback(trial))
+    X_check = np.ascontiguousarray(X_va, dtype=np.float32)
+    monitor = ValidationMonitor(y_va, trial)
+
+    def check(env):
+        trees = env.iteration + 1
+        if trees % CHECK_EVERY == 0:
+            proba = env.model.predict(X_check, num_iteration=trees)
+            if monitor.check(trees, proba):
+                raise lightgbm.callback.EarlyStopException(env.iteration, [])
+
     model = lightgbm.LGBMClassifier(
         n_estimators=MAX_TREES,
-        metric="average_precision",
         subsample_freq=1,
         random_state=seed,
         n_jobs=-1,
@@ -122,9 +158,8 @@ def fit_trial_lightgbm(
         ),
         **params,
     )
-    model.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], callbacks=callbacks)
-    score = pr_auc(y_va, model.predict_proba(X_va)[:, 1])  # uses the best iteration
-    return score, int(model.best_iteration_)
+    model.fit(X_tr, y_tr, callbacks=[check])
+    return float(monitor.best_score), int(monitor.best_trees)
 
 
 MODELS = {
@@ -146,27 +181,6 @@ def grid_logistic_regression(X_tr, y_tr, X_va, y_va, grid_c) -> list[dict]:
         rows.append({"C": c, "val PR-AUC": score, "seconds": time.perf_counter() - started})
         print(f"[B1 grid] C={c}: val PR-AUC {score:.4f}")
     return rows
-
-
-def fit_trial(
-    params, X_tr, y_tr, X_va, y_va, seed=0, trial=None, device="cpu"
-) -> tuple[float, int]:
-    from xgboost import XGBClassifier
-
-    model = XGBClassifier(
-        callbacks=[_pruning_callback(trial)] if trial is not None else None,
-        n_estimators=MAX_TREES,
-        early_stopping_rounds=EARLY_STOPPING,
-        eval_metric="aucpr",
-        tree_method="hist",
-        device=device,
-        random_state=seed,
-        n_jobs=-1,
-        **params,
-    )
-    model.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], verbose=False)
-    score = pr_auc(y_va, model.predict_proba(X_va)[:, 1])  # uses the best iteration
-    return score, int(model.best_iteration) + 1
 
 
 def run_arm(
@@ -333,8 +347,10 @@ def _tune_boosting(args, X_tr, y_tr, X_va, y_va) -> None:
         f"# Tuning {args.name} ({args.model}, feature set `{args.features}`)",
         "",
         f"Generated {date.today().isoformat()} by `python -m vaultic.eval.tune`. Validation period "
-        "only; each trial uses early stopping on validation and median pruning (max "
-        f"{MAX_TREES} trees, patience {EARLY_STOPPING}). Same sampler seed and budget per arm. "
+        "only; validation PR-AUC is checked every "
+        f"{CHECK_EVERY} rounds for median pruning and early stopping (max {MAX_TREES} trees, "
+        f"stop after {EARLY_STOPPING} rounds without improvement; learning rate "
+        f"{LEARNING_RATE[0]}–{LEARNING_RATE[1]}). Same sampler seed and budget per arm. "
         f"Device: {resolve_device(args.device)} (GPU and CPU results can differ slightly).",
         "",
         "| weighting | trials | pruned | best val PR-AUC | trees | total minutes |",

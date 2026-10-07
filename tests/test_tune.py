@@ -17,7 +17,7 @@ def test_fit_trial_scores_validation_and_reports_trees():
     X_tr, y_tr = _xy(2000, 0)
     X_va, y_va = _xy(800, 1)
     score, trees = fit_trial({"max_depth": 3, "learning_rate": 0.3}, X_tr, y_tr, X_va, y_va)
-    assert 0.2 < score <= 1.0 and 1 <= trees <= 2000
+    assert 0.2 < score <= 1.0 and trees % 25 == 0 and 25 <= trees <= 2000
 
 
 def test_arms_are_resumable_and_deterministic(tmp_path):
@@ -48,7 +48,7 @@ def test_pruned_trial_stops_training():
     trial = AlwaysPrune()
     with pytest.raises(optuna.TrialPruned):
         fit_trial({"max_depth": 3}, X_tr, y_tr, X_va, y_va, trial=trial)
-    assert trial.reported[1] == 0  # pruned at the first check
+    assert trial.reported[1] == 25  # pruned at the first check (after 25 trees)
 
 
 def test_lightgbm_trial_and_pruning():
@@ -57,7 +57,7 @@ def test_lightgbm_trial_and_pruning():
     X_tr, y_tr = _xy(2000, 0)
     X_va, y_va = _xy(800, 1)
     score, trees = fit_trial_lightgbm({"num_leaves": 15}, X_tr, y_tr, X_va, y_va)
-    assert 0.2 < score <= 1.0 and 1 <= trees <= 1000
+    assert 0.2 < score <= 1.0 and trees % 25 == 0 and 25 <= trees <= 2000
 
     class AlwaysPrune:
         def report(self, value, step):
@@ -86,3 +86,36 @@ def test_logistic_regression_grid():
     rows = grid_logistic_regression(X_tr, y_tr, X_va, y_va, [0.01, 1.0])
     assert [r["C"] for r in rows] == [0.01, 1.0]
     assert all(0 < r["val PR-AUC"] <= 1 for r in rows)
+
+
+def test_monitor_early_stopping_and_best_score():
+    from vaultic.eval.tune import EARLY_STOPPING, ValidationMonitor
+
+    y = np.array([0, 0, 1, 1])
+    good, bad = np.array([0.1, 0.2, 0.8, 0.9]), np.array([0.9, 0.8, 0.2, 0.1])
+    m = ValidationMonitor(y)
+    assert m.check(25, bad) is False
+    assert m.check(50, good) is False  # new best at 50 trees
+    stops = [m.check(trees, bad) for trees in range(75, 50 + EARLY_STOPPING + 25, 25)]
+    assert stops[-1] is True and not any(stops[:-1])  # stops exactly 100 rounds after 50
+    assert (m.best_trees, m.best_score) == (50, 1.0)
+
+
+def test_trial_reports_every_check_and_returns_the_best():
+    reported = []
+
+    class Record:
+        def report(self, value, step):
+            reported.append((step, value))
+
+        def should_prune(self):
+            return False
+
+    X_tr, y_tr = _xy(2000, 0)
+    X_va, y_va = _xy(800, 1)
+    score, trees = fit_trial(
+        {"max_depth": 3, "learning_rate": 0.3}, X_tr, y_tr, X_va, y_va, trial=Record()
+    )
+    steps = [s for s, _ in reported]
+    assert steps == list(range(25, steps[-1] + 1, 25))
+    assert score == max(v for _, v in reported) and (trees, score) in reported
