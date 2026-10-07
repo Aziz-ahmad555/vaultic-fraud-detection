@@ -236,6 +236,27 @@ def _log_mlflow(cfg: dict[str, Any], result: dict[str, Any], out_dir: Path) -> b
     return True
 
 
+def load_inputs(cfg: dict[str, Any], splits) -> tuple[pd.DataFrame, pd.DataFrame | None, list]:
+    """The merged data plus whatever the feature set needs (base features or uid)."""
+    df = load_merged(MERGED_PATH)
+    inputs = [MERGED_PATH]
+    base = None
+    variant = cfg.get("uid_variant", splits.uid_variant)
+    if cfg["features"] in NEEDS_BASE:
+        path = features_path(variant)
+        if not path.exists():
+            raise FileNotFoundError(
+                f"{path} missing; run python -m vaultic.features.pipeline --uid-variant {variant}"
+            )
+        base = pd.read_parquet(path)
+        inputs.append(path)
+    elif cfg["features"] in NEEDS_UID:
+        base = pd.read_parquet(UID_PATH, columns=["TransactionID", variant])
+        base = base.rename(columns={variant: "uid"})
+        inputs.append(UID_PATH)
+    return df, base, inputs
+
+
 def run(
     config_path: Path,
     runs_dir: Path = RUNS_DIR,
@@ -247,23 +268,7 @@ def run(
     cfg = load_config(config_path)
     splits = load_splits(Path(cfg.get("splits", SPLITS_PATH)))
     if data is None:
-        df = load_merged(MERGED_PATH)
-        inputs = [MERGED_PATH]
-        base = None
-        if cfg["features"] in NEEDS_BASE:
-            path = features_path(cfg.get("uid_variant", splits.uid_variant))
-            if not path.exists():
-                raise FileNotFoundError(
-                    f"{path} missing; run python -m vaultic.features.pipeline "
-                    f"--uid-variant {cfg.get('uid_variant', splits.uid_variant)}"
-                )
-            base = pd.read_parquet(path)
-            inputs.append(path)
-        elif cfg["features"] in NEEDS_UID:
-            variant = cfg.get("uid_variant", splits.uid_variant)
-            base = pd.read_parquet(UID_PATH, columns=["TransactionID", variant])
-            base = base.rename(columns={variant: "uid"})
-            inputs.append(UID_PATH)
+        df, base, inputs = load_inputs(cfg, splits)
         data_version = {p.name: _file_hash(p) for p in inputs}
         data_version["raw_dvc_md5"] = _dvc_hashes()
     else:
