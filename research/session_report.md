@@ -1,5 +1,21 @@
 # Session reports
 
+## Session 2b — 2026-10-07 night (branch `phase3-prep`, worktree `.worktrees/phase3-prep`)
+
+Light work only while the Phase 2 chain runs; done in a separate worktree so the chain's code
+and configs are untouched (D25). To merge into `phase0-1` after the chain finishes.
+
+| Item | Status |
+|---|---|
+| Kaggle portability | ✅ `VAULTIC_DATA_DIR` / `VAULTIC_RAW_DIR`; `--device cuda` for XGBoost and LightGBM (recorded in every run's saved config, metrics and run info); `vaultic.eval.transfer` export/import of runs; `vaultic.data.verify` checks Kaggle's CSVs against the DVC md5s; `docs/KAGGLE.md`. Not yet tried on Kaggle itself |
+| Phase 3 behavioral features | ✅ All roadmap groups in `src/vaultic/features/behavioral.py`; 10-row hand-computed tests and synthetic leakage tests pass (D26). Not run on the full data yet |
+| Push preparation | ✅ All 29 commits scanned: no data, database or `.env` files, no real secret values. One model file (FYP-1's 1 MB `xgboost_baseline.json`) is in early history and tag `v1-fyp1`: **keep or rewrite is your call** (`docs/PUSH.md`, with exact push commands) |
+
+**Chain pace:** B5 tuning trials take 18–51 minutes each on this laptop (3 of 50 done after
+2 hours). Even with pruning, B5, B3 and B4 tuning plus the final runs look like 2–3 days of CPU,
+not one night. Options: let it run; move the XGBoost tuning (B3, B5) to Kaggle's GPU with the new
+`--device cuda` path; or reduce the budget. Your decision.
+
 ## Session 2 — 2026-10-07 evening (branch `phase0-1`)
 
 Nothing has been pushed. Long-running Phase 2 work continues unattended in
