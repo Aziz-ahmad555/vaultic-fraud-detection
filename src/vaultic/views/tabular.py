@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from sklearn.ensemble import RandomForestClassifier
@@ -10,9 +11,29 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
+DEVICES = ("cpu", "cuda")
+GPU_MODELS = {"xgboost", "lightgbm"}  # the others always run on CPU
 
-def make_model(name: str, params: dict[str, Any], seed: int):
-    """A fresh, unfitted classifier with predict_proba. All randomness comes from `seed`."""
+
+def resolve_device(cli: str | None = None, config: str | None = None) -> str:
+    """Requested device: --device flag, then VAULTIC_DEVICE, then the config, then cpu."""
+    device = cli or os.environ.get("VAULTIC_DEVICE") or config or "cpu"
+    if device not in DEVICES:
+        raise ValueError(f"device must be one of {DEVICES}, got {device!r}")
+    return device
+
+
+def effective_device(name: str, device: str) -> str:
+    """Device a model actually trains on (CPU-only models ignore a GPU request)."""
+    return device if name in GPU_MODELS else "cpu"
+
+
+def make_model(name: str, params: dict[str, Any], seed: int, device: str = "cpu"):
+    """A fresh, unfitted classifier with predict_proba. All randomness comes from `seed`.
+
+    device="cuda" trains XGBoost and LightGBM on the GPU; results can differ slightly from CPU
+    (different floating-point summation order), so the device is recorded with every run.
+    """
     params = dict(params or {})
     if name == "logistic_regression":
         return make_pipeline(
@@ -29,12 +50,18 @@ def make_model(name: str, params: dict[str, Any], seed: int):
     if name == "xgboost":
         from xgboost import XGBClassifier
 
-        return XGBClassifier(random_state=seed, n_jobs=-1, tree_method="hist", **params)
+        return XGBClassifier(
+            random_state=seed, n_jobs=-1, tree_method="hist", device=device, **params
+        )
     if name == "lightgbm":
         from lightgbm import LGBMClassifier
 
+        gpu = {}
+        if device == "cuda":
+            # "gpu" = LightGBM's OpenCL build; set VAULTIC_LIGHTGBM_GPU=cuda for a CUDA build
+            gpu = {"device_type": os.environ.get("VAULTIC_LIGHTGBM_GPU", "gpu")}
         return LGBMClassifier(
-            random_state=seed, n_jobs=-1, verbose=-1, deterministic=True, **params
+            random_state=seed, n_jobs=-1, verbose=-1, deterministic=True, **gpu, **params
         )
     if name == "fyp1":
         from vaultic.views.fyp1 import FYP1Model

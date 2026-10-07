@@ -17,6 +17,7 @@ research/tuning_<name>.md and the tuned config experiments/configs/<config-id>.y
 from __future__ import annotations
 
 import argparse
+import os
 import time
 from datetime import date
 
@@ -30,6 +31,7 @@ from vaultic.eval.metrics import pr_auc
 from vaultic.features.pipeline import features_path
 from vaultic.features.sets import NEEDS_BASE, design_matrix
 from vaultic.paths import CONFIG_DIR, MERGED_PATH, REPO_ROOT, RESEARCH_DIR
+from vaultic.views.tabular import resolve_device
 
 TUNING_DIR = REPO_ROOT / "experiments" / "tuning"
 ARMS = ("none", "scale_pos_weight")
@@ -97,7 +99,9 @@ def _lightgbm_pruning_callback(trial):
     return callback
 
 
-def fit_trial_lightgbm(params, X_tr, y_tr, X_va, y_va, seed=0, trial=None) -> tuple[float, int]:
+def fit_trial_lightgbm(
+    params, X_tr, y_tr, X_va, y_va, seed=0, trial=None, device="cpu"
+) -> tuple[float, int]:
     import lightgbm
 
     callbacks = [lightgbm.early_stopping(EARLY_STOPPING, first_metric_only=True, verbose=False)]
@@ -111,6 +115,11 @@ def fit_trial_lightgbm(params, X_tr, y_tr, X_va, y_va, seed=0, trial=None) -> tu
         n_jobs=-1,
         verbose=-1,
         deterministic=True,
+        **(
+            {"device_type": os.environ.get("VAULTIC_LIGHTGBM_GPU", "gpu")}
+            if device == "cuda"
+            else {}
+        ),
         **params,
     )
     model.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], callbacks=callbacks)
@@ -139,7 +148,9 @@ def grid_logistic_regression(X_tr, y_tr, X_va, y_va, grid_c) -> list[dict]:
     return rows
 
 
-def fit_trial(params, X_tr, y_tr, X_va, y_va, seed=0, trial=None) -> tuple[float, int]:
+def fit_trial(
+    params, X_tr, y_tr, X_va, y_va, seed=0, trial=None, device="cpu"
+) -> tuple[float, int]:
     from xgboost import XGBClassifier
 
     model = XGBClassifier(
@@ -148,6 +159,7 @@ def fit_trial(params, X_tr, y_tr, X_va, y_va, seed=0, trial=None) -> tuple[float
         early_stopping_rounds=EARLY_STOPPING,
         eval_metric="aucpr",
         tree_method="hist",
+        device=device,
         random_state=seed,
         n_jobs=-1,
         **params,
@@ -157,7 +169,9 @@ def fit_trial(params, X_tr, y_tr, X_va, y_va, seed=0, trial=None) -> tuple[float
     return score, int(model.best_iteration) + 1
 
 
-def run_arm(name, arm, X_tr, y_tr, X_va, y_va, trials, storage, seed=0, model="xgboost"):
+def run_arm(
+    name, arm, X_tr, y_tr, X_va, y_va, trials, storage, seed=0, model="xgboost", device="cpu"
+):
     import optuna
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -178,7 +192,7 @@ def run_arm(name, arm, X_tr, y_tr, X_va, y_va, trials, storage, seed=0, model="x
             params["scale_pos_weight"] = weight
         started = time.perf_counter()
         try:
-            score, n_trees = fit(params, X_tr, y_tr, X_va, y_va, seed, trial)
+            score, n_trees = fit(params, X_tr, y_tr, X_va, y_va, seed, trial, device=device)
         finally:
             trial.set_user_attr("seconds", round(time.perf_counter() - started, 1))
         trial.set_user_attr("n_estimators", n_trees)
@@ -198,6 +212,7 @@ def main() -> None:
     parser.add_argument("--features", required=True, help="feature set, e.g. b5 or raw")
     parser.add_argument("--model", default="xgboost", choices=[*MODELS, "logistic_regression"])
     parser.add_argument("--trials-per-arm", type=int, default=25)
+    parser.add_argument("--device", choices=["cpu", "cuda"], default=None)
     parser.add_argument("--grid-c", type=float, nargs="+", default=[0.001, 0.01, 0.1, 1.0, 10.0])
     parser.add_argument("--config-id", required=True, help="id of the tuned config to write")
     args = parser.parse_args()
@@ -271,7 +286,16 @@ def _tune_boosting(args, X_tr, y_tr, X_va, y_va) -> None:
     rows, best = [], None
     for arm in ARMS:
         study, weight = run_arm(
-            args.name, arm, X_tr, y_tr, X_va, y_va, args.trials_per_arm, storage, model=args.model
+            args.name,
+            arm,
+            X_tr,
+            y_tr,
+            X_va,
+            y_va,
+            args.trials_per_arm,
+            storage,
+            model=args.model,
+            device=resolve_device(args.device),
         )
         t = study.best_trial
         finished = [x for x in study.trials if x.state.name in ("COMPLETE", "PRUNED")]
@@ -310,7 +334,8 @@ def _tune_boosting(args, X_tr, y_tr, X_va, y_va) -> None:
         "",
         f"Generated {date.today().isoformat()} by `python -m vaultic.eval.tune`. Validation period "
         "only; each trial uses early stopping on validation and median pruning (max "
-        f"{MAX_TREES} trees, patience {EARLY_STOPPING}). Same sampler seed and budget per arm.",
+        f"{MAX_TREES} trees, patience {EARLY_STOPPING}). Same sampler seed and budget per arm. "
+        f"Device: {resolve_device(args.device)} (GPU and CPU results can differ slightly).",
         "",
         "| weighting | trials | pruned | best val PR-AUC | trees | total minutes |",
         "|---|---|---|---|---|---|",

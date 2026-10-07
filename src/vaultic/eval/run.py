@@ -46,8 +46,8 @@ from vaultic.eval.metrics import (
 )
 from vaultic.features.pipeline import features_path
 from vaultic.features.sets import NEEDS_BASE, NEEDS_UID, design_matrix
-from vaultic.paths import MERGED_PATH, RAW_DIR, REPO_ROOT, RESEARCH_DIR, RUNS_DIR
-from vaultic.views.tabular import make_model
+from vaultic.paths import MERGED_PATH, REPO_ROOT, RESEARCH_DIR, RUNS_DIR
+from vaultic.views.tabular import effective_device, make_model, resolve_device
 
 PRECISION_K = 500
 MLFLOW_DIR = REPO_ROOT / "experiments" / "mlflow"  # git-ignored: mlflow.db + mlartifacts/
@@ -78,17 +78,27 @@ def _file_hash(path: Path) -> str:
     return h.hexdigest()[:16]
 
 
-def _hardware() -> dict[str, Any]:
+def _hardware(device: str = "cpu") -> dict[str, Any]:
     import os
     import platform
 
-    return {"cpu": platform.processor(), "logical_cpus": os.cpu_count(), "os": platform.platform()}
+    info = {"cpu": platform.processor(), "logical_cpus": os.cpu_count(), "os": platform.platform()}
+    if device == "cuda":
+        gpu = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        info["gpu"] = gpu.stdout.strip() or "unknown"
+    return info
 
 
 def _dvc_hashes() -> dict[str, str]:
-    """md5 of each raw file as recorded by DVC (data/raw/*.dvc)."""
+    """md5 of each raw file as recorded by DVC (the repo's data/raw/*.dvc pointer files,
+    which travel with the code even when the CSVs live elsewhere, e.g. on Kaggle)."""
     hashes = {}
-    for dvc_file in sorted(RAW_DIR.glob("*.dvc")):
+    for dvc_file in sorted((REPO_ROOT / "data" / "raw").glob("*.dvc")):
         out = yaml.safe_load(dvc_file.read_text(encoding="utf-8"))["outs"][0]
         hashes[out["path"]] = out["md5"]
     return hashes
@@ -135,6 +145,7 @@ def evaluate(
     base: pd.DataFrame | None,
     splits,
     final: bool = False,
+    device: str = "cpu",
 ) -> tuple[dict[str, Any], pd.DataFrame, list[dict[str, float]]]:
     """Train per seed on train and score validation. Only with final=True are test rows
     predicted and test metrics computed. Pure: no files written."""
@@ -152,7 +163,7 @@ def evaluate(
     val_scores, test_scores, val_seed, test_seed, thresholds = [], [], [], [], []
     timings = []
     for seed in cfg["seeds"]:
-        model = make_model(model_cfg["name"], model_cfg.get("params", {}), seed)
+        model = make_model(model_cfg["name"], model_cfg.get("params", {}), seed, device=device)
         t0 = time.perf_counter()
         model.fit(X[tr], y[tr])
         t1 = time.perf_counter()
@@ -176,6 +187,7 @@ def evaluate(
         "experiment": cfg["id"],
         "question": cfg["question"],
         "mode": "final" if final else "development",
+        "device": device,
         "uid_variant": cfg.get("uid_variant", splits.uid_variant),
         "rows": {"train": int(tr.sum()), "validation": int(va.sum())},
         "n_features": int(X.shape[1]),
@@ -296,9 +308,13 @@ def run(
     final: bool = False,
     rerun_reason: str | None = None,
     decisions_log: Path = RESEARCH_DIR / "decisions.md",
+    device: str | None = None,
 ) -> Path:
     started = time.perf_counter()
     cfg = load_config(config_path)
+    # the device the model really trains on is part of the run's saved config
+    device = effective_device(cfg["model"]["name"], resolve_device(device, cfg.get("device")))
+    cfg = {**cfg, "device": device}
     if final:
         _guard_final_rerun(cfg["id"], runs_dir, rerun_reason, decisions_log)
     splits = load_splits(Path(cfg.get("splits", SPLITS_PATH)))
@@ -310,7 +326,7 @@ def run(
         df, base = data
         data_version = {"injected": True}
 
-    result, preds, timings = evaluate(cfg, df, base, splits, final=final)
+    result, preds, timings = evaluate(cfg, df, base, splits, final=final, device=device)
 
     out_dir = runs_dir / cfg["id"] / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     out_dir.mkdir(parents=True)
@@ -323,7 +339,7 @@ def run(
         "runtime_seconds": round(time.perf_counter() - started, 1),
         # timings vary between runs, so they live here and not in metrics.json
         "per_seed_timing": timings,
-        "hardware": _hardware(),
+        "hardware": _hardware(device),
     }
     info["mlflow"] = _log_mlflow(cfg, result, out_dir) if data is None else False
     (out_dir / "run_info.json").write_text(json.dumps(info, indent=2), encoding="utf-8")
@@ -367,8 +383,14 @@ def main() -> None:
         default=None,
         help="required to repeat a --final run (e.g. a bug fix); logged in decisions.md",
     )
+    parser.add_argument(
+        "--device",
+        choices=["cpu", "cuda"],
+        default=None,
+        help="override the config / VAULTIC_DEVICE (cuda: XGBoost and LightGBM on the GPU)",
+    )
     args = parser.parse_args()
-    out = run(args.config, final=args.final, rerun_reason=args.rerun_reason)
+    out = run(args.config, final=args.final, rerun_reason=args.rerun_reason, device=args.device)
     result = json.loads((out / "metrics.json").read_text(encoding="utf-8"))
     print(f"{out}\n  validation PR-AUC {_fmt(result['validation']['pr_auc'])}")
     if args.final:
