@@ -176,3 +176,62 @@ def test_f5_has_no_mask_and_f6_has_no_dropout():
 def test_unknown_fusion_name():
     with pytest.raises(ValueError):
         make_fusion("F9")
+
+
+# ---- F7: SimMLM-style gate with the MoFe ranking loss ---------------------------------------
+
+from vaultic.fusion.simmlm import SimMLMGate, mofe_term, row_bce  # noqa: E402
+
+
+def test_mofe_is_zero_when_more_views_give_lower_loss():
+    more = np.array([0.10, 0.20, 0.05])
+    fewer = np.array([0.30, 0.50, 0.05])  # more views never worse (equal on the last row)
+    assert mofe_term(more, fewer) == 0.0
+    # when more views are worse, the hinge is the excess, averaged over rows
+    assert mofe_term(np.array([0.5, 0.1]), np.array([0.2, 0.3])) == pytest.approx(0.3 / 2)
+
+
+def test_f7_gradients_match_finite_differences():
+    views, y, ctx = _synthetic(n=40, seed=4)
+    model = SimMLMGate(hidden=(4, 3), mofe_weight=0.7, l2=1e-3, epochs=1, seed=0)
+    model.fit(views, y, ctx)
+    rng = np.random.default_rng(6)
+    params = [p + rng.normal(0, 0.3, p.shape) for p in model.params_]
+    more = model._inputs(views, ctx)
+    fewer = model._inputs(view_dropout(views, 0.5, np.random.default_rng(1)), ctx)
+    yf, c = y.astype(float), model._row_weights(y.astype(float), None)
+    _, grads = model._mofe_loss_and_grads(params, more, fewer, yf, c)
+    h = 1e-6
+    for k, P in enumerate(params):
+        for idx in [tuple(rng.integers(0, s) for s in P.shape) for _ in range(4)]:
+            plus, minus = [q.copy() for q in params], [q.copy() for q in params]
+            plus[k][idx] += h
+            minus[k][idx] -= h
+            lp, _ = model._mofe_loss_and_grads(plus, more, fewer, yf, c)
+            lm, _ = model._mofe_loss_and_grads(minus, more, fewer, yf, c)
+            assert grads[k][idx] == pytest.approx((lp - lm) / (2 * h), rel=1e-4, abs=1e-7)
+
+
+def test_f7_keeps_the_mask_and_needs_dropout():
+    views, y, ctx = _synthetic(n=1500)
+    f7 = make_fusion("F7", epochs=5).fit(views, y, ctx)
+    assert isinstance(f7, SimMLMGate)
+    assert (f7.view_weights(views, ctx)[np.isnan(views)] == 0.0).all()
+    with pytest.raises(ValueError, match="dropout"):
+        SimMLMGate(dropout=0.0)
+
+
+@pytest.mark.parametrize("seed", [0, 1])
+def test_f7_reduces_mofe_violations_against_mvaf(seed):
+    views, y, ctx = _synthetic()
+    test_views, test_y, test_ctx = _synthetic(seed=1)
+    fewer = view_dropout(test_views, 0.5, np.random.default_rng(9))
+
+    def held_out_mofe(model):
+        lm = row_bce(model.predict_proba(test_views, test_ctx), test_y)
+        lf = row_bce(model.predict_proba(fewer, test_ctx), test_y)
+        return mofe_term(lm, lf)
+
+    mvaf = make_fusion("MVAF", epochs=20, seed=seed).fit(views, y, ctx)
+    f7 = make_fusion("F7", epochs=20, seed=seed).fit(views, y, ctx)
+    assert held_out_mofe(f7) < held_out_mofe(mvaf)

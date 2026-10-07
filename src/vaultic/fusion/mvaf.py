@@ -152,12 +152,14 @@ class MVAF:
         p = _sigmoid(lin + bias)
         return p, w, lin, acts
 
-    def _loss_and_grads(self, params, z, logits, mask, y, c):
+    def _loss_and_grads(self, params, z, logits, mask, y, c, norm=None, include_l2=True):
+        """Weighted BCE (normalised by `norm`, default sum of c) and its gradients."""
         p, w, lin, acts = self._forward(params, z, logits, mask)
-        total = c.sum()
+        total = c.sum() if norm is None else norm
         loss = -(c * (y * np.log(p + 1e-12) + (1 - y) * np.log(1 - p + 1e-12))).sum() / total
         weights_l2 = sum((W**2).sum() for W in params[0::2])
-        loss += 0.5 * self.l2 * weights_l2
+        l2 = self.l2 if include_l2 else 0.0
+        loss += 0.5 * l2 * weights_l2
         ds = c * (p - y) / total  # dL/ds, s = lin + bias
         dg = ds[:, None] * w * (logits - lin[:, None])
         dout = np.hstack([dg, ds[:, None]])
@@ -165,7 +167,7 @@ class MVAF:
         n_layers = len(params) // 2
         delta = dout
         for k in reversed(range(n_layers)):
-            grads[2 * k] = acts[k].T @ delta + self.l2 * params[2 * k]
+            grads[2 * k] = acts[k].T @ delta + l2 * params[2 * k]
             grads[2 * k + 1] = delta.sum(axis=0)
             if k > 0:
                 delta = (delta @ params[2 * k].T) * (acts[k] > 0)
@@ -202,14 +204,8 @@ class MVAF:
             order = rng.permutation(len(y))
             for start in range(0, len(y), self.batch_size):
                 idx = order[start : start + self.batch_size]
-                v = views[idx]
-                if self.dropout > 0:
-                    v = view_dropout(v, self.dropout, rng)
                 ctx = None if context is None else context[idx]
-                z, logits, mask = self._raw_inputs(v, ctx)
-                _, grads = self._loss_and_grads(
-                    self.params_, self._standardize(z), logits, mask, y[idx], c_all[idx]
-                )
+                grads = self._batch_grads(views[idx], ctx, y[idx], c_all[idx], rng)
                 step += 1
                 for i, g in enumerate(grads):
                     m1[i] = beta1 * m1[i] + (1 - beta1) * g
@@ -218,6 +214,14 @@ class MVAF:
                     v_hat = m2[i] / (1 - beta2**step)
                     self.params_[i] -= self.learning_rate * m_hat / (np.sqrt(v_hat) + 1e-8)
         return self
+
+    def _batch_grads(self, views, context, y, c, rng):
+        """Gradients for one mini-batch: view dropout, then the weighted BCE."""
+        if self.dropout > 0:
+            views = view_dropout(views, self.dropout, rng)
+        z, logits, mask = self._raw_inputs(views, context)
+        _, grads = self._loss_and_grads(self.params_, self._standardize(z), logits, mask, y, c)
+        return grads
 
     def _predict(self, views, context):
         z, logits, mask = self._raw_inputs(np.asarray(views, dtype=np.float64), context)

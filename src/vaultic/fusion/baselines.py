@@ -1,4 +1,4 @@
-"""Fusion baselines F1-F6 (roadmap Phase 7.4). MVAF must beat them or be reported honestly.
+"""Fusion baselines F1-F7 (roadmap Phase 7.4; F7 added by decision D31/D33). MVAF must beat them or be reported honestly.
 
 F1  simple average of the available view probabilities
 F2  fixed weights per view, fitted on validation (renormalised over available views)
@@ -6,6 +6,7 @@ F3  logistic-regression stacking, missing views filled with a constant (logit 0,
 F4  LightGBM stacking with missing views left as NaN
 F5  MVAF gate without the availability mask
 F6  MVAF gate with the mask but without view dropout
+F7  SimMLM-style gate: MVAF's gate trained with modality dropout and the MoFe ranking loss
 
 All share one interface: fit(views, y, context=None, sample_weight=None) and
 predict_proba(views, context=None), with views as an (n, V) array of probabilities and NaN for
@@ -94,7 +95,7 @@ class LightGBMStacking:
 
 
 def make_fusion(name: str, seed: int = 0, **kwargs):
-    """F1-F6 or MVAF by name; kwargs go to the underlying model."""
+    """F1-F7 or MVAF by name; kwargs go to the underlying model."""
     if name == "F1":
         return SimpleAverage()
     if name == "F2":
@@ -107,6 +108,10 @@ def make_fusion(name: str, seed: int = 0, **kwargs):
         return MVAF(use_mask=False, seed=seed, **kwargs)
     if name == "F6":
         return MVAF(dropout=0.0, seed=seed, **kwargs)
+    if name == "F7":
+        from vaultic.fusion.simmlm import SimMLMGate
+
+        return SimMLMGate(seed=seed, **kwargs)
     if name == "MVAF":
         return MVAF(seed=seed, **kwargs)
     raise ValueError(f"unknown fusion method {name!r}")
