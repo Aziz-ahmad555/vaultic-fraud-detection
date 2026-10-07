@@ -14,7 +14,7 @@ The session stopped early at the usage limit. Nothing has been pushed.
 | 6. Phase 1B | ✅ `research/uid_report.md`; provisional `uid2` (D8) |
 | 7. Phase 1C | ✅ `experiments/configs/splits.yaml`, label-delay helpers |
 | 8. Phase 1D | ✅ 20 point-in-time features; leakage tests pass, exact equality, real 50k sample + synthetic |
-| 9. Phase 1E | ⚠️ Harness, metrics and bootstrap built; 67/67 tests pass, including a synthetic same-config-twice check. The real-data exit gate is **not yet confirmed**: only 1 of the 2 `EXP-000` runs had finished |
+| 9. Phase 1E | ✅ Harness, metrics and bootstrap built; 67/67 tests pass. **Exit gate passed:** two runs of `EXP-000` produced byte-identical `metrics.json` and `predictions.parquet` (about 250 s each) |
 | 10. Phase 2A baselines | ❌ Not started |
 
 ## Key numbers (from generated reports)
@@ -37,9 +37,13 @@ The session stopped early at the usage limit. Nothing has been pushed.
 - 46.4% of transactions are cold start under `uid2`.
 - EXP-000 (XGBoost, raw + base features, seed 0): test PR-AUC **0.6453** (95% CI 0.6286–0.6620). This is one harness run, not a tuned baseline.
 
-## To finish the exit gate
+## Phase 1 exit gate
 
-Run `python -m vaultic.eval.run experiments/configs/EXP-000.yaml` once more (with `PYTHONPATH=src`). Then compare the two `experiments/runs/EXP-000/*/metrics.json` files; they should be byte-identical.
+| Gate | Result |
+|---|---|
+| Same config + same seed gives identical metrics twice | ✅ `EXP-000` runs `20261007-170822-685400` and `20261007-171231-833707`: byte-identical outputs |
+| Both leakage tests pass | ✅ Locally, on the real 50k sample and on synthetic data. CI isn't set up yet, so they haven't run in CI |
+| uid choice documented with numbers | ✅ `research/uid_report.md`, D8 (provisional) |
 
 ## Needs your confirmation
 
