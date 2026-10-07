@@ -80,3 +80,24 @@ def test_shap_importance_and_plot(tmp_path):
     assert top["feature"].iloc[0] == "b"  # the only informative feature
     save_plot(values, X, tmp_path / "shap.png", "test")
     assert (tmp_path / "shap.png").stat().st_size > 1000
+
+
+def test_phase2_gate_requires_non_overlapping_cis():
+    from vaultic.reports.phase2_gate import gate
+
+    b3 = {"ci_low": 0.50, "ci_high": 0.55}
+    assert gate(b3, {"ci_low": 0.56, "ci_high": 0.60})
+    assert not gate(b3, {"ci_low": 0.54, "ci_high": 0.70})  # overlapping: not passed
+
+
+def test_phase2_gate_needs_final_runs(tmp_path):
+    from vaultic.reports.phase2_gate import check
+
+    spec = tmp_path / "t.yaml"
+    spec.write_text(
+        "rows:\n  - {baseline: B3, experiment: EXP-A, model: m, features: f, tuned: x}\n"
+        "  - {baseline: B5, experiment: EXP-B, model: m, features: f, tuned: x}\n"
+    )
+    _write_run(tmp_path, "EXP-A", "20260101-000000-000001", "development", 0.5)
+    with pytest.raises(FileNotFoundError, match="--final"):
+        check(runs_dir=tmp_path, spec_path=spec)

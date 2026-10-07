@@ -24,9 +24,13 @@ decisions in `research/decisions.md`, every experiment in `research/experiment_l
 
 ## Phase 2: baselines
 
-- [ ] D8: uid vs uid2 on validation PR-AUC
-- [ ] V-column reduction for B5
-- [ ] Optuna tuning of B5 (50 trials, validation only), weighting comparison
-- [ ] B6: FYP-1 models under the temporal split (E2)
-- [ ] Table 1 and B5 SHAP summary plot generated automatically
-- [ ] Exit gate: B5 beats B3 with non-overlapping CIs
+- [x] Harness: development runs are validation-only; `--final` for test (logged FINAL)
+- [x] D8 → D18: `uid` beats `uid2` on validation PR-AUC (+0.0236, paired CI +0.0150 to +0.0330)
+- [x] V-column reduction for B5: 339 → 108 V columns; +0.0049 validation PR-AUC (D19)
+- [ ] Optuna tuning of B5 (2 × 25 trials, validation only), weighting comparison: **running**
+- [ ] Optuna tuning of B3 with the same budget (needed for a fair exit gate): queued after B5
+- [x] B6: FYP-1 port (code, tests, config EXP-010); validation run in progress
+- [x] LightGBM crash (B4) found and fixed: import-order clash with scikit-learn (D22)
+- [x] Table 1 and SHAP generators (code + tests); outputs need the tuned runs
+- [ ] B1, B2, B4 development runs under the validation-only harness
+- [ ] Exit gate: B5 beats B3 with non-overlapping CIs (`--final` runs)
