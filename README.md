@@ -21,9 +21,9 @@ decision D31 in `research/decisions.md`. Milestones follow the roadmap's M0–M1
 | M1 Leakage tests, uid chosen, reproducible harness (Phase 1) | MUST | ✅ Exit gate passed |
 | M2 Baseline table B1–B6 with CIs (Phase 2) | MUST | ⏳ Tuning and final runs in progress |
 | M3 Behavioral view measured (Phase 3) | MUST | ⏳ Feature code and tests done; not yet run on the full data |
-| M4 Graph view: graph features + XGBoost (Phase 4); GNN only if time | MUST | Not started |
-| M5 Temporal (GRU) and anomaly (IsolationForest + autoencoder) views (Phases 5–6) | MUST | Not started |
-| M6 MVAF vs F1–F7 (Phase 7) | MUST | ⏳ MVAF and F1–F6 implemented and unit-tested; F7 (SimMLM-style, MoFe ranking loss) not started; not yet run on real views |
+| M4 Graph view: graph features + XGBoost (Phase 4); GNN only if time | MUST | ⏳ Heterogeneous entity graph, point-in-time graph features (4.2) and leakage settings A/B/C implemented and unit-tested; not yet run on the full data |
+| M5 Temporal (GRU) and anomaly (IsolationForest + autoencoder) views (Phases 5–6) | MUST | ⏳ Anomaly view (global IF, autoencoder, per-uid IF) and the sequence builder implemented and unit-tested; GRU not started (no PyTorch yet); not yet run on the full data |
+| M6 MVAF vs F1–F7 (Phase 7) | MUST | ⏳ MVAF and F1–F6 implemented and unit-tested; F7 (SimMLM-style, MoFe ranking loss) implemented and unit-tested; not yet run on real views |
 | M7 Calibration, conformal coverage, routing (Phase 8) | MUST | ⏳ Calibration, split/Mondrian/adaptive conformal and routing R1–R4 implemented and unit-tested; not yet run on real scores |
 | M8 Explanation faithfulness, research side (Phase 9) | MUST | ⏳ Faithfulness metrics implemented and unit-tested; SHAP runs not started |
 | M12 All tables regenerate from one command (Phase 13) | MUST | ⏳ `make paper-results` skeleton (Table 1, E2); statistics tooling done |
