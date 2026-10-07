@@ -9,7 +9,9 @@ the same second are not history), oldest first. Each step holds
                  (0 = missing, 1 = unseen in training; for an embedding later)
   + any extra per-row columns (e.g. C/D counters, behavioral novelty flags), NaN -> 0;
     an extra column the encoder knows is replaced by its code
-Short histories are left-padded with zeros; `mask` is True for real steps. A transaction whose
+Short histories are left-padded with zeros; `mask` is True for real steps. `current` holds the
+same step features for the transaction being scored (its gap channel is 0), so a model can
+read the history and then the new transaction. A transaction whose
 uid has no history gets an all-False mask and has_history = False: the temporal view is masked
 for it, never given a fake sequence (CLAUDE.md rule 11).
 """
@@ -38,6 +40,7 @@ class Sequences:
     values: np.ndarray  # (rows, n_steps, features) float32
     mask: np.ndarray  # (rows, n_steps) bool, True for real steps
     has_history: np.ndarray  # (rows,) bool
+    current: np.ndarray  # (rows, features) float32: the scored transaction's own step features
     feature_names: list[str]
     rows: np.ndarray  # positions in the input frame these sequences belong to
 
@@ -94,6 +97,7 @@ def build_sequences(
         values=values.astype(np.float32),
         mask=mask,
         has_history=mask.any(axis=1),
+        current=np.where(np.arange(step.shape[1]) == 1, 0.0, step[rows]).astype(np.float32),
         feature_names=[*BASE_FEATURES, *extra_columns],
         rows=rows,
     )

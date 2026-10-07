@@ -143,3 +143,13 @@ def test_product_codes_come_from_the_training_encoder():
     part = build_sequences(df.iloc[:8].reset_index(drop=True), uid.iloc[:8].reset_index(drop=True),
                            ENC, n_steps=4)  # fmt: skip
     assert np.array_equal(part.values[r], s.values[r])
+
+
+def test_current_step_is_the_scored_transaction_itself():
+    df, uid = _example()
+    s = build_sequences(df, uid, ENC, n_steps=3, extra_columns=("C1",))
+    assert s.current.shape == (10, 4) and s.current.dtype == np.float32
+    assert _amounts(s.current[:, 0]) == df["TransactionAmt"].tolist()
+    assert (s.current[:, 1] == 0).all()  # no gap for the transaction being scored
+    assert s.current[:, 2].tolist() == ENC.encode(df["ProductCD"], "ProductCD").tolist()
+    assert s.current[:, 3].tolist() == df["C1"].fillna(0).tolist()

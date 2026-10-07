@@ -22,10 +22,10 @@ decision D31 in `research/decisions.md`. Milestones follow the roadmap's M0–M1
 | M2 Baseline table B1–B6 with CIs (Phase 2) | MUST | ⏳ Tuning and final runs in progress |
 | M3 Behavioral view measured (Phase 3) | MUST | ⏳ Feature code and tests done; not yet run on the full data |
 | M4 Graph view: graph features + XGBoost (Phase 4); GNN only if time | MUST | ⏳ Heterogeneous entity graph, point-in-time graph features (4.2) and leakage settings A/B/C implemented and unit-tested; not yet run on the full data |
-| M5 Temporal (GRU) and anomaly (IsolationForest + autoencoder) views (Phases 5–6) | MUST | ⏳ Anomaly view (global IF, autoencoder, per-uid IF) and the sequence builder implemented and unit-tested; GRU not started (no PyTorch yet); not yet run on the full data |
+| M5 Temporal (GRU) and anomaly (IsolationForest + autoencoder) views (Phases 5–6) | MUST | ⏳ Anomaly view (global IF, autoencoder, per-uid IF), sequence builder and GRU temporal view (CPU PyTorch in a separate `.venv-torch`) implemented and tested on synthetic data; not yet run on the full data |
 | M6 MVAF vs F1–F7 (Phase 7) | MUST | ⏳ MVAF and F1–F6 implemented and unit-tested; F7 (SimMLM-style, MoFe ranking loss) implemented and unit-tested; not yet run on real views |
 | M7 Calibration, conformal coverage, routing (Phase 8) | MUST | ⏳ Calibration, split/Mondrian/adaptive conformal and routing R1–R4 implemented and unit-tested; not yet run on real scores |
-| M8 Explanation faithfulness, research side (Phase 9) | MUST | ⏳ Faithfulness metrics implemented and unit-tested; SHAP runs not started |
+| M8 Explanation faithfulness, research side (Phase 9) | MUST | ⏳ Faithfulness metrics, reason-code library, view contributions, case narrative and DiCE wrapper (immutable features locked) implemented and unit-tested; SHAP runs not started |
 | E25 Label-maturity ablation: B5 retrained without the training labels of the last 30 days before validation starts (new experiment) | MUST | ⏳ Config `EXP-125` and harness option `train_label_maturity_days` done and tested on synthetic data; not run (waits for the frozen B5) |
 | M12 All tables regenerate from one command (Phase 13) | MUST | ⏳ `make paper-results` skeleton (Table 1, E2); statistics tooling done; planned configs for E3–E15 and E25 (`EXP-103`…`EXP-125`, refused by the harness until ready) |
 | M13 Paper 2 submitted, thesis approved, defense rehearsed (Phase 14) | MUST | ⏳ Paper 2 LaTeX skeleton |
