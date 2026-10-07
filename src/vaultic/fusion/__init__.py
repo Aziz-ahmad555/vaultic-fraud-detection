@@ -1,1 +1,2 @@
-"""Missing-View-Aware Adaptive Fusion (MVAF) gate and fusion baselines F1-F6. Not implemented yet."""
+"""Missing-View-Aware Adaptive Fusion (MVAF, `mvaf.py`) and fusion baselines F1-F6
+(`baselines.py`). Not yet wired into the harness: view predictions come in Phases 3-6."""
