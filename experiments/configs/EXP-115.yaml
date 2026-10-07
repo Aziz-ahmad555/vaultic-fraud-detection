@@ -1,0 +1,32 @@
+# Roadmap E15 (RQ6, Paper 2): explanation faithfulness, stability, counterfactual quality.
+# Phase 9 exit gate: SHAP deletion curves beat random deletion with CIs; counterfactual
+# validity above 90% on a 500-alert sample.
+id: EXP-115
+roadmap: E15
+status: planned
+needs:
+  - "SHAP (TreeExplainer) runs for the tabular and behavioral views"
+  - "dice-ml for counterfactuals (installed only in .venv-torch so far)"
+question: "E15: are the explanations faithful and stable? (RQ6, H6)"
+explained_model: EXP-103
+faithfulness:
+  deletion:
+    k: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    fill: training_median
+    against: [random_k, permutation_importance]
+    random_repeats: 20
+  insertion: {start: training_median, order: shap}
+stability:
+  near_identical: {perturb: TransactionAmt, relative_change: 0.01}
+  top_k: 3
+  metric: jaccard
+seed_consistency: {top_k: 5, seeds: [0, 1, 2, 3, 4]}
+counterfactuals:
+  sample: {alerts: 500, seed: 0}
+  locked: [card, addr, history]   # explain/counterfactual.py (D38)
+  vary: actionable
+  per_alert: 3
+  report: [validity, proximity, n_changed, all_actionable]
+report: [deletion_auc, insertion_auc, jaccard_top3, seed_overlap_top5, cf_validity]
+seeds: [0, 1, 2, 3, 4]
+bootstrap: {n: 1000, seed: 0}

@@ -1,0 +1,23 @@
+# Roadmap E14 (RQ4, Paper 3): retraining policies and active learning. SHOULD scope (D31).
+id: EXP-114
+roadmap: E14
+scope: SHOULD
+status: planned
+needs:
+  - "EXP-113 detectors; champion-challenger gate; label-delay simulator"
+question: "E14: retraining policies P0-P3 and active-learning strategies"
+retraining:
+  policies: {P0: never, P1: monthly, P2: label_free_detector, P3: label_based_detector}
+  champion_challenger:
+    window: most_recent_matured_labels
+    metrics: [pr_auc, cost]
+    margin: "set on validation"
+active_learning:
+  strategies: [random, uncertainty, disagreement, expected_loss]
+  labels_per_day: [50, 100, 200, 500]
+  horizon_months: 3
+report:
+  retraining: [pr_auc_over_time, total_cost, n_retrains]
+  active_learning: [pr_auc_vs_labels, label_saving_at_equal_recall]
+seeds: [0, 1, 2, 3, 4]
+bootstrap: {n: 1000, seed: 0}

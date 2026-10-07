@@ -182,3 +182,42 @@ def test_second_final_run_needs_a_logged_reason(tmp_path):
     run(_config(tmp_path), data=_data(), final=True, rerun_reason="bug #1 fixed", **kwargs)
     text = decisions.read_text(encoding="utf-8")
     assert "FINAL-RERUN" in text and "bug #1 fixed" in text
+
+
+def test_label_maturity_drops_training_labels_unknown_at_validation_start(tmp_path):
+    """E25: with L = 30, a training row is used only if its time + 30 days <= the start of
+    validation (day 128), i.e. TransactionDT <= day 98 00:00."""
+    cfg = yaml.safe_load(_config(tmp_path).read_text())
+    cfg["train_label_maturity_days"] = 30
+    path = tmp_path / "EXP-MAT.yaml"
+    path.write_text(yaml.safe_dump(cfg))
+    df, base = _data()
+    out = _run(tmp_path, cfg=path, data=(df, base))
+    result = json.loads((out / "metrics.json").read_text())
+    in_train = (df["day"] >= 1) & (df["day"] <= 120)
+    expected = int((in_train & (df["TransactionDT"] <= 98 * SECONDS_PER_DAY)).sum())
+    assert result["rows"]["train"] == expected < int(in_train.sum())
+    assert result["train_label_maturity_days"] == 30
+    plain = json.loads((_run(tmp_path, runs="plain") / "metrics.json").read_text())
+    assert plain["rows"]["validation"] == result["rows"]["validation"]
+    assert "train_label_maturity_days" not in plain
+
+
+def test_planned_configs_are_refused_and_extends_merges(tmp_path):
+    from vaultic.eval.run import load_config, read_config
+
+    _config(tmp_path)  # EXP-TEST.yaml
+    child = {"extends": "EXP-TEST.yaml", "id": "EXP-CHILD", "model": {"params": {"max_depth": 5}}}
+    (tmp_path / "child.yaml").write_text(yaml.safe_dump(child))
+    cfg = load_config(tmp_path / "child.yaml")
+    assert cfg["id"] == "EXP-CHILD" and cfg["model"]["name"] == "xgboost"
+    assert cfg["model"]["params"] == {"n_estimators": 20, "max_depth": 5}
+    planned = {**child, "status": "planned", "needs": ["the temporal view"]}
+    (tmp_path / "planned.yaml").write_text(yaml.safe_dump(planned))
+    with pytest.raises(ValueError, match="planned experiment.*temporal view"):
+        load_config(tmp_path / "planned.yaml")
+    with pytest.raises(ValueError, match="planned"):
+        _run(tmp_path, cfg=tmp_path / "planned.yaml")
+    # a runnable child of a planned parent does not inherit the parent's status
+    (tmp_path / "grandchild.yaml").write_text(yaml.safe_dump({"extends": "planned.yaml"}))
+    assert "status" not in read_config(tmp_path / "grandchild.yaml")

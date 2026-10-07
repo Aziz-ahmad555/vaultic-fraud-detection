@@ -1,0 +1,21 @@
+# Roadmap E11 (RQ2, Paper 2): missing-view robustness and subgroups. Phase 7 exit gate: MVAF
+# vs F3/F4 with paired bootstrap on all subgroups; if MVAF does not win, Paper 2 reports that
+# honestly (no tuning on test).
+id: EXP-111
+roadmap: E11
+status: planned
+needs:
+  - "EXP-110 fused scores"
+question: "E11: robustness to removed views and results by subgroup"
+uses: EXP-110
+robustness: {remove_each_view_at_test_time: [tabular, behavioral, temporal, graph, anomaly]}
+subgroups:
+  has_identity: [1, 0]
+  history: {cold_start: "hist_n_past == 0", established: "hist_n_past >= 5"}
+  graph_edges: [yes, no]
+gate_weight_plots: {by_context: [has_identity, hist_n_past, g_shared_uids_device]}
+report:
+  per_subgroup: [pr_auc, recall_at_1pct_fpr]
+  statistics: {paired_bootstrap: true, holm: true, effect_size: true}
+seeds: [0, 1, 2, 3, 4]
+bootstrap: {n: 1000, seed: 0}

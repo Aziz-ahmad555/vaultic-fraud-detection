@@ -1,0 +1,21 @@
+# Roadmap E4 (RQ1, Paper 2): + temporal view (GRU over the last N transactions).
+# Ablation table row "+ temporal": behavioral yes, temporal yes, fusion = stacking.
+id: EXP-104
+roadmap: E4
+status: planned
+needs:
+  - "GRU temporal view trained on the training period (views/temporal.py, .venv-torch)"
+  - "out-of-sample temporal scores for validation and test (rolling scheme, D28)"
+  - "stacking fusion in the harness (F3 logistic-regression stacking)"
+question: "E4: B5 + behavioral + temporal view (stacking) vs E3"
+views:
+  tabular: {experiment: EXP-103}
+  temporal: {model: gru, n_steps: [10, 20], hidden: 32, early_stopping: validation_pr_auc}
+fusion: {method: F3}
+compare_to: [EXP-103]
+report:
+  overall: [pr_auc, roc_auc, recall_at_1pct_fpr]
+  subgroups: {cold_start: "hist_n_past == 0", established: "hist_n_past >= 5"}
+  statistics: {paired_bootstrap: true, holm: true, effect_size: true}
+seeds: [0, 1, 2, 3, 4]
+bootstrap: {n: 1000, seed: 0}

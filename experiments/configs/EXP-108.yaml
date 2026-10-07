@@ -1,0 +1,23 @@
+# Roadmap E8 (RQ1, Paper 2): + anomaly view (global IF, autoencoder, per-uid IF).
+id: EXP-108
+roadmap: E8
+status: planned
+needs:
+  - "anomaly view fitted on legit training rows of the full data (views/anomaly.py)"
+  - "stacking fusion in the harness"
+question: "E8: + anomaly view vs E5 (ablation row '+ anomaly')"
+views:
+  tabular: {experiment: EXP-103}
+  temporal: {experiment: EXP-104}
+  graph: {experiment: EXP-105}
+  anomaly:
+    scores: [anomaly_if, anomaly_ae, anomaly_uid_if]
+    per_uid_min_history: 20
+    category_codes: training_period   # features/categories.py (D37)
+fusion: {method: F3}
+compare_to: [EXP-105]
+report:
+  overall: [pr_auc, roc_auc, recall_at_1pct_fpr]
+  statistics: {paired_bootstrap: true, holm: true, effect_size: true}
+seeds: [0, 1, 2, 3, 4]
+bootstrap: {n: 1000, seed: 0}

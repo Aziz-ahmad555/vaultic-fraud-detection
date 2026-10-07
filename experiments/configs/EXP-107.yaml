@@ -1,0 +1,18 @@
+# Roadmap E7 (RQ1/RQ3, Paper 1): GNN vs graph features. COULD scope (D31): GNN only if time.
+id: EXP-107
+roadmap: E7
+scope: COULD
+status: planned
+needs:
+  - "PyTorch Geometric (HeteroData + NeighborLoader) in .venv-torch"
+  - "GraphSAGE on the heterogeneous entity graph with strictly temporal neighbourhoods"
+question: "E7: GraphSAGE vs graph features + XGBoost, setting C"
+views:
+  graph_features: {experiment: EXP-105}
+  gnn: {model: graphsage, setting: C, neighbor_sampling: [15, 10]}
+compare: ["gnn vs graph_features"]
+report:
+  overall: [pr_auc, roc_auc, recall_at_1pct_fpr]
+  statistics: {paired_bootstrap: true, effect_size: true}
+seeds: [0, 1, 2, 3, 4]
+bootstrap: {n: 1000, seed: 0}

@@ -30,8 +30,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from vaultic.data.load import load_merged
-from vaultic.data.splits import SPLITS_PATH, load_splits
+from vaultic.data.load import SECONDS_PER_DAY, load_merged
+from vaultic.data.splits import SPLITS_PATH, label_matured, load_splits
 from vaultic.data.uid import UID_PATH
 from vaultic.eval.bootstrap import seed_mean_ci
 from vaultic.eval.metrics import (
@@ -53,8 +53,36 @@ PRECISION_K = 500
 MLFLOW_DIR = REPO_ROOT / "experiments" / "mlflow"  # git-ignored: mlflow.db + mlartifacts/
 
 
+def _merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
+    out = dict(base)
+    for key, value in over.items():
+        out[key] = _merge(out[key], value) if isinstance(value, dict) and isinstance(
+            out.get(key), dict
+        ) else value  # fmt: skip
+    return out
+
+
+def read_config(path: Path) -> dict[str, Any]:
+    """The YAML, with `extends: OTHER.yaml` (same folder) merged under it, recursively. The
+    parent's status / needs are not inherited."""
+    path = Path(path)
+    own = yaml.safe_load(path.read_text(encoding="utf-8"))
+    parent = own.pop("extends", None)
+    if not parent:
+        return own
+    base = read_config(path.parent / parent)
+    base.pop("status", None)
+    base.pop("needs", None)
+    return _merge(base, own)
+
+
 def load_config(path: Path) -> dict[str, Any]:
-    cfg = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    cfg = read_config(path)
+    if cfg.get("status") == "planned":
+        needs = "; ".join(cfg.get("needs", [])) or "see the config"
+        raise ValueError(
+            f"{cfg.get('id', path)} is a planned experiment, not runnable yet: {needs}"
+        )
     for key in ("id", "question", "model", "features", "seeds"):
         if key not in cfg:
             raise ValueError(f"config is missing '{key}'")
@@ -154,6 +182,10 @@ def evaluate(
     amount = df["TransactionAmt"].to_numpy(dtype=float)
     part = splits.assign(df["day"])
     tr, va, te = (part == p for p in ("train", "validation", "test"))
+    maturity = cfg.get("train_label_maturity_days")
+    if maturity is not None:  # E25: only training labels already known when validation starts
+        start = splits.validation.first * SECONDS_PER_DAY
+        tr = tr & label_matured(df["TransactionDT"].to_numpy(), start, int(maturity))
     if not (tr.any() and va.any()):
         raise ValueError("train and validation must both be non-empty")
     if final and not te.any():
@@ -195,6 +227,8 @@ def evaluate(
         "thresholds_chosen_on_validation": thresholds,
         "validation": _aggregate(val_seed, y[va], val_scores, boot),
     }
+    if maturity is not None:
+        result["train_label_maturity_days"] = int(maturity)
     if final:
         result["rows"]["test"] = int(te.sum())
         result["test_fraud_rate"] = float(y[te].mean())

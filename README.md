@@ -26,7 +26,8 @@ decision D31 in `research/decisions.md`. Milestones follow the roadmap's M0–M1
 | M6 MVAF vs F1–F7 (Phase 7) | MUST | ⏳ MVAF and F1–F6 implemented and unit-tested; F7 (SimMLM-style, MoFe ranking loss) implemented and unit-tested; not yet run on real views |
 | M7 Calibration, conformal coverage, routing (Phase 8) | MUST | ⏳ Calibration, split/Mondrian/adaptive conformal and routing R1–R4 implemented and unit-tested; not yet run on real scores |
 | M8 Explanation faithfulness, research side (Phase 9) | MUST | ⏳ Faithfulness metrics implemented and unit-tested; SHAP runs not started |
-| M12 All tables regenerate from one command (Phase 13) | MUST | ⏳ `make paper-results` skeleton (Table 1, E2); statistics tooling done |
+| E25 Label-maturity ablation: B5 retrained without the training labels of the last 30 days before validation starts (new experiment) | MUST | ⏳ Config `EXP-125` and harness option `train_label_maturity_days` done and tested on synthetic data; not run (waits for the frozen B5) |
+| M12 All tables regenerate from one command (Phase 13) | MUST | ⏳ `make paper-results` skeleton (Table 1, E2); statistics tooling done; planned configs for E3–E15 and E25 (`EXP-103`…`EXP-125`, refused by the harness until ready) |
 | M13 Paper 2 submitted, thesis approved, defense rehearsed (Phase 14) | MUST | ⏳ Paper 2 LaTeX skeleton |
 | Paper 1: graph leakage (edge vs label leakage, label delay); Elliptic as replication of arXiv 2604.19514 | SHOULD | Not started |
 | M9 Drift under delayed labels as a thesis chapter (Phase 10) | SHOULD | Not started |

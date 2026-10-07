@@ -1,0 +1,21 @@
+# Roadmap E9 (RQ1, Paper 2): emerging (held-out) fraud by view. Remove all fraud of one group
+# from TRAINING only, then measure how well each view detects that group's fraud in the test
+# period. Repeat for every group. Phase 6 exit gate: the anomaly view detects held-out fraud
+# better than random for at least half the held-out groups.
+id: EXP-109
+roadmap: E9
+status: planned
+needs:
+  - "every view retrainable with a training-row filter"
+question: "E9: detection of held-out fraud groups by view"
+holdout:
+  ProductCD: [W, C, H, R, S]
+  card4: [visa, mastercard, discover, american express]
+  remove: fraud_rows_of_group_from_training   # legit rows of the group stay
+views: [tabular, behavioral, temporal, graph, anomaly]
+report:
+  per_group_and_view: [pr_auc, recall_at_1pct_fpr]
+  evaluated_on: "test rows of the held-out group"
+  random_reference: "fraud rate of the group in the test period"
+seeds: [0, 1, 2, 3, 4]
+bootstrap: {n: 1000, seed: 0}
