@@ -19,13 +19,13 @@ from pathlib import Path
 import pandas as pd
 
 from vaultic.data.load import load_merged
+from vaultic.data.splits import load_splits
 from vaultic.paths import INTERIM_DIR, MERGED_PATH, RESEARCH_DIR
 
 UID_PATH = INTERIM_DIR / "uids.parquet"
 
-# Only labels from this window may inform the choice of uid (train + validation; the test
-# period starts on day 151). Kept in sync with experiments/configs/splits.yaml.
-SELECTION_LAST_DAY = 150
+# Only labels up to the end of validation may inform the choice of uid; never the test period.
+SELECTION_LAST_DAY = load_splits().validation.last
 
 D1N = "D1n"  # day - D1: the card holder's approximate "first seen" day
 
