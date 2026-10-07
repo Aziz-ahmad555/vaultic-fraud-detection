@@ -52,7 +52,7 @@ The GitHub CLI is not installed here, so the steps use the website (or install t
 4. Check on GitHub that `data/raw/` shows only `.gitkeep` and the two `.dvc` files, and that
    the *Actions* tab runs the CI workflow on the pushed branches.
 5. Protect `main`: *Settings → Branches → Add rule* → require a pull request with one approval
-   (as CONTRIBUTING requires).
+   (the review rule in CLAUDE.md; a CONTRIBUTING.md is still to be written).
 
 Nothing in `.gitignore`d folders is pushed (`data/`, `experiments/runs/`, `experiments/mlflow/`,
 `experiments/tuning/`, `.venv/`, `.env`, `legacy/fyp1/instance/`, `legacy/fyp1/data/`).
