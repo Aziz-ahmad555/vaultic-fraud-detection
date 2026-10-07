@@ -49,3 +49,40 @@ def test_pruned_trial_stops_training():
     with pytest.raises(optuna.TrialPruned):
         fit_trial({"max_depth": 3}, X_tr, y_tr, X_va, y_va, trial=trial)
     assert trial.reported[1] == 0  # pruned at the first check
+
+
+def test_lightgbm_trial_and_pruning():
+    from vaultic.eval.tune import fit_trial_lightgbm
+
+    X_tr, y_tr = _xy(2000, 0)
+    X_va, y_va = _xy(800, 1)
+    score, trees = fit_trial_lightgbm({"num_leaves": 15}, X_tr, y_tr, X_va, y_va)
+    assert 0.2 < score <= 1.0 and 1 <= trees <= 1000
+
+    class AlwaysPrune:
+        def report(self, value, step):
+            pass
+
+        def should_prune(self):
+            return True
+
+    with pytest.raises(optuna.TrialPruned):
+        fit_trial_lightgbm({"num_leaves": 15}, X_tr, y_tr, X_va, y_va, trial=AlwaysPrune())
+
+
+def test_lightgbm_study_runs(tmp_path):
+    X_tr, y_tr = _xy(1500, 0)
+    X_va, y_va = _xy(600, 1)
+    storage = f"sqlite:///{(tmp_path / 's.db').as_posix()}"
+    study, _ = run_arm("L", ARMS[0], X_tr, y_tr, X_va, y_va, 2, storage, model="lightgbm")
+    assert len(study.trials) == 2 and "num_leaves" in study.trials[0].params
+
+
+def test_logistic_regression_grid():
+    from vaultic.eval.tune import grid_logistic_regression
+
+    X_tr, y_tr = _xy(1500, 0)
+    X_va, y_va = _xy(600, 1)
+    rows = grid_logistic_regression(X_tr, y_tr, X_va, y_va, [0.01, 1.0])
+    assert [r["C"] for r in rows] == [0.01, 1.0]
+    assert all(0 < r["val PR-AUC"] <= 1 for r in rows)

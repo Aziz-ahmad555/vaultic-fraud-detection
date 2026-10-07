@@ -25,6 +25,12 @@ Nothing has been pushed. Long-running Phase 2 work continues unattended in
 | 4. Table 1 and B5 SHAP plot | ✅ Generators and tests; outputs are produced by the chain once tuning is done (Table 1 on validation) |
 | 5. Phase 2 exit gate | ⏳ Gate check written; runs at the end of the chain with `--final` runs of B3 and B5 only |
 
+### E2: FYP-1's original numbers vs. the temporal split
+
+`research/tables/e2_fyp1_comparison.md` (regenerated with B6's test-period result by the overnight chain). Reproduced from FYP-1's own saved model and saved random test split, since FYP-1 never stored its metrics: **PR-AUC 0.5418, ROC-AUC 0.912** originally, against B6's temporal **0.3675 / 0.855** (validation; final pending).
+
+**Why the original evaluation was optimistic:** it split transactions at random (so the model trained on transactions from after the ones it was tested on), and it filled missing values with medians computed on the whole dataset, test rows included.
+
 ### Problems found and fixed
 
 - **Seeds had no effect** on XGBoost/LightGBM without row/column subsampling (std exactly 0 over 5 seeds). Tuning now searches `subsample` and `colsample_bytree`, so seeds matter.
@@ -32,11 +38,15 @@ Nothing has been pushed. Long-running Phase 2 work continues unattended in
 - **MLflow 3 refused the folder store**; switched to a local SQLite store (D16, earlier).
 - **B6 rule rounding**: XGBoost's float32 output turned the 0.95 floor into 0.9499999; fixed.
 
-### Needs your input
+### Your answers, applied (D24)
 
-- **Final Table 1:** you allowed `--final` for the exit gate only, so the chain runs `--final` for B3 and B5 only and builds Table 1 on validation. Say if Table 1 should also get final runs of B1, B2, B4 and B6.
-- **Equal tuning for B1, B2, B4:** they are untuned (D17); B3 and B5 are tuned. Rule 9 asks for equal budgets in compared methods; tuning all of them costs several more hours each on this laptop.
-- **DVC:** the steps in `docs/DVC_SETUP.md` (Google sign-in is yours to do).
+- **Tuning:** B3, B4, B5 get Optuna with 50 trials each (2 weighting arms × 25) and the same pruning rule (LightGBM added to the tuner); B1 a grid over C (0.001–10) on validation; B2 stays an untuned reference; B6 stays as FYP-1 built it. Table 1 states each budget in a "Tuning" column and shows training time per seed.
+- **Final runs:** after all tuning, the chain hashes every Table 1 config into `research/frozen_configs.md`, then makes exactly one `--final` run per baseline B1–B6. The harness refuses a second `--final` run of an experiment unless `--rerun-reason` is given, and logs that reason in `research/decisions.md`.
+- **Overnight:** `tools/run_phase2.ps1` → `research/phase2_results.md` (tuning results, Table 1 final, exit gate, E2, SHAP), with a check that no frozen config changed.
+
+### Still needs you
+
+- **DVC:** the steps in `docs/DVC_SETUP.md` (the Google sign-in is yours to do).
 
 ## Session 1 — 2026-10-07 afternoon (autonomous, branch `phase0-1`)
 

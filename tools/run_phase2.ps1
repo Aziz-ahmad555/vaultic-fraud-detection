@@ -1,7 +1,11 @@
 # Runs the remaining Phase 2 steps in order, unattended. Each step is logged with its exit
 # code to experiments/tuning/phase2_chain.log; a failed step is logged and the chain goes on.
 # Usage (repo root):  powershell -File tools/run_phase2.ps1
-# Test-period runs (--final) are made ONLY for B3 and B5, for the Phase 2 exit gate.
+#
+# Order: all tuning first (B5, B3, B4 Optuna with equal budgets; B1 grid over C), then the
+# configs are frozen (hashes in research/frozen_configs.md), then exactly ONE --final run per
+# baseline B1-B6 (the harness refuses a second one without a logged reason). Final runs also
+# report validation metrics, so no separate development runs are needed.
 
 $ErrorActionPreference = "Continue"
 $root = Split-Path -Parent $PSScriptRoot
@@ -25,22 +29,27 @@ while (Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
     Start-Sleep -Seconds 60
 }
 
-# 1-2. Tuning with equal budgets (resumes; writes EXP-009 / EXP-011 and research/tuning_*.md)
-Step "tune B5" @("-m", "vaultic.eval.tune", "--name", "B5", "--features", "b5", "--trials-per-arm", "25", "--config-id", "EXP-009")
-Step "tune B3" @("-m", "vaultic.eval.tune", "--name", "B3", "--features", "raw", "--trials-per-arm", "25", "--config-id", "EXP-011")
+# 1. Tuning, validation only
+Step "tune B5" @("-m", "vaultic.eval.tune", "--name", "B5", "--features", "b5", "--model", "xgboost", "--trials-per-arm", "25", "--config-id", "EXP-009")
+Step "tune B3" @("-m", "vaultic.eval.tune", "--name", "B3", "--features", "raw", "--model", "xgboost", "--trials-per-arm", "25", "--config-id", "EXP-011")
+Step "tune B4" @("-m", "vaultic.eval.tune", "--name", "B4", "--features", "raw", "--model", "lightgbm", "--trials-per-arm", "25", "--config-id", "EXP-013")
+Step "grid B1" @("-m", "vaultic.eval.tune", "--name", "B1", "--features", "raw_lr", "--model", "logistic_regression", "--grid-c", "0.001", "0.01", "0.1", "1", "10", "--config-id", "EXP-012")
 
-# 3. Development runs (validation only)
-foreach ($exp in "EXP-009", "EXP-011", "EXP-001", "EXP-004", "EXP-002") {
-    Step "dev $exp" @("-m", "vaultic.eval.run", "experiments/configs/$exp.yaml")
+# 2. Freeze every Table 1 config before any test-period run
+Step "freeze configs" @("-m", "vaultic.reports.phase2_summary", "freeze")
+
+# 3. SHAP of tuned B5 (train + validation only)
+Step "shap B5" @("-m", "vaultic.reports.shap_summary", "experiments/configs/EXP-009.yaml", "--name", "b5")
+
+# 4. One --final run per baseline
+foreach ($exp in "EXP-012", "EXP-002", "EXP-011", "EXP-013", "EXP-009", "EXP-010") {
+    Step "final $exp" @("-m", "vaultic.eval.run", "experiments/configs/$exp.yaml", "--final")
 }
 
-# 4. SHAP summary of tuned B5 and Table 1 on validation
-Step "shap B5" @("-m", "vaultic.reports.shap_summary", "experiments/configs/EXP-009.yaml", "--name", "b5")
-Step "table1 development" @("-m", "vaultic.reports.table1", "--mode", "development")
-
-# 5. Phase 2 exit gate: final (test-period) runs of B3 and B5 only
-Step "final EXP-011" @("-m", "vaultic.eval.run", "experiments/configs/EXP-011.yaml", "--final")
-Step "final EXP-009" @("-m", "vaultic.eval.run", "experiments/configs/EXP-009.yaml", "--final")
+# 5. Tables, gate and summary
+Step "table1 final" @("-m", "vaultic.reports.table1", "--mode", "final")
 Step "phase2 gate" @("-m", "vaultic.reports.phase2_gate")
+Step "e2 table" @("-m", "vaultic.reports.e2_fyp1")
+Step "summary" @("-m", "vaultic.reports.phase2_summary", "summary")
 
 "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') CHAIN FINISHED" | Out-File $log -Append -Encoding utf8

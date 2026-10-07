@@ -34,8 +34,8 @@ def _write_run(root, exp, name, mode, pr):
 
 SPEC = {
     "rows": [
-        {"baseline": "B1", "experiment": "EXP-A", "model": "m", "features": "f", "tuned": "no"},
-        {"baseline": "B2", "experiment": "EXP-B", "model": "m", "features": "f", "tuned": "no"},
+        {"baseline": "B1", "experiment": "EXP-A", "model": "m", "features": "f", "tuning": "none"},
+        {"baseline": "B2", "experiment": "EXP-B", "model": "m", "features": "f", "tuning": "none"},
     ]
 }
 
@@ -54,7 +54,7 @@ def test_final_table_uses_test_metrics_and_marks_missing_runs(tmp_path):
     a, b = table.iloc[0], table.iloc[1]
     assert a["PR-AUC"] == "0.6000 ± 0.0100 [0.5800, 0.6200]"
     assert a["F1 (val threshold)"] == "0.4000 ± 0.0100"
-    assert a["Train s/seed"] == "10" and a["Seeds"] == 2
+    assert a["Training s/seed"] == "10" and a["Seeds"] == 2
     assert b["PR-AUC"] == "not run"
     md = to_markdown(table, "final")
     assert "test period (FINAL runs)" in md and "| B1 |" in md and "| B2 |" in md
@@ -95,9 +95,36 @@ def test_phase2_gate_needs_final_runs(tmp_path):
 
     spec = tmp_path / "t.yaml"
     spec.write_text(
-        "rows:\n  - {baseline: B3, experiment: EXP-A, model: m, features: f, tuned: x}\n"
-        "  - {baseline: B5, experiment: EXP-B, model: m, features: f, tuned: x}\n"
+        "rows:\n  - {baseline: B3, experiment: EXP-A, model: m, features: f, tuning: x}\n"
+        "  - {baseline: B5, experiment: EXP-B, model: m, features: f, tuning: x}\n"
     )
     _write_run(tmp_path, "EXP-A", "20260101-000000-000001", "development", 0.5)
     with pytest.raises(FileNotFoundError, match="--final"):
         check(runs_dir=tmp_path, spec_path=spec)
+
+
+def test_fyp1_metrics_known_values():
+    from vaultic.reports.e2_fyp1 import fyp1_metrics
+
+    y = np.array([0, 0, 0, 1, 1])
+    p = np.array([0.1, 0.2, 0.6, 0.7, 0.4])
+    m = fyp1_metrics(y, p)
+    # at 0.5: predictions 0,0,1,1,0 -> tp 1, fp 1, fn 1
+    assert m["Precision@0.5"] == 0.5 and m["Recall@0.5"] == 0.5 and m["Accuracy@0.5"] == 0.6
+    assert 0 < m["PR-AUC"] <= 1 and m["ROC-AUC"] == pytest.approx(
+        5 / 6
+    )  # 0.7 beats 3 negatives, 0.4 beats 2
+
+
+def test_freeze_detects_later_changes(tmp_path, monkeypatch):
+    import vaultic.reports.phase2_summary as ps
+
+    monkeypatch.setattr(ps, "REPO_ROOT", tmp_path)
+    a, b = tmp_path / "a.yaml", tmp_path / "b.yaml"
+    a.write_text("x: 1\n")
+    b.write_text("y: 2\n")
+    record = tmp_path / "frozen.md"
+    ps.write_freeze([a, b], out=record)
+    assert ps.check_freeze(record) == []
+    b.write_text("y: 3\n")
+    assert ps.check_freeze(record) == ["b.yaml"]

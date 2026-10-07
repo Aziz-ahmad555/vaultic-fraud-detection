@@ -28,9 +28,9 @@ decisions in `research/decisions.md`, every experiment in `research/experiment_l
 - [x] D8 → D18: `uid` beats `uid2` on validation PR-AUC (+0.0236, paired CI +0.0150 to +0.0330)
 - [x] V-column reduction for B5: 339 → 108 V columns; +0.0049 validation PR-AUC (D19)
 - [ ] Optuna tuning of B5 (2 × 25 trials, validation only), weighting comparison: **running**
-- [ ] Optuna tuning of B3 with the same budget (needed for a fair exit gate): queued after B5
-- [x] B6: FYP-1 port (code, tests, config EXP-010); validation run in progress
+- [ ] Optuna tuning of B3 and B4 (LightGBM) with the same 50-trial budget; B1 grid over C: queued (D24)
+- [x] B6: FYP-1 port; validation PR-AUC 0.3675 (EXP-010); E2 table vs FYP-1's original 0.5418
 - [x] LightGBM crash (B4) found and fixed: import-order clash with scikit-learn (D22)
 - [x] Table 1 and SHAP generators (code + tests); outputs need the tuned runs
-- [ ] B1, B2, B4 development runs under the validation-only harness
+- [ ] Freeze configs, then one --final run per baseline B1-B6 (re-runs need a logged reason)
 - [ ] Exit gate: B5 beats B3 with non-overlapping CIs (`--final` runs)

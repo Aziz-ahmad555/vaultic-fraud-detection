@@ -236,6 +236,37 @@ def _log_mlflow(cfg: dict[str, Any], result: dict[str, Any], out_dir: Path) -> b
     return True
 
 
+def previous_final_runs(experiment: str, runs_dir: Path = RUNS_DIR) -> list[Path]:
+    root = runs_dir / experiment
+    if not root.exists():
+        return []
+    return [
+        d
+        for d in sorted(root.iterdir())
+        if (d / "metrics.json").exists()
+        and json.loads((d / "metrics.json").read_text(encoding="utf-8")).get("mode") == "final"
+    ]
+
+
+def _guard_final_rerun(
+    experiment: str, runs_dir: Path, reason: str | None, decisions_log: Path
+) -> None:
+    """One --final run per experiment. A re-run needs a reason, which is logged."""
+    previous = previous_final_runs(experiment, runs_dir)
+    if not previous:
+        return
+    if not reason:
+        raise RuntimeError(
+            f"{experiment} already has a --final run ({previous[-1].name}). Final runs are not "
+            "repeated after seeing results; if a bug forces a re-run, pass --rerun-reason."
+        )
+    with open(decisions_log, "a", encoding="utf-8") as f:
+        f.write(
+            f"| FINAL-RERUN | {date.today().isoformat()} | {experiment} | --final re-run after "
+            f"`{previous[-1].name}` | — | {reason} | Logged by the harness |\n"
+        )
+
+
 def load_inputs(cfg: dict[str, Any], splits) -> tuple[pd.DataFrame, pd.DataFrame | None, list]:
     """The merged data plus whatever the feature set needs (base features or uid)."""
     df = load_merged(MERGED_PATH)
@@ -263,9 +294,13 @@ def run(
     experiment_log: Path | None = RESEARCH_DIR / "experiment_log.md",
     data: tuple[pd.DataFrame, pd.DataFrame | None] | None = None,
     final: bool = False,
+    rerun_reason: str | None = None,
+    decisions_log: Path = RESEARCH_DIR / "decisions.md",
 ) -> Path:
     started = time.perf_counter()
     cfg = load_config(config_path)
+    if final:
+        _guard_final_rerun(cfg["id"], runs_dir, rerun_reason, decisions_log)
     splits = load_splits(Path(cfg.get("splits", SPLITS_PATH)))
     if data is None:
         df, base, inputs = load_inputs(cfg, splits)
@@ -327,8 +362,13 @@ def main() -> None:
         action="store_true",
         help="also predict and score the test period (final runs only; logged as FINAL)",
     )
+    parser.add_argument(
+        "--rerun-reason",
+        default=None,
+        help="required to repeat a --final run (e.g. a bug fix); logged in decisions.md",
+    )
     args = parser.parse_args()
-    out = run(args.config, final=args.final)
+    out = run(args.config, final=args.final, rerun_reason=args.rerun_reason)
     result = json.loads((out / "metrics.json").read_text(encoding="utf-8"))
     print(f"{out}\n  validation PR-AUC {_fmt(result['validation']['pr_auc'])}")
     if args.final:

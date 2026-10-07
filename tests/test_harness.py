@@ -45,20 +45,23 @@ def _config(tmp_path, model="xgboost", params=None, features="raw"):
     return path
 
 
-def _run(tmp_path, cfg=None, final=False, log=None, data=None):
+def _run(tmp_path, cfg=None, final=False, log=None, data=None, runs="runs"):
     return run(
         cfg or _config(tmp_path),
-        runs_dir=tmp_path / "runs",
+        runs_dir=tmp_path / runs,
         experiment_log=log,
         data=data or _data(),
         final=final,
+        decisions_log=tmp_path / "decisions.md",
     )
 
 
 @pytest.mark.parametrize("final", [False, True])
 def test_same_config_and_seeds_give_identical_metrics(tmp_path, final):
-    a = _run(tmp_path, final=final)
-    b = _run(tmp_path, final=final)
+    # separate run folders, like two independent checkouts (a second --final run in the
+    # same folder is refused by design)
+    a = _run(tmp_path, final=final, runs="runs_a")
+    b = _run(tmp_path, final=final, runs="runs_b")
     assert a != b
     assert (a / "metrics.json").read_bytes() == (b / "metrics.json").read_bytes()
 
@@ -165,3 +168,17 @@ def test_b5_feature_set_drops_unkept_v_columns(monkeypatch):
     df["V2"] = df["V1"] * 2
     cols = set(design_matrix(df, base, "b5").columns)
     assert "V1" in cols and "V2" not in cols and "uid_n_past" in cols
+
+
+def test_second_final_run_needs_a_logged_reason(tmp_path):
+    decisions = tmp_path / "decisions.md"
+    decisions.write_text("| # |\n", encoding="utf-8")
+    kwargs = dict(runs_dir=tmp_path / "runs", experiment_log=None, decisions_log=decisions)
+    run(_config(tmp_path), data=_data(), final=True, **kwargs)
+    with pytest.raises(RuntimeError, match="already has a --final run"):
+        run(_config(tmp_path), data=_data(), final=True, **kwargs)
+    # development runs are never blocked
+    run(_config(tmp_path), data=_data(), final=False, **kwargs)
+    run(_config(tmp_path), data=_data(), final=True, rerun_reason="bug #1 fixed", **kwargs)
+    text = decisions.read_text(encoding="utf-8")
+    assert "FINAL-RERUN" in text and "bug #1 fixed" in text

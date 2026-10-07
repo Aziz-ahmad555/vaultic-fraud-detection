@@ -2,9 +2,9 @@
 # run of that experiment in the requested mode (final -> test metrics, development ->
 # validation metrics). Generate with: python -m vaultic.reports.table1 --mode final
 rows:
-  - {baseline: B1, experiment: EXP-001, model: Logistic regression, features: "raw numeric + one-hot ProductCD", tuned: "no"}
-  - {baseline: B2, experiment: EXP-002, model: Random forest, features: raw, tuned: "no"}
-  - {baseline: B3, experiment: EXP-011, model: XGBoost, features: "raw, no engineering", tuned: "Optuna 2x25"}
-  - {baseline: B4, experiment: EXP-004, model: LightGBM, features: raw, tuned: "no"}
-  - {baseline: B5, experiment: EXP-009, model: XGBoost, features: "raw + V-reduction + point-in-time uid features", tuned: "Optuna 2x25"}
-  - {baseline: B6, experiment: EXP-010, model: "FYP-1 XGBoost + per-user Isolation Forest", features: "FYP-1 columns + behavioural", tuned: "FYP-1 settings"}
+  - {baseline: B1, experiment: EXP-012, model: Logistic regression, features: "raw numeric + one-hot ProductCD", tuning: "grid over C (5 values), validation"}
+  - {baseline: B2, experiment: EXP-002, model: Random forest, features: raw, tuning: "untuned reference (defaults)"}
+  - {baseline: B3, experiment: EXP-011, model: XGBoost, features: "raw, no engineering", tuning: "Optuna, 50 trials (2 weighting arms x 25), median pruning"}
+  - {baseline: B4, experiment: EXP-013, model: LightGBM, features: raw, tuning: "Optuna, 50 trials (2 weighting arms x 25), median pruning"}
+  - {baseline: B5, experiment: EXP-009, model: XGBoost, features: "raw + V-reduction + point-in-time uid features", tuning: "Optuna, 50 trials (2 weighting arms x 25), median pruning"}
+  - {baseline: B6, experiment: EXP-010, model: "FYP-1 XGBoost + per-user Isolation Forest", features: "FYP-1 columns + behavioural", tuning: "none: FYP-1 settings as built"}

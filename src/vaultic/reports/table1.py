@@ -61,13 +61,13 @@ def build_table(spec: dict, mode: str, runs_dir: Path = RUNS_DIR) -> pd.DataFram
             "Baseline": row["baseline"],
             "Model": row["model"],
             "Features": row["features"],
-            "Tuned": row["tuned"],
+            "Tuning": row["tuning"],
             "Experiment": row["experiment"],
         }
         run_dir = latest_run(row["experiment"], mode, runs_dir)
         if run_dir is None:
             out.update({label: "not run" for _, label in metric_cols})
-            out.update({"Seeds": "", "Train s/seed": "", "Inference ms/1k": "", "Run": ""})
+            out.update({"Seeds": "", "Training s/seed": "", "Inference ms/1k": "", "Run": ""})
         else:
             result = json.loads((run_dir / "metrics.json").read_text(encoding="utf-8"))
             info = json.loads((run_dir / "run_info.json").read_text(encoding="utf-8"))
@@ -76,7 +76,7 @@ def build_table(spec: dict, mode: str, runs_dir: Path = RUNS_DIR) -> pd.DataFram
                 out[label] = _fmt(metrics[key], ci=(key == "pr_auc")) if key in metrics else ""
             timing = info.get("per_seed_timing", [])
             out["Seeds"] = len(result["seeds"])
-            out["Train s/seed"] = (
+            out["Training s/seed"] = (
                 f"{np.mean([t['train_seconds'] for t in timing]):.0f}" if timing else ""
             )
             out["Inference ms/1k"] = (
