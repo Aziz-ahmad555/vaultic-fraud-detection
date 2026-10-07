@@ -58,12 +58,19 @@ def ece(y: np.ndarray, s: np.ndarray, bins: int = ECE_BINS) -> float:
     return float(total)
 
 
-def cost_at(y: np.ndarray, s: np.ndarray, amount: np.ndarray, threshold: float) -> float:
-    """Missed fraud amount + C_FP per false positive + C_REVIEW per flagged transaction."""
+def cost_at(
+    y: np.ndarray,
+    s: np.ndarray,
+    amount: np.ndarray,
+    threshold: float,
+    c_fp: float = C_FP,
+    c_rev: float = C_REVIEW,
+) -> float:
+    """Missed fraud amount + c_fp per false positive + c_rev per flagged transaction."""
     flagged = s >= threshold
     missed = float(np.sum(amount[(y == 1) & ~flagged]))
     fp = float(np.sum(flagged & (y == 0)))
-    return missed + C_FP * fp + C_REVIEW * float(flagged.sum())
+    return missed + c_fp * fp + c_rev * float(flagged.sum())
 
 
 def _candidate_thresholds(s: np.ndarray, n: int = 200) -> np.ndarray:
@@ -75,9 +82,11 @@ def choose_f1_threshold(y: np.ndarray, s: np.ndarray) -> float:
     return float(cands[int(np.argmax([f1_at(y, s, t) for t in cands]))])
 
 
-def choose_cost_threshold(y: np.ndarray, s: np.ndarray, amount: np.ndarray) -> float:
+def choose_cost_threshold(
+    y: np.ndarray, s: np.ndarray, amount: np.ndarray, c_fp: float = C_FP, c_rev: float = C_REVIEW
+) -> float:
     cands = _candidate_thresholds(s)
-    return float(cands[int(np.argmin([cost_at(y, s, amount, t) for t in cands]))])
+    return float(cands[int(np.argmin([cost_at(y, s, amount, t, c_fp, c_rev) for t in cands]))])
 
 
 # Threshold-free metrics, bootstrapped for confidence intervals.
