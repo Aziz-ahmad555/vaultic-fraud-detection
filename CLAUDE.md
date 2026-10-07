@@ -72,7 +72,15 @@ Each run saves `config.yaml`, `metrics.json` (mean, std, 95% CI per metric), `pr
 - Use float32 / category dtypes; IEEE-CIS is ~590k rows × ~430 columns, so watch memory.
 - Graph work: PyTorch Geometric `HeteroData` + `NeighborLoader`; sample, don't load full graphs.
 - Windows machine: run Kafka, Redis, PostgreSQL via Docker Desktop + WSL2. Use `pathlib`, not hard-coded backslash paths.
-- Branch per feature, PR + one review before merging to `main`.
+- Branch per feature. Before merging to `main`, open a PR and (decision D32):
+  1. Run the full test suite incl. leakage tests; all must pass.
+  2. Fill the PR checklist (`.github/pull_request_template.md`): leakage rules respected,
+     no test-period use outside `--final`, configs/decisions logged, no data/secrets committed,
+     results reproducible from configs.
+  3. Independent review: start a NEW Claude Code session (not the one that wrote the code)
+     and ask it to review the PR diff against CLAUDE.md and the roadmap. Fix or answer every
+     finding before merging.
+  Supervisor reviews milestone results (M2, M6, M13 etc.), not individual PRs.
 - Unit-test every feature function on a small hand-made example (e.g. 10 rows) with known correct answers.
 
 ## How to work in this repo
