@@ -9,7 +9,7 @@ the test period, and writes to experiments/runs/<id>/<timestamp>/:
                      (deterministic: same config + seeds -> identical file)
   run_info.json      code version (git), data version (file hashes), runtime
   predictions.parquet  TransactionID, TransactionDT, split, label, per-seed and mean score
-It also logs to MLflow (experiments/mlruns) when mlflow is installed, and appends one line
+It also logs to MLflow (experiments/mlflow/mlflow.db) when mlflow is installed, and appends one line
 to research/experiment_log.md.
 """
 
@@ -48,7 +48,7 @@ from vaultic.paths import MERGED_PATH, RAW_DIR, REPO_ROOT, RESEARCH_DIR, RUNS_DI
 from vaultic.views.tabular import make_model
 
 PRECISION_K = 500
-MLRUNS_DIR = REPO_ROOT / "experiments" / "mlruns"
+MLFLOW_DIR = REPO_ROOT / "experiments" / "mlflow"  # git-ignored: mlflow.db + mlartifacts/
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -172,7 +172,13 @@ def _log_mlflow(cfg: dict[str, Any], result: dict[str, Any], out_dir: Path) -> b
         import mlflow
     except ImportError:
         return False
-    mlflow.set_tracking_uri(MLRUNS_DIR.as_uri())
+    # MLflow 3 refuses the plain-folder store; a local SQLite file is its default backend.
+    MLFLOW_DIR.mkdir(parents=True, exist_ok=True)
+    mlflow.set_tracking_uri(f"sqlite:///{(MLFLOW_DIR / 'mlflow.db').as_posix()}")
+    if mlflow.get_experiment_by_name(cfg["id"]) is None:
+        mlflow.create_experiment(
+            cfg["id"], artifact_location=(MLFLOW_DIR / "mlartifacts" / cfg["id"]).as_uri()
+        )
     mlflow.set_experiment(cfg["id"])
     with mlflow.start_run(run_name=out_dir.name):
         mlflow.log_params({"model": cfg["model"]["name"], "features": cfg["features"]})

@@ -46,3 +46,4 @@ legacy/fyp1/data/
 legacy/fyp1/instance/
 legacy/fyp1/models_store/xgboost_baseline.json
 legacy/fyp1/scoring_latency.log
+experiments/mlflow/

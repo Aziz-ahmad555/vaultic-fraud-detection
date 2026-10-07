@@ -1,6 +1,6 @@
 # Session report — 2026-10-07 (autonomous session, branch `phase0-1`)
 
-The session stopped early at the usage limit. Nothing has been pushed.
+Items 1-9 are done; item 10 (Phase 2A baselines) was not started. Nothing has been pushed. Research tests: 70 passing; FYP-1 tests: 18 passing.
 
 ## Done (all committed on `phase0-1` unless noted)
 
@@ -8,8 +8,8 @@ The session stopped early at the usage limit. Nothing has been pushed.
 |---|---|
 | 1. Restructure (`services/`, `.gitignore`, `.env.example`) | ✅ commit `91a0235` on `main` (see D3) |
 | 2. FYP-1 runs from `legacy/fyp1/` | ✅ 18/18 tests pass, app serves its login page |
-| 3. Installs | ⚠️ Partly done, see B2. Installed: pandas, pyarrow, numpy, scikit-learn, xgboost (already present), ruff, black, pre-commit, lightgbm, optuna. Still installing or not installed: shap, mlflow, dvc, catboost |
-| 4. Phase 0C | ⚠️ Partly done. `docker-compose.yml` written but Postgres won't start (B1). Not done: DVC, pre-commit config, pinned `requirements.txt`, CI workflow |
+| 3. Installs | ✅ All groups installed after retrying one package at a time (B2): pandas, pyarrow, numpy, scikit-learn, xgboost, lightgbm, catboost, optuna, shap, mlflow, dvc, pytest, black, ruff, pre-commit. FYP-1's pinned versions unchanged |
+| 4. Phase 0C | ✅ Pinned `requirements.txt` (202 packages); pre-commit (ruff, black, data-file blocker); DVC tracking `data/raw` (no remote yet, D13); MLflow logging in the harness (SQLite store `experiments/mlflow/mlflow.db`; MLflow 3 refuses the plain-folder store, caught by a check and now tested); Postgres via `docker compose` on port 55432 (B1 fixed, D14); CI workflow written but **not yet run on GitHub** (needs a push) |
 | 5. Phase 1A | ✅ `merged.parquet` + `research/data_report.md` |
 | 6. Phase 1B | ✅ `research/uid_report.md`; provisional `uid2` (D8) |
 | 7. Phase 1C | ✅ `experiments/configs/splits.yaml`, label-delay helpers |
@@ -52,10 +52,11 @@ These are in `research/decisions.md`:
 - **D3:** the restructure commit is on `main`.
 - **D4:** installs are constrained to the FYP-1 pins.
 - **D8:** provisional `uid2` (runner-up `uid`).
+- **D13:** choose a DVC remote; the raw files are only hashed for now.
 
 ## Blockers
 
 These are in `research/blockers.md`:
 
-- **B1:** Postgres port 5432 is blocked by Windows.
-- **B2:** slow or unstable network for pip.
+- **B1 (resolved):** port 5432 belongs to a native PostgreSQL on this PC; compose now uses 55432.
+- **B2 (resolved):** pip needed one-package-at-a-time installs on the unstable network.

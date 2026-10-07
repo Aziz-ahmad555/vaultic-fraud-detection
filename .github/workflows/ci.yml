@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint
+        run: |
+          ruff check src tests tools
+          black --check src tests tools
+
+      - name: Block data files
+        run: git ls-files | xargs python tools/check_no_data_files.py
+
+      # The IEEE-CIS data is not in git, so leakage tests run on their synthetic case here.
+      - name: Research tests (incl. leakage tests)
+        run: python -m pytest -q
+
+      - name: FYP-1 tests
+        working-directory: legacy/fyp1
+        run: |
+          export FERNET_KEY=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+          export MAIL_DEV_MODE=1
+          python -m pytest tests -q

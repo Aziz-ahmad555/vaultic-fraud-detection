@@ -9,7 +9,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-vaultic}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     ports:
-      - "127.0.0.1:5432:5432"   # localhost only
+      # localhost only; 55432 by default because a native PostgreSQL may already use 5432
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:

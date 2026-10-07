@@ -101,3 +101,17 @@ def test_experiment_log_line_is_appended(tmp_path):
     log.write_text("| ID |\n")
     run(_config(tmp_path), runs_dir=tmp_path / "runs", experiment_log=log, data=_data())
     assert log.read_text().count("| EXP-TEST |") == 1
+
+
+def test_mlflow_logging_records_run(tmp_path, monkeypatch):
+    mlflow = pytest.importorskip("mlflow")
+    import vaultic.eval.run as harness
+
+    monkeypatch.setattr(harness, "MLFLOW_DIR", tmp_path / "mlflow")
+    out = tmp_path / "run"
+    out.mkdir()
+    (out / "metrics.json").write_text("{}")
+    cfg = {"id": "EXP-MLFLOW-TEST", "model": {"name": "xgboost"}, "features": "raw"}
+    assert harness._log_mlflow(cfg, {"metrics": {"pr_auc": {"mean": 0.5}}}, out)
+    runs = mlflow.search_runs(experiment_names=["EXP-MLFLOW-TEST"])
+    assert len(runs) == 1 and runs["metrics.pr_auc"].iloc[0] == 0.5
