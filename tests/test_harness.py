@@ -147,3 +147,13 @@ def test_mlflow_logging_records_run(tmp_path, monkeypatch):
     assert harness._log_mlflow(cfg, result, out)
     runs = mlflow.search_runs(experiment_names=["EXP-MLFLOW-TEST"])
     assert len(runs) == 1 and runs["metrics.validation_pr_auc"].iloc[0] == 0.5
+
+
+def test_b5_feature_set_drops_unkept_v_columns(monkeypatch):
+    import vaultic.features.vreduce as vreduce
+
+    monkeypatch.setattr(vreduce, "load_kept", lambda: ["V1"])
+    df, base = _data(100)
+    df["V2"] = df["V1"] * 2
+    cols = set(design_matrix(df, base, "b5").columns)
+    assert "V1" in cols and "V2" not in cols and "uid_n_past" in cols

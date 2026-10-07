@@ -7,6 +7,8 @@ import pandas as pd
 
 # Never model inputs: identifiers, the label, and raw time (time trends would leak the split).
 NON_FEATURES = {"TransactionID", "isFraud", "TransactionDT", "day"}
+# Feature sets that include the point-in-time base features.
+NEEDS_BASE = {"raw_base", "b5"}
 
 
 def raw_columns(df: pd.DataFrame) -> list[str]:
@@ -34,8 +36,15 @@ def design_matrix(df: pd.DataFrame, base: pd.DataFrame | None, name: str) -> pd.
     raw         every original column (B2-B4)
     raw_lr      numeric columns + one-hot ProductCD (B1)
     raw_base    raw + point-in-time base features (B5 without V-reduction)
+    b5          raw with V columns reduced (experiments/configs/v_columns.yaml) + base features
     """
     raw = df[raw_columns(df)]
+    if name == "b5":
+        from vaultic.features.vreduce import load_kept, v_columns
+
+        dropped = set(v_columns(raw.columns)) - set(load_kept())
+        df = df.drop(columns=sorted(dropped))
+        return design_matrix(df, base, "raw_base")
     if name == "raw":
         return _codes(raw)
     if name == "raw_lr":

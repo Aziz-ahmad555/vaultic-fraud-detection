@@ -44,7 +44,7 @@ from vaultic.eval.metrics import (
     precision_at_k,
 )
 from vaultic.features.pipeline import features_path
-from vaultic.features.sets import design_matrix
+from vaultic.features.sets import NEEDS_BASE, design_matrix
 from vaultic.paths import MERGED_PATH, RAW_DIR, REPO_ROOT, RESEARCH_DIR, RUNS_DIR
 from vaultic.views.tabular import make_model
 
@@ -235,7 +235,7 @@ def run(
         df = load_merged(MERGED_PATH)
         inputs = [MERGED_PATH]
         base = None
-        if cfg["features"] == "raw_base":
+        if cfg["features"] in NEEDS_BASE:
             path = features_path(cfg.get("uid_variant", splits.uid_variant))
             if not path.exists():
                 raise FileNotFoundError(

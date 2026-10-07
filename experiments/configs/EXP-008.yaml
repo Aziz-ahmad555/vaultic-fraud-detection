@@ -1,0 +1,8 @@
+id: EXP-008
+question: "B5 with V-column reduction (108 of 339 V kept), untuned, uid; compare with EXP-006 on validation"
+model:
+  name: xgboost
+  params: {n_estimators: 200, max_depth: 6, learning_rate: 0.1}
+features: b5
+seeds: [0]
+bootstrap: {n: 1000, seed: 0}
