@@ -1,0 +1,9 @@
+id: EXP-007
+question: "D8: B5-partial with uid_variant uid2 (seed 0, same settings as EXP-007/006); validation only"
+model:
+  name: xgboost
+  params: {n_estimators: 200, max_depth: 6, learning_rate: 0.1}
+features: raw_base
+uid_variant: uid2
+seeds: [0]
+bootstrap: {n: 1000, seed: 0}

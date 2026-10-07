@@ -42,6 +42,8 @@ Share of rows on days 121–150 whose ID already appeared on days 1–120, i.e. 
 | `uid` | 46.79 | 217,850 |
 | `uid2` | 42.42 | 273,919 |
 
-## Provisional choice
+## Choice
 
-Rule: among `uid_card`, `uid` and `uid2`, the highest **repeat ids that are pure %** with **rows in repeat ids %** ≥ 50. Result: **`uid2`** (PROVISIONAL; see research/decisions.md). This choice is a stated limitation in every paper.
+Purity rule (first, provisional pick, D8): among `uid_card`, `uid` and `uid2`, the highest **repeat ids that are pure %** with **rows in repeat ids %** ≥ 50 gives `uid2`.
+
+**In use: `uid`** (`experiments/configs/splits.yaml`). The final choice was made on the downstream metric, B5 validation PR-AUC (research/decisions.md D18). The uid reconstruction is a stated limitation in every paper.

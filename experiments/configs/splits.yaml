@@ -2,7 +2,7 @@
 # day = TransactionDT // 86400; the IEEE-CIS training data covers days 1-182
 # (research/data_report.md). Day ranges are inclusive.
 
-uid_variant: uid2        # PROVISIONAL, see research/decisions.md D8
+uid_variant: uid         # chosen on validation PR-AUC, see research/decisions.md D18
 label_delay_days: 30     # a past label is usable at time t only if its_time + 30 days <= t
 
 fixed:

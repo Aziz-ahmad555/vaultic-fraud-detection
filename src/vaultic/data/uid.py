@@ -189,11 +189,15 @@ def build_report(df: pd.DataFrame, uids: pd.DataFrame) -> tuple[str, str]:
         "|---|---|---|",
         *[f"| `{n}` | {carry[n]:.2f} | {ids_full[n]:,} |" for n in VARIANTS],
         "",
-        "## Provisional choice",
+        "## Choice",
         "",
-        f"Rule: among `uid_card`, `uid` and `uid2`, the highest **repeat ids that are pure %** "
-        f"with **rows in repeat ids %** ≥ 50. Result: **`{chosen}`** (PROVISIONAL; see "
-        "research/decisions.md). This choice is a stated limitation in every paper.",
+        f"Purity rule (first, provisional pick, D8): among `uid_card`, `uid` and `uid2`, the "
+        f"highest **repeat ids that are pure %** with **rows in repeat ids %** ≥ 50 gives "
+        f"`{chosen}`.",
+        "",
+        f"**In use: `{load_splits().uid_variant}`** (`experiments/configs/splits.yaml`). The final "
+        "choice was made on the downstream metric, B5 validation PR-AUC (research/decisions.md "
+        "D18). The uid reconstruction is a stated limitation in every paper.",
         "",
     ]
     return "\n".join(lines), chosen
