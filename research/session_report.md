@@ -1,6 +1,6 @@
 # Session report — 2026-10-07 (autonomous session, branch `phase0-1`)
 
-Items 1-9 are done; item 10 (Phase 2A baselines) was not started. Nothing has been pushed. Research tests: 70 passing; FYP-1 tests: 18 passing.
+Items 1-9 are done; item 10 (Phase 2A baselines) is running. Nothing has been pushed. Research tests: 70 passing; FYP-1 tests: 18 passing.
 
 ## Done (all committed on `phase0-1` unless noted)
 
@@ -15,7 +15,7 @@ Items 1-9 are done; item 10 (Phase 2A baselines) was not started. Nothing has be
 | 7. Phase 1C | ✅ `experiments/configs/splits.yaml`, label-delay helpers |
 | 8. Phase 1D | ✅ 20 point-in-time features; leakage tests pass, exact equality, real 50k sample + synthetic |
 | 9. Phase 1E | ✅ Harness, metrics and bootstrap built; 67/67 tests pass. **Exit gate passed:** two runs of `EXP-000` produced byte-identical `metrics.json` and `predictions.parquet` (about 250 s each) |
-| 10. Phase 2A baselines | ❌ Not started |
+| 10. Phase 2A baselines | ⏳ Configs `EXP-001`–`EXP-005` committed (untuned, D17; B5 is partial). Runs started in the background in the order B1, B4, B3, B5, B2; each finished run appends its line to `research/experiment_log.md`. Expected total: over an hour, mostly the random forest |
 
 ## Key numbers (from generated reports)
 
