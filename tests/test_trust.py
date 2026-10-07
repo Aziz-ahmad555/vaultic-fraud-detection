@@ -148,3 +148,71 @@ def test_compare_policies_skips_r4_without_disagreement():
     day, p, amount, y = _routing_example()
     table = compare_policies(day, y, amount, p, ks=(1, 2))
     assert sorted(table["policy"].unique()) == ["R1", "R2", "R3"] and len(table) == 6
+
+
+# ---- adaptive conformal (8.2) -------------------------------------------------------------
+
+from vaultic.trust.conformal import AdaptiveConformal, coverage_by_block, threshold_at  # noqa: E402
+
+
+def test_threshold_at_edges():
+    scores = np.arange(1, 10) / 10
+    assert threshold_at(scores, 0.0) == float("inf") and threshold_at(scores, -0.2) == float("inf")
+    assert threshold_at(scores, 0.2) == pytest.approx(0.8)
+    assert threshold_at(scores, 0.95) == pytest.approx(0.1)  # ceil(10 * 0.05) = 1st
+    assert threshold_at(scores, 1.0) == float("-inf")  # asks for no score at all
+
+
+def _three_batches():
+    # calibration: 100 legit rows with p = 0.1 -> every calibration score is 0.1
+    # batch 1: a fraud scored p = 0 (fraud score 1.0 > 0.1: miss), batches 2-3: legit p = 0.05
+    return np.array([1, 2, 3]), np.array([1, 0, 0]), np.array([0.0, 0.05, 0.05])
+
+
+def test_aci_update_rule_by_hand():
+    batch, y, p = _three_batches()
+    aci = AdaptiveConformal(alpha=0.1, gamma=0.1).fit(np.zeros(100, int), np.full(100, 0.1))
+    _, trace = aci.run(batch, y, p)
+    # 0.1 -> 0.1 + 0.1 * (0.1 - 1) = 0.01 -> 0.01 + 0.1 * (0.1 - 0) = 0.02
+    assert [t["alpha_fraud"] for t in trace] == pytest.approx([0.1, 0.01, 0.02])
+    assert [t["coverage"] for t in trace] == [0.0, 1.0, 1.0]
+
+
+def test_aci_label_delay_postpones_the_update():
+    batch, y, p = _three_batches()
+    aci = AdaptiveConformal(alpha=0.1, gamma=0.1, delay=1).fit(
+        np.zeros(100, int), np.full(100, 0.1)
+    )
+    _, trace = aci.run(batch, y, p)
+    assert [t["alpha_fraud"] for t in trace] == pytest.approx([0.1, 0.1, 0.01])
+
+
+def test_mondrian_aci_updates_only_the_class_that_erred():
+    batch, y, p = _three_batches()
+    cal_y = np.r_[np.zeros(100, int), np.ones(100, int)]
+    cal_p = np.r_[np.full(100, 0.1), np.full(100, 0.9)]
+    _, trace = AdaptiveConformal(0.1, gamma=0.1, mondrian=True).fit(cal_y, cal_p).run(batch, y, p)
+    assert trace[1]["alpha_fraud"] == pytest.approx(0.01)  # batch 1 missed its only fraud
+    assert trace[1]["alpha_legit"] == pytest.approx(0.1)  # no legit rows in batch 1
+
+
+def _shifted_stream(seed, days=150, per_day=400, shift_day=60, shift=2.0):
+    """From day 61 on, fraud is more likely than the (unchanged) scores say."""
+    rng = np.random.default_rng(seed)
+    day = np.repeat(np.arange(1, days + 1), per_day)
+    q = 1 / (1 + np.exp(-rng.normal(-4.5, 1.6, len(day))))
+    logit = np.log(q / (1 - q)) + np.where(day > shift_day, shift, 0.0)
+    y = (rng.random(len(day)) < 1 / (1 + np.exp(-logit))).astype(int)
+    return day, q, y
+
+
+def test_aci_recovers_coverage_after_a_shift_where_split_does_not():
+    day, p, y = _shifted_stream(0)
+    _, cal_p, cal_y = _shifted_stream(1, days=30)
+    static = coverage_by_block(day, y, SplitConformal(0.1).fit(cal_y, cal_p).predict_sets(p))
+    sets, _ = AdaptiveConformal(0.1, gamma=0.05).fit(cal_y, cal_p).run(day, y, p)
+    adaptive = coverage_by_block(day, y, sets)
+    assert len(static) == 5 and static["first_day"].tolist() == [1, 31, 61, 91, 121]
+    assert (static["coverage"].iloc[:2] > 0.88).all()  # fine before the shift
+    assert (static["coverage"].iloc[3:] < 0.85).all()  # under-covers after it
+    assert (abs(adaptive["coverage"].iloc[3:] - 0.9) < 0.02).all()  # ACI is back on target
