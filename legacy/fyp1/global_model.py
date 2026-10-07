@@ -25,7 +25,7 @@ import os
 import numpy as np
 import pandas as pd
 
-MODEL_DIR = "models_store"
+MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models_store")
 MODEL_PATH = os.path.join(MODEL_DIR, "xgboost_baseline.json")
 FEATURE_COLUMNS_PATH = os.path.join(MODEL_DIR, "feature_columns.json")
 FEATURE_DEFAULTS_PATH = os.path.join(MODEL_DIR, "feature_defaults.json")

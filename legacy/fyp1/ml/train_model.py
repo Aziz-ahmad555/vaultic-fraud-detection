@@ -4,12 +4,13 @@ from sklearn.metrics import (
     accuracy_score, precision_score, recall_score,
     f1_score, roc_auc_score, confusion_matrix, classification_report
 )
+from paths import DATA_DIR, MODEL_DIR
 
 # 1. Load the cleaned data from Step 3
-X_train = pd.read_csv("Data/X_train.csv")
-X_test = pd.read_csv("Data/X_test.csv")
-y_train = pd.read_csv("Data/y_train.csv").values.ravel()
-y_test = pd.read_csv("Data/y_test.csv").values.ravel()
+X_train = pd.read_csv(DATA_DIR / "X_train.csv")
+X_test = pd.read_csv(DATA_DIR / "X_test.csv")
+y_train = pd.read_csv(DATA_DIR / "y_train.csv").values.ravel()
+y_test = pd.read_csv(DATA_DIR / "y_test.csv").values.ravel()
 
 print("Loaded data:")
 print("X_train:", X_train.shape, "| X_test:", X_test.shape)
@@ -59,5 +60,5 @@ print("\nFull Report:")
 print(classification_report(y_test, y_pred))
 
 # 6. Save the trained model so we can reuse it later
-model.save_model("models_store/xgboost_baseline.json")
+model.save_model(MODEL_DIR / "xgboost_baseline.json")
 print("\n✅ Model saved to models_store/xgboost_baseline.json")

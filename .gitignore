@@ -1,7 +1,8 @@
-﻿# Python
+# Python
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.ruff_cache/
 
 # Virtual environment (recreate with: py -3.11 -m venv .venv)
 .venv/
@@ -13,11 +14,33 @@ __pycache__/
 .idea/
 .vscode/
 
-# Runtime data: local database and per-user models trained live
-instance/**/*.db
-instance/recovery/
-models_store/user_model_*.joblib
-scoring_latency.log
+# Data: never committed. Raw IEEE-CIS CSVs are tracked with DVC instead.
+data/raw/*
+data/interim/*
+data/features/*
+!data/*/.gitkeep
+*.csv
+*.parquet
 
-# IEEE-CIS dataset (~1 GB) -- download separately, see README
-Data/*.csv
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Model binaries
+*.joblib
+*.pkl
+*.pt
+*.pth
+*.ckpt
+
+# Experiment outputs (logged to MLflow)
+experiments/runs/
+mlruns/
+mlartifacts/
+
+# FYP-1 runtime data
+legacy/fyp1/data/
+legacy/fyp1/instance/
+legacy/fyp1/models_store/xgboost_baseline.json
+legacy/fyp1/scoring_latency.log

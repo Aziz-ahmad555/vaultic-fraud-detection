@@ -33,7 +33,7 @@ if not app.secret_key:
 
 # Tests set DATABASE_URL to a temporary file; ignoring it would make the test
 # suite's drop_all() wipe the real instance/fraud_detection.db.
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL", 'sqlite:///fraud_detection.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL") or 'sqlite:///fraud_detection.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.environ.get("JWT_SECRET_KEY")
 db.init_app(app)

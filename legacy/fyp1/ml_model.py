@@ -12,7 +12,7 @@ from collections import Counter
 from models import Transaction
 import global_model
 
-MODEL_DIR = "models_store"
+MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models_store")
 os.makedirs(MODEL_DIR, exist_ok=True)
 
 MIN_HISTORY = 30

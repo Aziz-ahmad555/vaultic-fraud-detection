@@ -1,9 +1,12 @@
 # stream_worker.py
+import os
 import queue
 import threading
 import time
 import uuid
 from datetime import datetime, timezone
+
+LATENCY_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scoring_latency.log")
 
 _task_queue = queue.Queue()
 _worker_started = False
@@ -103,7 +106,7 @@ def _worker_loop(app):
                 db.session.commit()
 
                 latency_ms = (time.time() - start) * 1000
-                with open('scoring_latency.log', 'a') as f:
+                with open(LATENCY_LOG, 'a') as f:
                     f.write(f"{datetime.now(timezone.utc).isoformat()},{transaction_pk},{latency_ms:.2f}\n")
 
             except Exception as e:

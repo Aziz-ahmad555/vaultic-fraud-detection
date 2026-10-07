@@ -1,7 +1,7 @@
 """
 Run this once (after preprocess_data.py + train_model.py have already run).
 
-It reads Data/X_train.csv, which has the exact column layout the XGBoost
+It reads data/X_train.csv, which has the exact column layout the XGBoost
 model was trained on, and saves two small files into models_store/:
 
   - feature_columns.json : ordered list of column names the model expects
@@ -12,8 +12,9 @@ model was trained on, and saves two small files into models_store/:
 import json
 import os
 import pandas as pd
+from paths import DATA_DIR, MODEL_DIR
 
-X_train = pd.read_csv("Data/X_train.csv")
+X_train = pd.read_csv(DATA_DIR / "X_train.csv")
 
 feature_columns = X_train.columns.tolist()
 
@@ -25,12 +26,12 @@ for col in feature_columns:
     else:
         defaults[col] = float(series.median())
 
-os.makedirs("models_store", exist_ok=True)
+os.makedirs(MODEL_DIR, exist_ok=True)
 
-with open("models_store/feature_columns.json", "w") as f:
+with open(MODEL_DIR / "feature_columns.json", "w") as f:
     json.dump(feature_columns, f, indent=2)
 
-with open("models_store/feature_defaults.json", "w") as f:
+with open(MODEL_DIR / "feature_defaults.json", "w") as f:
     json.dump(defaults, f, indent=2)
 
 print(f"Saved {len(feature_columns)} feature columns and defaults to models_store/")

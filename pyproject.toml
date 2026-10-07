@@ -1,0 +1,23 @@
+[project]
+name = "vaultic"
+version = "0.0.0"
+description = "Adaptive multi-view framework for explainable, uncertainty-aware and drift-aware fraud detection"
+requires-python = ">=3.11,<3.12"
+
+[tool.pytest.ini_options]
+# Research tests only. FYP-1 tests run separately: cd legacy/fyp1 && python -m pytest tests
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+extend-exclude = "legacy/"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["legacy"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

@@ -1,7 +1,8 @@
 import pandas as pd
+from paths import RAW_DIR
 
 # Load the transaction data
-df = pd.read_csv("Data/train_transaction.csv")
+df = pd.read_csv(RAW_DIR / "train_transaction.csv")
 # 1. How big is the dataset?
 print("Shape (rows, columns):", df.shape)
 

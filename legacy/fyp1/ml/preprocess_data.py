@@ -1,8 +1,13 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
+from paths import RAW_DIR, DATA_DIR
+
+# NOTE: this FYP-1 split is random and imputes with full-dataset medians, so it
+# leaks future information. Kept as-is to reproduce FYP-1 (baseline B6 / E2);
+# Vaultic research uses the time-based split defined in src/vaultic/data/.
 
 # 1. Load the data
-df = pd.read_csv("Data/train_transaction.csv")
+df = pd.read_csv(RAW_DIR / "train_transaction.csv")
 
 # 2. Pick a smaller, solid set of useful columns for our BASELINE model
 #    (You can add more later — this is enough for a first working model)
@@ -43,9 +48,10 @@ print("\nTraining set size:", X_train.shape)
 print("Testing set size:", X_test.shape)
 
 # 9. Save these cleaned pieces so we can reuse them in the next step
-X_train.to_csv("Data/X_train.csv", index=False)
-X_test.to_csv("Data/X_test.csv", index=False)
-y_train.to_csv("Data/y_train.csv", index=False)
-y_test.to_csv("Data/y_test.csv", index=False)
+DATA_DIR.mkdir(exist_ok=True)
+X_train.to_csv(DATA_DIR / "X_train.csv", index=False)
+X_test.to_csv(DATA_DIR / "X_test.csv", index=False)
+y_train.to_csv(DATA_DIR / "y_train.csv", index=False)
+y_test.to_csv(DATA_DIR / "y_test.csv", index=False)
 
-print("\n✅ Preprocessing done! Cleaned files saved in Data/ folder.")
+print(f"\n✅ Preprocessing done! Cleaned files saved in {DATA_DIR}")
