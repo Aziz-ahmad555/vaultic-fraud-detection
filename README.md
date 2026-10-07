@@ -140,8 +140,6 @@ the IEEE-CIS Fraud Detection dataset on Kaggle; `python ml/preprocess_data.py` r
   will use a reduced feature set mapped from available fields (`amount`, `tx_type`,
   `device_id`, `timestamp`), which is an approximation and is documented as such wherever it
   is used.
-- `app.py` renders `alert_detail.html` for the alert detail route, but that template does
-  not exist yet, so that page currently errors.
 - `scikit-learn` version used to train the saved model artifacts should match the version
   pinned in `requirements.txt` — mismatches will raise `InconsistentVersionWarning` and may
   produce unreliable predictions. Verify with `pip show scikit-learn` in the training

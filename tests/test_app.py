@@ -165,6 +165,66 @@ def test_resolve_alert_marks_resolved(logged_in_client):
         assert updated.status == "Resolved"
 
 
+def _create_alert(app_module, email, message="Test alert"):
+    import uuid as uuid_module
+    with app_module.app.app_context():
+        user = app_module.User.query.filter_by(email=email).first()
+        alert_id = str(uuid_module.uuid4())
+        app_module.db.session.add(app_module.Alert(
+            alert_id=alert_id,
+            user_id=user.id,
+            transaction_id="fake-txn",
+            score=0.7,
+            severity="Medium",
+            status="Pending",
+            message=message,
+        ))
+        app_module.db.session.commit()
+    return alert_id
+
+
+def test_alert_detail_page_renders(logged_in_client):
+    import app as app_module
+    alert_id = _create_alert(app_module, "testuser@example.com", message="Suspicious transaction: Pkr.90000.00")
+
+    response = logged_in_client.get(f"/alert/{alert_id}")
+    assert response.status_code == 200
+    assert b"Suspicious transaction: Pkr.90000.00" in response.data
+    assert f"/alert/{alert_id}/feedback".encode() in response.data  # labeling form is shown
+
+
+def test_alert_feedback_stores_label_and_resolves(logged_in_client):
+    import app as app_module
+    alert_id = _create_alert(app_module, "testuser@example.com")
+
+    response = logged_in_client.post(f"/alert/{alert_id}/feedback", data={
+        "decision": "fraud",
+        "notes": "confirmed with customer",
+    }, follow_redirects=True)
+    assert response.status_code == 200
+
+    with app_module.app.app_context():
+        label = app_module.Label.query.filter_by(alert_id=alert_id).first()
+        assert label is not None and label.is_fraud
+        assert app_module.Alert.query.filter_by(alert_id=alert_id).first().status == "Resolved"
+
+    # The detail page now shows the stored label instead of the form
+    response = logged_in_client.get(f"/alert/{alert_id}")
+    assert b"Confirmed Fraud" in response.data
+
+
+def test_alert_detail_hides_other_users_alerts(logged_in_client):
+    import app as app_module
+    logged_in_client.post("/register", data={
+        "name": "Other User", "email": "other@example.com", "password": "otherpass123",
+    })
+    alert_id = _create_alert(app_module, "other@example.com", message="Someone else's alert")
+
+    response = logged_in_client.get(f"/alert/{alert_id}", follow_redirects=True)
+    assert b"Someone else's alert" not in response.data
+    assert b"Alert not found" in response.data
+
+
 # ---------------------------------------------------------------------
 # PDF report
 # ---------------------------------------------------------------------
