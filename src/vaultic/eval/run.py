@@ -78,6 +78,13 @@ def _file_hash(path: Path) -> str:
     return h.hexdigest()[:16]
 
 
+def _hardware() -> dict[str, Any]:
+    import os
+    import platform
+
+    return {"cpu": platform.processor(), "logical_cpus": os.cpu_count(), "os": platform.platform()}
+
+
 def _dvc_hashes() -> dict[str, str]:
     """md5 of each raw file as recorded by DVC (data/raw/*.dvc)."""
     hashes = {}
@@ -128,7 +135,7 @@ def evaluate(
     base: pd.DataFrame | None,
     splits,
     final: bool = False,
-) -> tuple[dict[str, Any], pd.DataFrame]:
+) -> tuple[dict[str, Any], pd.DataFrame, list[dict[str, float]]]:
     """Train per seed on train and score validation. Only with final=True are test rows
     predicted and test metrics computed. Pure: no files written."""
     X = design_matrix(df, base, cfg["features"])
@@ -143,10 +150,17 @@ def evaluate(
 
     model_cfg = cfg["model"]
     val_scores, test_scores, val_seed, test_seed, thresholds = [], [], [], [], []
+    timings = []
     for seed in cfg["seeds"]:
         model = make_model(model_cfg["name"], model_cfg.get("params", {}), seed)
+        t0 = time.perf_counter()
         model.fit(X[tr], y[tr])
+        t1 = time.perf_counter()
         s_val = model.predict_proba(X[va])[:, 1]
+        t2 = time.perf_counter()
+        timings.append(
+            {"train_seconds": t1 - t0, "inference_ms_per_1000": (t2 - t1) / va.sum() * 1e6}
+        )
         t_f1 = choose_f1_threshold(y[va], s_val)
         t_cost = choose_cost_threshold(y[va], s_val, amount[va])
         thresholds.append({"f1": t_f1, "cost": t_cost})
@@ -190,7 +204,7 @@ def evaluate(
             col[te[rows]] = test_scores[i]
         preds[f"score_seed{seed}"] = col
     preds["score"] = preds[[f"score_seed{s}" for s in cfg["seeds"]]].mean(axis=1)
-    return result, preds
+    return result, preds, timings
 
 
 def _log_mlflow(cfg: dict[str, Any], result: dict[str, Any], out_dir: Path) -> bool:
@@ -256,7 +270,7 @@ def run(
         df, base = data
         data_version = {"injected": True}
 
-    result, preds = evaluate(cfg, df, base, splits, final=final)
+    result, preds, timings = evaluate(cfg, df, base, splits, final=final)
 
     out_dir = runs_dir / cfg["id"] / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     out_dir.mkdir(parents=True)
@@ -267,6 +281,9 @@ def run(
         "code_version": _git_version(),
         "data_version": data_version,
         "runtime_seconds": round(time.perf_counter() - started, 1),
+        # timings vary between runs, so they live here and not in metrics.json
+        "per_seed_timing": timings,
+        "hardware": _hardware(),
     }
     info["mlflow"] = _log_mlflow(cfg, result, out_dir) if data is None else False
     (out_dir / "run_info.json").write_text(json.dumps(info, indent=2), encoding="utf-8")

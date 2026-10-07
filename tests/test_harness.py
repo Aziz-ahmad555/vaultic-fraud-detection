@@ -78,6 +78,14 @@ def test_development_run_reports_validation_only(tmp_path):
     assert preds["TransactionDT"].between(128 * SECONDS_PER_DAY, 151 * SECONDS_PER_DAY - 1).all()
 
 
+def test_timings_go_to_run_info_not_metrics(tmp_path):
+    out = _run(tmp_path)
+    info = json.loads((out / "run_info.json").read_text())
+    assert len(info["per_seed_timing"]) == 2
+    assert all(t["train_seconds"] > 0 for t in info["per_seed_timing"])
+    assert "per_seed_timing" not in json.loads((out / "metrics.json").read_text())
+
+
 def test_development_run_cannot_see_test_period(tmp_path):
     """Corrupting every test-period label and feature leaves a development run unchanged."""
     clean = _run(tmp_path)

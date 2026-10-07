@@ -33,3 +33,19 @@ def test_arms_are_resumable_and_deterministic(tmp_path):
     other = f"sqlite:///{(tmp_path / 'o.db').as_posix()}"
     s3, _ = run_arm("T", ARMS[1], X_tr, y_tr, X_va, y_va, trials=1, storage=other)
     assert s3.trials[0].params == s1.trials[0].params
+
+
+def test_pruned_trial_stops_training():
+    class AlwaysPrune:
+        def report(self, value, step):
+            self.reported = (value, step)
+
+        def should_prune(self):
+            return True
+
+    X_tr, y_tr = _xy(1500, 0)
+    X_va, y_va = _xy(600, 1)
+    trial = AlwaysPrune()
+    with pytest.raises(optuna.TrialPruned):
+        fit_trial({"max_depth": 3}, X_tr, y_tr, X_va, y_va, trial=trial)
+    assert trial.reported[1] == 0  # pruned at the first check
