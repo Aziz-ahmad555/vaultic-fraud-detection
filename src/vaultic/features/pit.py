@@ -90,6 +90,15 @@ class PastIndex:
         out[has_prev] = v[pos[has_prev] - 1]
         return out
 
+    def first_time_before(self, cutoff: np.ndarray) -> np.ndarray:
+        """Time of the earliest row with the same key, if any row has time < cutoff (else NaN)."""
+        pos = self._positions(cutoff)
+        start = self.group_start[self.codes]
+        has_prev = pos > start
+        out = np.full(len(pos), np.nan)
+        out[has_prev] = self.time[self.order][start[has_prev]]
+        return out
+
     def last_time_before(self, cutoff: np.ndarray) -> np.ndarray:
         """Time of the latest row with the same key and time < cutoff (NaN if none)."""
         pos = self._positions(cutoff)
