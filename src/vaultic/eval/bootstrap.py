@@ -62,7 +62,12 @@ def paired_bootstrap(
     )
     lo, hi = np.quantile(diffs, [alpha / 2, 1 - alpha / 2])
     p = 2 * min((diffs <= 0).mean(), (diffs >= 0).mean())
-    return {"diff": float(point), "ci_low": float(lo), "ci_high": float(hi), "p_value": float(min(p, 1.0))}
+    return {
+        "diff": float(point),
+        "ci_low": float(lo),
+        "ci_high": float(hi),
+        "p_value": float(min(p, 1.0)),
+    }
 
 
 def holm(p_values: Sequence[float]) -> list[float]:

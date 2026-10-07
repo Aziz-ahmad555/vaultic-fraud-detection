@@ -1,0 +1,22 @@
+# Local hooks use the tools pinned in requirements.txt (no downloads at commit time).
+# Install once:  pre-commit install
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff (lint)
+        entry: ruff check --fix
+        language: system
+        types: [python]
+        exclude: ^legacy/
+      - id: black
+        name: black (format)
+        entry: black
+        language: system
+        types: [python]
+        exclude: ^legacy/
+      - id: no-data-files
+        name: block data, databases, models and .env
+        entry: python tools/check_no_data_files.py
+        language: system
+        pass_filenames: true

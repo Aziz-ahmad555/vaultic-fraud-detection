@@ -37,14 +37,20 @@ def test_merge_orders_by_time_with_id_tiebreak():
 def test_merge_keeps_every_transaction_once_and_flags_identity():
     df = merge_and_order(_transactions(), _identity())
     assert len(df) == 5
-    assert dict(zip(df["TransactionID"], df["has_identity"])) == {1: 0, 2: 1, 3: 0, 4: 0, 5: 1}
+    assert dict(zip(df["TransactionID"], df["has_identity"], strict=True)) == {
+        1: 0,
+        2: 1,
+        3: 0,
+        4: 0,
+        5: 1,
+    }
     assert df.loc[df["TransactionID"] == 2, "DeviceType"].item() == "mobile"
     assert df.loc[df["TransactionID"] == 1, "DeviceType"].isna().item()
 
 
 def test_day_is_floor_of_seconds():
     df = merge_and_order(_transactions(), _identity())
-    assert dict(zip(df["TransactionID"], df["day"])) == {1: 1, 2: 1, 3: 2, 4: 2, 5: 3}
+    assert dict(zip(df["TransactionID"], df["day"], strict=True)) == {1: 1, 2: 1, 3: 2, 4: 2, 5: 3}
 
 
 def test_duplicate_ids_are_rejected():

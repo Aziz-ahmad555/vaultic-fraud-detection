@@ -6,8 +6,8 @@ from vaultic.data.load import SECONDS_PER_DAY
 from vaultic.data.splits import (
     SPLITS_PATH,
     DayRange,
-    load_splits,
     label_matured,
+    load_splits,
     matured_labels,
 )
 
@@ -26,14 +26,23 @@ def test_assign_covers_boundaries_and_gap():
     s = load_splits(SPLITS_PATH)
     days = np.array([1, 120, 121, 127, 128, 150, 151, 182])
     assert s.assign(days).tolist() == [
-        "train", "train", "unused", "unused", "validation", "validation", "test", "test",
+        "train",
+        "train",
+        "unused",
+        "unused",
+        "validation",
+        "validation",
+        "test",
+        "test",
     ]
 
 
 def test_every_day_belongs_to_at_most_one_split():
     s = load_splits(SPLITS_PATH)
     days = np.arange(1, 183)
-    membership = sum(getattr(s, p).contains(days).astype(int) for p in ("train", "validation", "test"))
+    membership = sum(
+        getattr(s, p).contains(days).astype(int) for p in ("train", "validation", "test")
+    )
     assert membership.max() == 1
 
 

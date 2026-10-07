@@ -48,5 +48,9 @@ Put `train_transaction.csv` and `train_identity.csv` from the Kaggle IEEE-CIS Fr
 competition in `data/raw/`. Only the training files are used; the Kaggle test files have no
 public labels.
 
-Run the research tests from the repository root with `python -m pytest`. For FYP-1, see
+Run the research tests from the repository root with `python -m pytest`.
+
+Before committing: `pre-commit install` once. The hooks (ruff, black, and a check that blocks
+data, databases, models and `.env`) use the tools in `.venv`, so commit with it activated.
+`requirements.txt` pins the full environment; `legacy/fyp1/requirements.txt` is FYP-1's own list. For FYP-1, see
 [`legacy/fyp1/README.md`](legacy/fyp1/README.md).

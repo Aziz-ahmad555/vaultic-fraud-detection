@@ -82,7 +82,9 @@ def validate(s: Splits) -> None:
         raise ValueError("test must start after validation ends")
     for train, test in s.rolling:
         if not train.last < test.first:
-            raise ValueError(f"rolling fold tests on days before its training ends: {train}, {test}")
+            raise ValueError(
+                f"rolling fold tests on days before its training ends: {train}, {test}"
+            )
 
 
 def label_matured(

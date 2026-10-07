@@ -37,8 +37,17 @@ VARIANTS: dict[str, list[str]] = {
 }
 CANDIDATES = ["uid_card", "uid", "uid2"]
 UID_INPUT_COLUMNS = [
-    "TransactionID", "TransactionDT", "day", "isFraud",
-    "card1", "card2", "card3", "card5", "addr1", "D1", "P_emaildomain",
+    "TransactionID",
+    "TransactionDT",
+    "day",
+    "isFraud",
+    "card1",
+    "card2",
+    "card3",
+    "card5",
+    "addr1",
+    "D1",
+    "P_emaildomain",
 ]
 
 
@@ -93,8 +102,7 @@ def uid_metrics(uid: pd.Series, is_fraud: pd.Series, complete: pd.Series) -> dic
 
 def compare_variants(df: pd.DataFrame, uids: pd.DataFrame) -> pd.DataFrame:
     rows = {
-        name: uid_metrics(uids[name], df["isFraud"], uids[f"{name}_complete"])
-        for name in VARIANTS
+        name: uid_metrics(uids[name], df["isFraud"], uids[f"{name}_complete"]) for name in VARIANTS
     }
     return pd.DataFrame(rows).T
 
@@ -132,8 +140,7 @@ def build_report(df: pd.DataFrame, uids: pd.DataFrame) -> tuple[str, str]:
     table = compare_variants(df[window], uids[window])
     chosen = choose_variant(table)
     carry = {
-        name: history_carryover(df[window], uids[window], name, split_day=120)
-        for name in VARIANTS
+        name: history_carryover(df[window], uids[window], name, split_day=120) for name in VARIANTS
     }
     ids_full = {name: int(uids[name].nunique()) for name in VARIANTS}
 

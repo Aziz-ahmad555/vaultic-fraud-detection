@@ -21,3 +21,4 @@ extend-exclude = ["legacy"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]  # black owns line length; it leaves long string literals as they are

@@ -81,7 +81,7 @@ def _md(table: pd.DataFrame, index_name: str) -> str:
             formatters.append(str)
     lines = [header, sep]
     for row in table.itertuples(index=False):
-        lines.append("| " + " | ".join(f(v) for f, v in zip(formatters, row)) + " |")
+        lines.append("| " + " | ".join(f(v) for f, v in zip(formatters, row, strict=True)) + " |")
     return "\n".join(lines)
 
 

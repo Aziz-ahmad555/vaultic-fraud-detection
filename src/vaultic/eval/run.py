@@ -121,8 +121,11 @@ def evaluate(
         entry = {"mean": float(np.mean(values)), "std": float(np.std(values)), "per_seed": values}
         if name in RANKING_METRICS:
             lo, hi = seed_mean_ci(
-                y[te], test_scores, RANKING_METRICS[name],
-                n_boot=int(boot.get("n", 1000)), seed=int(boot.get("seed", 0)),
+                y[te],
+                test_scores,
+                RANKING_METRICS[name],
+                n_boot=int(boot.get("n", 1000)),
+                seed=int(boot.get("seed", 0)),
             )
             entry.update({"ci_low": lo, "ci_high": hi})
         metrics[name] = entry
@@ -146,7 +149,7 @@ def evaluate(
             "label": y[rows],
         }
     )
-    for seed, s_val, s_test in zip(cfg["seeds"], val_scores, test_scores):
+    for seed, s_val, s_test in zip(cfg["seeds"], val_scores, test_scores, strict=True):
         col = np.empty(rows.sum())
         col[va[rows]] = s_val
         col[te[rows]] = s_test
@@ -223,7 +226,9 @@ def main() -> None:
     args = parser.parse_args()
     out = run(args.config)
     m = json.loads((out / "metrics.json").read_text())["metrics"]["pr_auc"]
-    print(f"{out}: test PR-AUC {m['mean']:.4f} ± {m['std']:.4f} [{m['ci_low']:.4f}, {m['ci_high']:.4f}]")
+    print(
+        f"{out}: test PR-AUC {m['mean']:.4f} ± {m['std']:.4f} [{m['ci_low']:.4f}, {m['ci_high']:.4f}]"
+    )
 
 
 if __name__ == "__main__":

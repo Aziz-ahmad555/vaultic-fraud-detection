@@ -27,8 +27,18 @@ FEATURES_PATH = FEATURES_DIR / "base_features.parquet"
 WINDOWS = {"1h": 3_600, "24h": 86_400, "7d": 7 * 86_400, "30d": 30 * 86_400}
 FREQ_COLUMNS = ["card1", "addr1", "P_emaildomain"]
 INPUT_COLUMNS = [
-    "TransactionID", "TransactionDT", "day", "TransactionAmt", "isFraud",
-    "card1", "card2", "card3", "card5", "addr1", "D1", "P_emaildomain",
+    "TransactionID",
+    "TransactionDT",
+    "day",
+    "TransactionAmt",
+    "isFraud",
+    "card1",
+    "card2",
+    "card3",
+    "card5",
+    "addr1",
+    "D1",
+    "P_emaildomain",
 ]
 
 
@@ -70,7 +80,9 @@ def build_features(
     # Velocity windows [t - w, t)
     for name, seconds in WINDOWS.items():
         start = time - seconds
-        out[f"uid_n_{name}"] = (past.count_before(time) - past.count_before(start)).astype(np.float32)
+        out[f"uid_n_{name}"] = (past.count_before(time) - past.count_before(start)).astype(
+            np.float32
+        )
         out[f"uid_amt_sum_{name}"] = (
             past.sum_before(amount, time) - past.sum_before(amount, start)
         ).astype(np.float32)

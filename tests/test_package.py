@@ -2,7 +2,17 @@ import importlib
 
 import pytest
 
-SUBPACKAGES = ["data", "features", "views", "fusion", "trust", "explain", "drift", "learning", "eval"]
+SUBPACKAGES = [
+    "data",
+    "features",
+    "views",
+    "fusion",
+    "trust",
+    "explain",
+    "drift",
+    "learning",
+    "eval",
+]
 
 
 @pytest.mark.parametrize("name", SUBPACKAGES)

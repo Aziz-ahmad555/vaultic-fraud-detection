@@ -33,5 +33,7 @@ def make_model(name: str, params: dict[str, Any], seed: int):
     if name == "lightgbm":
         from lightgbm import LGBMClassifier
 
-        return LGBMClassifier(random_state=seed, n_jobs=-1, verbose=-1, deterministic=True, **params)
+        return LGBMClassifier(
+            random_state=seed, n_jobs=-1, verbose=-1, deterministic=True, **params
+        )
     raise ValueError(f"unknown model {name!r}")

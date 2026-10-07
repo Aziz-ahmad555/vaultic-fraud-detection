@@ -79,7 +79,9 @@ def test_run_writes_outputs_and_uses_only_test_rows_for_metrics(tmp_path):
 def test_baseline_models_run(tmp_path, model, params, features):
     out = run(
         _config(tmp_path, model, params, features),
-        runs_dir=tmp_path / "runs", experiment_log=None, data=_data(),
+        runs_dir=tmp_path / "runs",
+        experiment_log=None,
+        data=_data(),
     )
     pr = json.loads((out / "metrics.json").read_text())["metrics"]["pr_auc"]["mean"]
     assert pr > 0.1  # the synthetic signal is learnable (base rate ~4%)

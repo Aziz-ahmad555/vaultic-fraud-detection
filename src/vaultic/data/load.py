@@ -36,7 +36,7 @@ def _column_dtypes(path: Path, probe_rows: int = 20_000) -> dict[str, str]:
     for col, dtype in probe.dtypes.items():
         if col in EXACT_DTYPES:
             dtypes[col] = EXACT_DTYPES[col]
-        elif dtype == object:
+        elif pd.api.types.is_object_dtype(dtype):
             dtypes[col] = "object"
         else:
             dtypes[col] = "float32"
@@ -61,7 +61,7 @@ def merge_and_order(transactions: pd.DataFrame, identity: pd.DataFrame) -> pd.Da
     df = df.sort_values(["TransactionDT", "TransactionID"], kind="mergesort")
     df = df.reset_index(drop=True)
 
-    for col in df.columns[df.dtypes == object]:
+    for col in df.columns[[pd.api.types.is_object_dtype(t) for t in df.dtypes]]:
         df[col] = df[col].astype("category")
     return df
 
