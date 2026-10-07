@@ -37,8 +37,7 @@ The GitHub CLI is not installed here, so the steps use the website (or install t
 
 1. On <https://github.com/new>: name `fraud-detection` (or `vaultic`), **Private**, and **no**
    README, .gitignore or licence (the repo must be empty).
-2. Invite Hamza and Roshan: repo → *Settings → Collaborators*.
-3. In the repo root (`E:\old work\fyp 11\fraud-detection`):
+2. In the repo root (`E:\old work\fyp 11\fraud-detection`):
 
    ```powershell
    git remote add origin https://github.com/<your-user>/fraud-detection.git
@@ -48,11 +47,12 @@ The GitHub CLI is not installed here, so the steps use the website (or install t
    ```
 
    The first push opens a browser window for GitHub sign-in (Git Credential Manager).
-   `phase3-prep` is pushed later, after it is merged into `phase0-1`.
-4. Check on GitHub that `data/raw/` shows only `.gitkeep` and the two `.dvc` files, and that
+   `phase3-prep` is already merged into `phase0-1`; `phase7-prep` goes up after it is merged too.
+3. Check on GitHub that `data/raw/` shows only `.gitkeep` and the two `.dvc` files, and that
    the *Actions* tab runs the CI workflow on the pushed branches.
-5. Protect `main`: *Settings → Branches → Add rule* → require a pull request with one approval
-   (the review rule in CLAUDE.md; a CONTRIBUTING.md is still to be written).
+4. Protect `main`: *Settings → Branches → Add rule* → require a pull request before merging,
+   with **0 required approvals**: GitHub does not let you approve your own pull request, so a
+   required approval would block every merge in a solo project (D31).
 
 Nothing in `.gitignore`d folders is pushed (`data/`, `experiments/runs/`, `experiments/mlflow/`,
 `experiments/tuning/`, `.venv/`, `.env`, `legacy/fyp1/instance/`, `legacy/fyp1/data/`).

@@ -7,7 +7,16 @@ tabular, behavioral, temporal (sequence), relational (graph/GNN), anomaly.
 
 The full plan is in `docs/ROADMAP.pdf` (Vaultic Research Roadmap, 17 phases). Read the relevant phase section before starting any task.
 
-Team: Aziz (Phases 1, 2, 3, 7, 8; Paper 2), Hamza (Phases 4, 5, 6, 10; Papers 1 and 3), Roshan (Phases 9 integration, 11, 12).
+## Scope (solo project, decision D31)
+
+Aziz works on this alone. Scope, in priority order:
+
+- **MUST:** Phases 1–3; Phase 4 (graph features + XGBoost first; GNN only if time); Phase 5 (GRU only); Phase 6 (IsolationForest + autoencoder); Phase 7 (MVAF + F1–F6 + a SimMLM-style F7 baseline with MoFe ranking loss); Phase 8; Phase 9 (research side); Phase 13. **Paper 2 is the main paper.**
+- **SHOULD:** Paper 1 (graph leakage on the IEEE-CIS heterogeneous entity graph, separating edge leakage vs label leakage and label delay; Elliptic only as a replication of arXiv 2604.19514); Phase 10 as a thesis chapter; a simplified platform (FastAPI + Postgres + replay script, no Kafka); a 4-page dashboard.
+- **COULD:** GraphSAGE/TGN, LLM copilot, Paper 3.
+- **DROPPED:** Phases 16–17, Papers 4–5, TabPFN, the large load test, the multi-person usability study.
+
+Do MUST work before SHOULD, and SHOULD before COULD. Don't start DROPPED items.
 
 ## Non-negotiable research rules
 
