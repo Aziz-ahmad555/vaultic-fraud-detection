@@ -1,0 +1,8 @@
+id: EXP-005
+question: "B5 PARTIAL: XGBoost on raw + point-in-time base features; no V-reduction, untuned"
+model:
+  name: xgboost
+  params: {n_estimators: 200, max_depth: 6, learning_rate: 0.1}
+features: raw_base
+seeds: [0, 1, 2, 3, 4]
+bootstrap: {n: 1000, seed: 0}

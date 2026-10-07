@@ -1,0 +1,8 @@
+id: EXP-003
+question: "B3 XGBoost on raw columns, no feature engineering (untuned)"
+model:
+  name: xgboost
+  params: {n_estimators: 200, max_depth: 6, learning_rate: 0.1}
+features: raw
+seeds: [0, 1, 2, 3, 4]
+bootstrap: {n: 1000, seed: 0}

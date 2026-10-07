@@ -1,0 +1,8 @@
+id: EXP-001
+question: "B1 logistic regression: raw numeric + one-hot ProductCD, scaled (untuned)"
+model:
+  name: logistic_regression
+  params: {max_iter: 300}
+features: raw_lr
+seeds: [0, 1, 2, 3, 4]
+bootstrap: {n: 1000, seed: 0}

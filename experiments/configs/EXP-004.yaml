@@ -1,0 +1,8 @@
+id: EXP-004
+question: "B4 LightGBM on raw columns (untuned)"
+model:
+  name: lightgbm
+  params: {n_estimators: 200, num_leaves: 63, learning_rate: 0.1}
+features: raw
+seeds: [0, 1, 2, 3, 4]
+bootstrap: {n: 1000, seed: 0}
