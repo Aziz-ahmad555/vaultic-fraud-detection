@@ -21,7 +21,7 @@ Nothing has been pushed. Long-running Phase 2 work continues unattended in
 | 1. V-column reduction | ✅ 339 → 108 V columns (train period only); validation PR-AUC 0.6529 vs 0.6480 without it, paired +0.0049 (95% CI +0.0009 to +0.0095) (D19) |
 | 2. Optuna tuning of B5 | ⏳ Running: 2 × 25 trials (no weighting vs `scale_pos_weight`), median pruning (D20, D23). First trial: validation PR-AUC 0.6548 |
 | 2b. Equal-budget tuning of B3 | ⏳ Queued after B5 (needed so the exit gate compares equally tuned models) |
-| 3. B6 (FYP-1 port, E2) | ✅ Code and tests; validation run in progress. Only 470 customers have FYP-1's minimum of 30 training transactions (1.9% of validation rows), so B6 is almost entirely FYP-1's global XGBoost |
+| 3. B6 (FYP-1 port, E2) | ✅ Validation PR-AUC **0.3675** (95% CI 0.3447–0.3896), ROC-AUC 0.855, recall at 1% FPR 0.320 (EXP-010, 5 seeds; spread < 0.0001 because only the per-user forests use the seed). For comparison the untuned B5 reaches about 0.65 on the same validation period. Only 470 customers have FYP-1's minimum of 30 training transactions (1.9% of validation rows), so B6 is almost entirely FYP-1's global XGBoost |
 | 4. Table 1 and B5 SHAP plot | ✅ Generators and tests; outputs are produced by the chain once tuning is done (Table 1 on validation) |
 | 5. Phase 2 exit gate | ⏳ Gate check written; runs at the end of the chain with `--final` runs of B3 and B5 only |
 
