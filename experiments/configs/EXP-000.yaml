@@ -1,0 +1,8 @@
+id: EXP-000
+question: "Phase 1 exit gate: does the same config + seed give identical metrics twice?"
+model:
+  name: xgboost
+  params: {n_estimators: 200, max_depth: 6, learning_rate: 0.1}
+features: raw_base
+seeds: [0]
+bootstrap: {n: 1000, seed: 0}
