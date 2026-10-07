@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+    @page {
+        size: A4;
+        margin: 2cm;
+    }
+    body {
+        font-family: Helvetica, Arial, sans-serif;
+        font-size: 11px;
+        color: #1a1a2e;
+    }
+    h1 {
+        font-size: 20px;
+        color: #0f3460;
+        margin-bottom: 2px;
+    }
+    .subtitle {
+        font-size: 11px;
+        color: #666666;
+        margin-bottom: 20px;
+    }
+    .section-title {
+        font-size: 14px;
+        color: #0f3460;
+        margin-top: 22px;
+        margin-bottom: 8px;
+        border-bottom: 1px solid #cccccc;
+        padding-bottom: 4px;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 10px;
+    }
+    td, th {
+        padding: 6px 8px;
+        border: 1px solid #dddddd;
+        text-align: left;
+        font-size: 10px;
+    }
+    th {
+        background-color: #f0f0f5;
+        color: #0f3460;
+    }
+    .summary-table td {
+        width: 25%;
+    }
+    .summary-label {
+        color: #666666;
+        font-size: 9px;
+    }
+    .summary-value {
+        font-size: 15px;
+        font-weight: bold;
+        color: #0f3460;
+    }
+    .severity-High { color: #b00020; font-weight: bold; }
+    .severity-Medium { color: #b8860b; font-weight: bold; }
+    .severity-Low { color: #2e7d32; font-weight: bold; }
+    .footer {
+        margin-top: 30px;
+        font-size: 8px;
+        color: #999999;
+        border-top: 1px solid #dddddd;
+        padding-top: 8px;
+    }
+</style>
+</head>
+<body>
+
+<h1>Fraud Detection Compliance Report</h1>
+<div class="subtitle">
+    Account: {{ user.name }} ({{ user.email }})<br/>
+    Generated: {{ generated_at.strftime('%Y-%m-%d %H:%M UTC') }}
+</div>
+
+<div class="section-title">Account Summary</div>
+<table class="summary-table">
+    <tr>
+        <td>
+            <div class="summary-label">TOTAL TRANSACTIONS</div>
+            <div class="summary-value">{{ total_txns }}</div>
+        </td>
+        <td>
+            <div class="summary-label">TOTAL DEPOSITS</div>
+            <div class="summary-value">Pkr. {{ "%.2f"|format(total_deposits) }}</div>
+        </td>
+        <td>
+            <div class="summary-label">TOTAL WITHDRAWALS</div>
+            <div class="summary-value">Pkr. {{ "%.2f"|format(total_withdraws) }}</div>
+        </td>
+        <td>
+            <div class="summary-label">NET BALANCE</div>
+            <div class="summary-value">Pkr. {{ "%.2f"|format(total_deposits - total_withdraws) }}</div>
+        </td>
+    </tr>
+</table>
+
+<div class="section-title">Alert Breakdown</div>
+<table>
+    <tr>
+        <th>Severity</th>
+        <th>Count</th>
+        <th>Status</th>
+        <th>Count</th>
+    </tr>
+    <tr>
+        <td class="severity-High">High</td>
+        <td>{{ severity_counts.High }}</td>
+        <td>Pending</td>
+        <td>{{ status_counts.Pending }}</td>
+    </tr>
+    <tr>
+        <td class="severity-Medium">Medium</td>
+        <td>{{ severity_counts.Medium }}</td>
+        <td>Resolved</td>
+        <td>{{ status_counts.Resolved }}</td>
+    </tr>
+    <tr>
+        <td class="severity-Low">Low</td>
+        <td>{{ severity_counts.Low }}</td>
+        <td></td>
+        <td></td>
+    </tr>
+</table>
+
+<div class="section-title">Recent Fraud Alerts (most recent {{ alerts|length }})</div>
+{% if alerts %}
+<table>
+    <tr>
+        <th>Date</th>
+        <th>Severity</th>
+        <th>Status</th>
+        <th>Score</th>
+        <th>Message</th>
+    </tr>
+    {% for a in alerts %}
+    <tr>
+        <td>{{ a.generated_at.strftime('%Y-%m-%d %H:%M') if a.generated_at else 'N/A' }}</td>
+        <td class="severity-{{ a.severity }}">{{ a.severity }}</td>
+        <td>{{ a.status }}</td>
+        <td>{{ "%.2f"|format(a.score) if a.score is not none else 'N/A' }}</td>
+        <td>{{ a.message }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p>No alerts recorded for this account.</p>
+{% endif %}
+
+<div class="footer">
+    This report was generated automatically by the Fraud Detection System (FYP).
+    Scores are produced by a blended model combining a per-user Isolation Forest
+    (behavioral anomaly detection) and a population-level XGBoost model trained
+    on the IEEE-CIS transaction dataset. This is an academic prototype report,
+    not a certified regulatory compliance document.
+</div>
+
+</body>
+</html>

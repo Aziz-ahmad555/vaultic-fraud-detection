@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block title %}Add Transaction — Vaultic Fraud Shield{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="page-title">New Transaction</div>
+    <div class="page-subtitle">This transaction will be scored against your account's normal behavior.</div>
+
+    <div class="card-bank">
+      <div class="card-bank-body">
+        <form method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="mb-3">
+            <label class="form-label-bank">Amount (PKR)</label>
+            <input type="number" step="0.01" class="form-control form-control-bank" name="amount" placeholder="0.00" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label-bank">Transaction Time</label>
+            <input type="datetime-local" class="form-control form-control-bank" name="timestamp" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label-bank">Type</label>
+            <select class="form-select form-control-bank" name="type">
+              <option value="deposit">Deposit</option>
+              <option value="withdraw">Withdraw</option>
+            </select>
+          </div>
+          <div class="mb-4">
+            <label class="form-label-bank">Device</label>
+            <select class="form-select form-control-bank" name="device_id">
+              <option value="device_1">Device 1 (usual)</option>
+              <option value="device_2">Device 2</option>
+              <option value="device_3">Device 3</option>
+              <option value="device_4">Device 4</option>
+              <option value="device_5">Device 5 (new/unrecognized)</option>
+            </select>
+            <div class="form-text" style="font-size:0.78rem;">A device switch from your usual pattern raises the fraud score.</div>
+          </div>
+          <button type="submit" class="btn btn-bank-primary w-100">Submit Transaction</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Generate Sample Data — Vaultic Fraud Shield{% endblock %}
+{% block content %}
+<div class="page-title">Generate Sample Transaction History</div>
+<div class="page-subtitle">Create a batch of past transactions so the model has a "normal" pattern to learn from.</div>
+
+<div class="row g-4">
+  <div class="col-lg-7">
+    <div class="card-bank">
+      <div class="card-bank-body">
+        <form id="generateForm" method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="row mb-3 g-3">
+            <div class="col-md-6">
+              <label class="form-label-bank">Number of Transactions</label>
+              <input type="number" name="num_transactions" class="form-control form-control-bank" min="1" max="1000" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label-bank">Start Date</label>
+              <input type="date" name="start_date" class="form-control form-control-bank" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label-bank">End Date</label>
+              <input type="date" name="end_date" class="form-control form-control-bank" required>
+            </div>
+          </div>
+
+          <div class="row g-3 mb-4">
+            <div class="col-md-6">
+              <div class="card-bank" style="box-shadow:none; border-color: var(--border-soft);">
+                <div class="card-bank-body">
+                  <h6 style="font-size:0.85rem; font-weight:700; color: var(--mint-600);">↓ Deposit Range</h6>
+                  <input type="number" step="0.01" name="deposit_min" placeholder="Min" class="form-control form-control-bank mb-2" required>
+                  <input type="number" step="0.01" name="deposit_max" placeholder="Max" class="form-control form-control-bank" required>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="card-bank" style="box-shadow:none; border-color: var(--border-soft);">
+                <div class="card-bank-body">
+                  <h6 style="font-size:0.85rem; font-weight:700; color: var(--amber-600);">↑ Withdraw Range</h6>
+                  <input type="number" step="0.01" name="withdraw_min" placeholder="Min" class="form-control form-control-bank mb-2" required>
+                  <input type="number" step="0.01" name="withdraw_max" placeholder="Max" class="form-control form-control-bank" required>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-bank-primary w-100">Generate Transactions</button>
+        </form>
+
+        <div id="progressContainer" class="mt-4" style="display:none;">
+          <div class="progress" style="height: 8px; border-radius: 999px;">
+            <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width:0%; background-color: var(--navy-700);"></div>
+          </div>
+          <p id="progressText" class="text-center mt-2" style="font-size: 0.85rem; color: var(--ink-600);">Generating...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div id="chartCard" class="card-bank" style="display:none;">
+      <div class="card-bank-header"><h5>Generated Summary</h5></div>
+      <div class="card-bank-body">
+        <canvas id="summaryChart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const form = document.getElementById('generateForm');
+  const progressContainer = document.getElementById('progressContainer');
+  const progressBar = document.getElementById('progressBar');
+  const progressText = document.getElementById('progressText');
+  const chartCard = document.getElementById('chartCard');
+
+  form.addEventListener('submit', function() {
+    progressContainer.style.display = 'block';
+    progressBar.style.width = '0%';
+    progressText.textContent = 'Generating...';
+
+    let progress = 0;
+    const interval = setInterval(() => {
+      if (progress < 90) {
+        progress += 10;
+        progressBar.style.width = progress + '%';
+      }
+    }, 500);
+
+    setTimeout(() => {
+      clearInterval(interval);
+      progressBar.style.width = '100%';
+      progressText.textContent = 'Generation complete!';
+    }, 4000);
+  });
+
+  {% if summary %}
+    chartCard.style.display = 'block';
+    const ctx = document.getElementById('summaryChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Deposits', 'Withdrawals'],
+        datasets: [{
+          data: [{{ summary.deposits }}, {{ summary.withdrawals }}],
+          backgroundColor: ['#16a34a', '#d97706'],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'bottom' }
+        }
+      }
+    });
+  {% endif %}
+</script>
+{% endblock %}

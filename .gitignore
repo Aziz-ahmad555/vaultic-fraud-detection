@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Virtual environment (recreate with: py -3.11 -m venv .venv)
+.venv/
+
+# Secrets
+.env
+
+# IDE
+.idea/
+.vscode/
+
+# Runtime data: local database and per-user models trained live
+instance/*.db
+models_store/user_model_*.joblib
+scoring_latency.log
+
+# IEEE-CIS dataset (~1 GB) -- download separately, see README
+Data/*.csv

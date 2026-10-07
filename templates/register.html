@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block title %}Open an Account — Vaultic Fraud Shield{% endblock %}
+{% block content %}
+<div class="auth-wrapper">
+  <div class="auth-card">
+    <div class="auth-card-header">
+      <div class="auth-mark">VF</div>
+      <h4>Open your account</h4>
+      <p>It only takes a minute</p>
+    </div>
+    <div class="auth-card-body">
+      <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="mb-3">
+          <label class="form-label-bank">Full name</label>
+          <input type="text" class="form-control form-control-bank" name="name" placeholder="Your full name" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label-bank">Email address</label>
+          <input type="email" class="form-control form-control-bank" name="email" placeholder="you@example.com" required>
+        </div>
+        <div class="mb-4">
+          <label class="form-label-bank">Password</label>
+          <input type="password" class="form-control form-control-bank" name="password" placeholder="Create a password" required>
+        </div>
+        <button type="submit" class="btn btn-bank-success w-100">Create Account</button>
+      </form>
+      <p class="text-center mt-4 mb-0" style="font-size: 0.88rem; color: var(--ink-600);">
+        Already have an account? <a href="{{ url_for('login') }}" style="color: var(--navy-800); font-weight: 600; text-decoration: none;">Log in</a>
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}

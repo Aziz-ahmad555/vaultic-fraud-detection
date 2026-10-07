@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}My Alerts — Vaultic Fraud Shield{% endblock %}
+{% block content %}
+
+<div class="card-bank">
+  <div class="card-bank-header">
+    <h5>My Alerts</h5>
+  </div>
+  <div class="card-bank-body">
+    {% if alerts %}
+      {% for alert in alerts %}
+        <div class="alert-card mb-3">
+          <span class="severity-badge {{ alert.severity|lower if alert.severity else 'medium' }}">
+            {{ alert.severity or 'Medium' }}
+          </span>
+          <div class="alert-msg">{{ alert.message }}</div>
+          <div style="font-size: 0.78rem; color: var(--ink-600); margin-top: 4px;">
+            {{ alert.generated_at.strftime('%d %b %Y, %H:%M UTC') if alert.generated_at else '' }}
+            &middot; Status: {{ alert.status }}
+          </div>
+          <div class="mt-2 d-flex gap-2">
+            <a href="{{ url_for('dispute', alert_id=alert.alert_id) }}" class="btn-bank-outline">
+              File a Dispute
+            </a>
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-state">
+        <div class="empty-icon">🛡️</div>
+        <p class="mb-0">No alerts — your account looks safe.</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}Account Settings — Vaultic Fraud Shield{% endblock %}
+{% block content %}
+
+<div class="card-bank" style="max-width: 560px; margin: 0 auto;">
+  <div class="card-bank-header">
+    <h5>Account Settings</h5>
+  </div>
+  <div class="card-bank-body">
+    <div class="mb-3">
+      <div class="balance-stat-label">Account Status</div>
+      <div class="balance-stat-value" style="color: {{ '#dc2626' if user.is_frozen else '#16a34a' }};">
+        {{ 'Frozen' if user.is_frozen else 'Active' }}
+      </div>
+    </div>
+
+    <p style="font-size: 0.88rem; color: var(--ink-600);">
+      {% if user.is_frozen %}
+        Your account is currently frozen. No new transactions can be added until you unfreeze it.
+      {% else %}
+        Freezing your account immediately blocks all new transactions until you unfreeze it —
+        use this if you suspect unauthorized activity.
+      {% endif %}
+    </p>
+
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn w-100 {{ 'btn-bank-outline' if user.is_frozen else 'btn-bank-primary' }}">
+        {{ 'Unfreeze Account' if user.is_frozen else 'Freeze Account' }}
+      </button>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

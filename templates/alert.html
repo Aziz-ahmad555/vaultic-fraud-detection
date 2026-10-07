@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block title %}Alert Details — Vaultic Fraud Shield{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="page-title">Fraud Alert Review</div>
+    <div class="page-subtitle">Confirm whether this flagged transaction was actually fraud. Your decision feeds back into the model.</div>
+
+    <div class="card-bank">
+      <div class="card-bank-body">
+        <span class="severity-badge {{ alert.severity|lower if alert.severity else 'medium' }}">
+          {{ alert.severity or 'Medium' }}
+        </span>
+        <p style="font-size: 0.95rem; margin-top: 0.75rem;"><strong>Message:</strong> {{ alert.message }}</p>
+        <p style="font-size: 0.95rem;"><strong>Account holder:</strong> {{ user.name }}</p>
+        <p style="font-size: 0.95rem;"><strong>Anomaly score:</strong> {{ "%.2f"|format(alert.score) if alert.score is not none else '—' }}</p>
+        <p style="font-size: 0.95rem;"><strong>Status:</strong> {{ alert.status }}</p>
+
+        {% if label %}
+          <div class="empty-state" style="margin-top:1rem;">
+            <div class="empty-icon">{{ '🚩' if label.is_fraud else '✅' }}</div>
+            <p class="mb-0">
+              Already labeled as <strong>{{ 'Confirmed Fraud' if label.is_fraud else 'False Positive' }}</strong>
+              on {{ label.labeled_at.strftime('%d %b %Y, %I:%M %p') if label.labeled_at else '' }}.
+            </p>
+            {% if label.notes %}<p class="mt-2" style="font-size:0.85rem; color: var(--ink-600);">Note: {{ label.notes }}</p>{% endif %}
+          </div>
+        {% else %}
+          <form method="post" action="{{ url_for('alert_feedback', alert_id=alert.alert_id) }}" class="mt-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="form-label-bank">Analyst notes (optional)</label>
+            <textarea name="notes" class="form-control form-control-bank mb-3" rows="2" placeholder="Any context for this decision..."></textarea>
+            <div class="d-flex gap-2">
+              <button type="submit" name="decision" value="fraud" class="btn btn-bank-danger w-50">🚩 Confirm Fraud</button>
+              <button type="submit" name="decision" value="not_fraud" class="btn btn-bank-success w-50">✅ False Positive</button>
+            </div>
+          </form>
+        {% endif %}
+
+        <a href="{{ url_for('dashboard') }}" class="btn btn-bank-primary mt-3 w-100">Back to Dashboard</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

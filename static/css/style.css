@@ -1,0 +1,458 @@
+/* ============================================
+   FRAUD DETECTOR — Banking UI Design System
+   ============================================ */
+
+:root {
+  --navy-950: #071a33;
+  --navy-900: #0b2545;
+  --navy-800: #123a6b;
+  --navy-700: #1a4c8a;
+  --gold-500: #c9a24b;
+  --gold-400: #ddc077;
+  --mint-600: #16a34a;
+  --mint-100: #e7f7ed;
+  --red-600: #dc2626;
+  --red-100: #fdecec;
+  --amber-600: #d97706;
+  --amber-100: #fdf1de;
+  --ink-900: #101828;
+  --ink-600: #475467;
+  --ink-400: #98a2b3;
+  --bg-app: #f4f6f9;
+  --card-white: #ffffff;
+  --border-soft: #e4e9f0;
+  --radius-lg: 16px;
+  --radius-md: 12px;
+  --radius-sm: 8px;
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 4px 16px rgba(16, 24, 40, 0.06);
+  --shadow-card-hover: 0 2px 4px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.10);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--bg-app);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--ink-900);
+  min-height: 100vh;
+}
+
+h1, h2, h3, h4, h5, h6, .brand-font {
+  font-family: 'Poppins', 'Inter', sans-serif;
+  color: var(--ink-900);
+  letter-spacing: -0.01em;
+}
+
+/* ---------- Navbar ---------- */
+.navbar-bank {
+  background: linear-gradient(180deg, var(--navy-900) 0%, var(--navy-950) 100%);
+  padding: 0.85rem 0;
+  box-shadow: 0 2px 12px rgba(7, 26, 51, 0.25);
+}
+
+.navbar-bank .navbar-brand {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: #ffffff !important;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  letter-spacing: -0.01em;
+}
+
+.navbar-bank .navbar-brand .brand-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--gold-500), var(--gold-400));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  color: var(--navy-950);
+  font-size: 1rem;
+}
+
+.nav-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.btn-nav {
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.5rem 0.95rem;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.btn-nav-ghost {
+  color: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+}
+.btn-nav-ghost:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+
+.btn-nav-gold {
+  background: linear-gradient(135deg, var(--gold-500), var(--gold-400));
+  color: var(--navy-950);
+}
+.btn-nav-gold:hover { filter: brightness(1.06); color: var(--navy-950); }
+
+.btn-nav-primary {
+  background: var(--navy-700);
+  color: #fff;
+}
+.btn-nav-primary:hover { background: var(--navy-800); color: #fff; }
+
+.btn-nav-danger {
+  color: #fecaca;
+  border-color: rgba(220, 38, 38, 0.35);
+  background: rgba(220, 38, 38, 0.08);
+}
+.btn-nav-danger:hover { background: rgba(220, 38, 38, 0.18); color: #fff; }
+
+.btn-nav-blocked {
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.45);
+  border-color: rgba(255,255,255,0.1);
+  cursor: not-allowed;
+}
+
+/* ---------- Balance / Hero Card ---------- */
+.balance-card {
+  background: radial-gradient(120% 160% at 0% 0%, var(--navy-800) 0%, var(--navy-900) 55%, var(--navy-950) 100%);
+  border-radius: var(--radius-lg);
+  padding: 2rem 2.25rem;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+
+.balance-card::after {
+  content: "";
+  position: absolute;
+  right: -60px;
+  top: -60px;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(201,162,75,0.18) 0%, rgba(201,162,75,0) 70%);
+}
+
+.balance-eyebrow {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255,255,255,0.55);
+  font-weight: 600;
+}
+
+.balance-name {
+  font-family: 'Poppins', sans-serif;
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin-top: 0.15rem;
+}
+
+.balance-stats {
+  display: flex;
+  gap: 2.5rem;
+  margin-top: 1.75rem;
+  flex-wrap: wrap;
+}
+
+.balance-stat-label {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.55);
+  font-weight: 500;
+  margin-bottom: 0.2rem;
+}
+
+.balance-stat-value {
+  font-family: 'Poppins', sans-serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.balance-stat-value.deposit { color: #7ee2a8; }
+.balance-stat-value.withdraw { color: #ffc182; }
+
+/* ---------- Generic Cards ---------- */
+.card-bank {
+  background: var(--card-white);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.card-bank-header {
+  padding: 1.1rem 1.4rem;
+  border-bottom: 1px solid var(--border-soft);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.card-bank-header h5 {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 600;
+}
+
+.card-bank-body { padding: 1.4rem; }
+
+/* ---------- Tabs ---------- */
+.nav-tabs-bank {
+  border-bottom: 1px solid var(--border-soft);
+  gap: 0.25rem;
+}
+.nav-tabs-bank .nav-link {
+  border: none;
+  color: var(--ink-600);
+  font-weight: 600;
+  font-size: 0.88rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: 8px 8px 0 0;
+}
+.nav-tabs-bank .nav-link.active {
+  color: var(--navy-900);
+  background: var(--mint-100);
+  border-bottom: 2px solid var(--mint-600);
+}
+
+/* ---------- Tables ---------- */
+.table-bank {
+  margin-bottom: 0;
+}
+.table-bank thead th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-400);
+  font-weight: 700;
+  border-bottom: 1px solid var(--border-soft);
+  padding: 0.6rem 0.75rem;
+  background: #fafbfc;
+}
+.table-bank tbody td {
+  padding: 0.75rem;
+  font-size: 0.89rem;
+  color: var(--ink-900);
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: middle;
+}
+.table-bank tbody tr:last-child td { border-bottom: none; }
+.table-bank tbody tr:hover { background: #fafbfd; }
+
+.txn-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.28rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+.txn-type-badge.deposit { background: var(--mint-100); color: var(--mint-600); }
+.txn-type-badge.withdraw { background: var(--amber-100); color: var(--amber-600); }
+
+.amount-cell { font-weight: 700; font-variant-numeric: tabular-nums; }
+.amount-cell.deposit { color: var(--mint-600); }
+.amount-cell.withdraw { color: var(--ink-900); }
+
+/* ---------- Alerts / Severity ---------- */
+.alert-card {
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--border-soft);
+  background: #fafbfd;
+}
+.alert-card:last-child { margin-bottom: 0; }
+.alert-card .alert-msg {
+  font-size: 0.86rem;
+  color: var(--ink-900);
+  margin-bottom: 0.5rem;
+  line-height: 1.4;
+}
+.severity-badge {
+  display: inline-block;
+  padding: 0.22rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.5rem;
+}
+.severity-badge.high { background: var(--red-100); color: var(--red-600); }
+.severity-badge.medium { background: var(--amber-100); color: var(--amber-600); }
+.severity-badge.low { background: var(--mint-100); color: var(--mint-600); }
+
+.empty-state {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--ink-400);
+}
+.empty-state .empty-icon { font-size: 1.8rem; margin-bottom: 0.5rem; }
+
+/* ---------- Buttons ---------- */
+.btn-bank-primary {
+  background: var(--navy-900);
+  border: none;
+  color: #fff;
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 0.65rem 1.1rem;
+  transition: background 0.15s ease;
+}
+.btn-bank-primary:hover { background: var(--navy-800); color: #fff; }
+
+.btn-bank-success {
+  background: var(--mint-600);
+  border: none;
+  color: #fff;
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 0.65rem 1.1rem;
+}
+.btn-bank-success:hover { background: #128a3e; color: #fff; }
+
+.btn-bank-outline {
+  background: transparent;
+  border: 1px solid var(--mint-600);
+  color: var(--mint-600);
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+}
+.btn-bank-outline:hover { background: var(--mint-100); }
+
+.btn-bank-danger {
+  background: #dc2626;
+  border: none;
+  color: #fff;
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 0.65rem 1.1rem;
+}
+.btn-bank-danger:hover { background: #b91c1c; color: #fff; }
+
+/* ---------- Auth Pages ---------- */
+.auth-wrapper {
+  min-height: calc(100vh - 140px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+}
+
+.auth-card {
+  background: var(--card-white);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card-hover);
+  overflow: hidden;
+  max-width: 440px;
+  width: 100%;
+}
+
+.auth-card-header {
+  background: linear-gradient(135deg, var(--navy-800), var(--navy-950));
+  padding: 1.75rem 2rem 1.5rem;
+  color: #fff;
+  text-align: center;
+}
+
+.auth-card-header .auth-mark {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--gold-500), var(--gold-400));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 0.75rem;
+  font-weight: 800;
+  color: var(--navy-950);
+  font-size: 1.2rem;
+}
+
+.auth-card-header h4 {
+  color: #fff;
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.auth-card-header p {
+  color: rgba(255,255,255,0.6);
+  font-size: 0.85rem;
+  margin: 0.25rem 0 0;
+}
+
+.auth-card-body { padding: 2rem; }
+
+.form-label-bank {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink-600);
+  margin-bottom: 0.3rem;
+}
+
+.form-control-bank {
+  border-radius: 10px;
+  border: 1px solid var(--border-soft);
+  padding: 0.65rem 0.9rem;
+  font-size: 0.92rem;
+}
+.form-control-bank:focus {
+  border-color: var(--navy-700);
+  box-shadow: 0 0 0 3px rgba(26, 76, 138, 0.12);
+}
+
+/* ---------- Flash Messages ---------- */
+.flash-bank {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-soft);
+  background: #fff;
+  padding: 0.8rem 1rem;
+  font-size: 0.88rem;
+  box-shadow: var(--shadow-card);
+  margin-bottom: 0.6rem;
+  border-left: 4px solid var(--navy-700);
+}
+
+/* ---------- Footer ---------- */
+.footer-bank {
+  color: var(--ink-400);
+  font-size: 0.8rem;
+  text-align: center;
+  padding: 1.5rem 0;
+}
+
+/* ---------- Page Header ---------- */
+.page-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+}
+.page-subtitle {
+  color: var(--ink-600);
+  font-size: 0.9rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (max-width: 767px) {
+  .balance-stats { gap: 1.5rem; }
+  .balance-stat-value { font-size: 1.3rem; }
+}

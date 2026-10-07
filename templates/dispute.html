@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block title %}File a Dispute — Vaultic Fraud Shield{% endblock %}
+{% block content %}
+
+<div class="card-bank" style="max-width: 620px; margin: 0 auto;">
+  <div class="card-bank-header">
+    <h5>File a Dispute</h5>
+  </div>
+  <div class="card-bank-body">
+    <div class="alert-card mb-3">
+      <span class="severity-badge {{ alert.severity|lower if alert.severity else 'medium' }}">
+        {{ alert.severity or 'Medium' }}
+      </span>
+      <div class="alert-msg">{{ alert.message }}</div>
+    </div>
+
+    {% if existing %}
+      <div class="empty-state">
+        <div class="empty-icon">📋</div>
+        <p class="mb-1"><strong>Dispute already filed</strong></p>
+        <p class="mb-0" style="font-size: 0.85rem;">Status: {{ existing.status }}</p>
+        <p class="mt-2" style="font-size: 0.85rem; color: var(--ink-600);">
+          "{{ existing.reason }}"
+        </p>
+      </div>
+    {% else %}
+      <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="mb-3">
+          <label class="form-label-bank">Why are you disputing this alert?</label>
+          <textarea class="form-control form-control-bank" name="reason" rows="4"
+                    placeholder="Explain why you believe this transaction was flagged incorrectly..."
+                    required></textarea>
+        </div>
+        <button type="submit" class="btn btn-bank-primary w-100">Submit Dispute</button>
+      </form>
+    {% endif %}
+
+    <p class="text-center mt-4 mb-0">
+      <a href="{{ url_for('my_alerts') }}" style="font-size: 0.85rem;">← Back to My Alerts</a>
+    </p>
+  </div>
+</div>
+
+{% endblock %}

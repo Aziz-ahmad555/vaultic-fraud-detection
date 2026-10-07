@@ -1,0 +1,392 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard — Vaultic Fraud Shield{% endblock %}
+{% block content %}
+
+{% if just_added %}
+<div id="scoringBanner" class="card-bank mb-3" style="padding: 14px 20px; display: flex; align-items: center; gap: 10px;">
+  <span id="scoringSpinner" style="display:inline-block; width:14px; height:14px; border:2px solid #123a6b; border-top-color: transparent; border-radius:50%; animation: spin 0.8s linear infinite;"></span>
+  <span id="scoringText">Scoring your latest transaction…</span>
+</div>
+<style>
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+{% endif %}
+
+<!-- Balance Hero Card -->
+<div class="balance-card mb-4">
+  <div class="balance-eyebrow">Account Overview</div>
+  <div class="balance-name">{{ user.name }}</div>
+  <div class="balance-stats">
+    <div>
+      <div class="balance-stat-label">Total Deposits</div>
+      <div class="balance-stat-value deposit">PKR {{ "{:,.2f}".format(total_deposits) }}</div>
+    </div>
+    <div>
+      <div class="balance-stat-label">Total Withdrawals</div>
+      <div class="balance-stat-value withdraw">PKR {{ "{:,.2f}".format(total_withdraws) }}</div>
+    </div>
+    <div>
+      <div class="balance-stat-label">Net Balance</div>
+      <div class="balance-stat-value">PKR {{ "{:,.2f}".format(total_deposits - total_withdraws) }}</div>
+    </div>
+    <div>
+      <div class="balance-stat-label">Active Alerts</div>
+      <div class="balance-stat-value" style="color: {{ '#ff8a8a' if alerts|selectattr('status','equalto','Pending')|list|length > 0 else '#7ee2a8' }};">
+        {{ alerts|selectattr('status','equalto','Pending')|list|length }}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-8">
+    <div class="card-bank">
+      <div class="card-bank-header">
+        <h5>Transaction History</h5>
+        <a href="{{ url_for('add_transaction') }}" class="btn btn-bank-success btn-sm">+ Add Transaction</a>
+        <a href="{{ url_for('dashboard_report_pdf') }}" class="btn btn-bank-outline btn-sm" style="margin-left:8px;">Download Report</a>
+      </div>
+      <div class="card-bank-body">
+        <ul class="nav nav-tabs-bank mb-3" id="txnTabs" role="tablist">
+          <li class="nav-item">
+            <a class="nav-link active" id="all-tab" data-bs-toggle="tab" href="#all" role="tab">All</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" id="deposits-tab" data-bs-toggle="tab" href="#deposits" role="tab">Deposits</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" id="withdraws-tab" data-bs-toggle="tab" href="#withdraws" role="tab">Withdrawals</a>
+          </li>
+        </ul>
+
+        <div class="tab-content">
+          <div class="tab-pane fade show active" id="all" role="tabpanel">
+            {% set txns = transactions %}
+            {% include 'partials/_transactions_table.html' %}
+          </div>
+          <div class="tab-pane fade" id="deposits" role="tabpanel">
+            {% set txns = deposits %}
+            {% include 'partials/_transactions_tabled.html' %}
+          </div>
+          <div class="tab-pane fade" id="withdraws" role="tabpanel">
+            {% set txns = withdraws %}
+            {% include 'partials/_transactions_tablew.html' %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-bank mt-4">
+      <div class="card-bank-header">
+        <h5>Daily Transaction Volume</h5>
+      </div>
+      <div class="card-bank-body">
+        <canvas id="dailyChart" height="90"></canvas>
+      </div>
+    </div>
+
+    <div class="card-bank mt-4">
+      <div class="card-bank-header">
+        <h5>Deposits vs Withdrawals Over Time</h5>
+      </div>
+      <div class="card-bank-body">
+        <canvas id="depositWithdrawChart" height="90"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card-bank">
+      <div class="card-bank-header" style="flex-direction: column; align-items: stretch; gap: 8px;">
+        <h5>Fraud Alerts</h5>
+        <div class="d-flex gap-2">
+          <select id="alertStatusFilter" class="form-select form-select-sm" style="max-width: 130px;">
+            <option value="all">All statuses</option>
+            <option value="Pending">Pending</option>
+            <option value="Resolved">Resolved</option>
+          </select>
+          <select id="alertSeverityFilter" class="form-select form-select-sm" style="max-width: 130px;">
+            <option value="all">All severities</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+          </select>
+        </div>
+      </div>
+      <div class="card-bank-body">
+        {% if alerts %}
+          <div id="alertsList">
+            {% for alert in alerts %}
+              <div class="alert-card"
+                   data-status="{{ alert.status }}"
+                   data-severity="{{ alert.severity or 'Medium' }}">
+                <span class="severity-badge {{ alert.severity|lower if alert.severity else 'medium' }}">
+                  {{ alert.severity or 'Medium' }}
+                </span>
+                <div class="alert-msg">{{ alert.message }}</div>
+                <a href="{{ url_for('alert_detail', alert_id=alert.alert_id) }}" style="font-size: 0.78rem; font-weight: 600;">Review &amp; label →</a>
+                {% if alert.status == "Pending" %}
+                  <form method="post" action="{{ url_for('resolve_alert', alert_id=alert.alert_id) }}" class="mt-2">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn-bank-outline">Mark Resolved</button>
+                  </form>
+                {% else %}
+                  <span style="font-size: 0.75rem; color: var(--mint-600); font-weight: 600;">✓ Resolved</span>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+          <div id="alertsEmptyFiltered" class="empty-state" style="display: none;">
+            <div class="empty-icon">🔍</div>
+            <p class="mb-0">No alerts match this filter.</p>
+          </div>
+        {% else %}
+          <div class="empty-state">
+            <div class="empty-icon">🛡️</div>
+            <p class="mb-0">No alerts — your account looks safe.</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card-bank mt-4">
+      <div class="card-bank-header">
+        <h5>Alert Severity Breakdown</h5>
+      </div>
+      <div class="card-bank-body">
+        <canvas id="severityChart" height="180"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Chart.js must load before any script that references the Chart object -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+new Chart(document.getElementById('severityChart').getContext('2d'), {
+  type: 'doughnut',
+  data: {
+    labels: ['High', 'Medium', 'Low'],
+    datasets: [{
+      data: [
+        {{ alerts|selectattr('severity','equalto','High')|list|length }},
+        {{ alerts|selectattr('severity','equalto','Medium')|list|length }},
+        {{ alerts|selectattr('severity','equalto','Low')|list|length }}
+      ],
+      backgroundColor: ['#dc2626', '#d97706', '#16a34a']
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: true, position: 'bottom' } }
+  }
+});
+</script>
+
+<script>
+const ctx = document.getElementById('dailyChart').getContext('2d');
+const chartDates = {{ chart_dates|tojson }};
+const chartCounts = {{ chart_counts|tojson }};
+const threshold = {{ threshold|tojson }};
+
+new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: chartDates,
+    datasets: [
+      {
+        label: 'Transactions per Day',
+        data: chartCounts,
+        borderColor: '#123a6b',
+        backgroundColor: 'rgba(18, 58, 107, 0.08)',
+        fill: true,
+        tension: 0.35,
+        pointRadius: 3,
+        pointBackgroundColor: '#123a6b'
+      },
+      {
+        label: 'Anomaly Threshold',
+        data: Array(chartCounts.length).fill(threshold),
+        borderColor: '#dc2626',
+        borderDash: [6, 6],
+        pointRadius: 0,
+        fill: false
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    scales: {
+      y: {
+        beginAtZero: true,
+        grid: { color: '#e4e9f0' },
+        title: { display: true, text: 'Transaction Count' }
+      },
+      x: {
+        grid: { display: false },
+        title: { display: true, text: 'Date' }
+      }
+    },
+    plugins: {
+      legend: { display: true, position: 'bottom' },
+      tooltip: { mode: 'index', intersect: false }
+    }
+  }
+});
+</script>
+
+<script>
+// Deposits vs Withdrawals over time — built client-side from the transactions
+// already rendered on this page (deposits / withdraws lists), grouped by date.
+function groupByDate(txns) {
+  const totals = {};
+  txns.forEach(t => {
+    if (!t.timestamp) return;
+    const date = t.timestamp.split('T')[0].split(' ')[0]; // handles both ISO and space-separated formats
+    totals[date] = (totals[date] || 0) + t.amount;
+  });
+  return totals;
+}
+
+const depositTxns = [
+  {% for t in deposits %}
+  { timestamp: "{{ t.timestamp.isoformat() }}", amount: {{ t.amount }} },
+  {% endfor %}
+];
+const withdrawTxns = [
+  {% for t in withdraws %}
+  { timestamp: "{{ t.timestamp.isoformat() }}", amount: {{ t.amount }} },
+  {% endfor %}
+];
+
+const depositTotals = groupByDate(depositTxns);
+const withdrawTotals = groupByDate(withdrawTxns);
+
+const allDates = Array.from(new Set([...Object.keys(depositTotals), ...Object.keys(withdrawTotals)])).sort();
+
+const depositSeries = allDates.map(d => depositTotals[d] || 0);
+const withdrawSeries = allDates.map(d => withdrawTotals[d] || 0);
+
+new Chart(document.getElementById('depositWithdrawChart').getContext('2d'), {
+  type: 'bar',
+  data: {
+    labels: allDates,
+    datasets: [
+      {
+        label: 'Deposits',
+        data: depositSeries,
+        backgroundColor: '#16a34a',
+      },
+      {
+        label: 'Withdrawals',
+        data: withdrawSeries,
+        backgroundColor: '#dc2626',
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    scales: {
+      y: {
+        beginAtZero: true,
+        grid: { color: '#e4e9f0' },
+        title: { display: true, text: 'Amount (PKR)' }
+      },
+      x: {
+        grid: { display: false },
+        title: { display: true, text: 'Date' }
+      }
+    },
+    plugins: {
+      legend: { display: true, position: 'bottom' },
+      tooltip: { mode: 'index', intersect: false }
+    }
+  }
+});
+</script>
+
+<script>
+// Case management: simple client-side filter for the alerts list.
+// No backend route changes needed — filters what's already rendered.
+(function () {
+  const statusFilter = document.getElementById('alertStatusFilter');
+  const severityFilter = document.getElementById('alertSeverityFilter');
+  const alertCards = document.querySelectorAll('#alertsList .alert-card');
+  const emptyMsg = document.getElementById('alertsEmptyFiltered');
+
+  if (!statusFilter || !severityFilter) return; // no alerts rendered, nothing to wire up
+
+  function applyFilters() {
+    const statusVal = statusFilter.value;
+    const severityVal = severityFilter.value;
+    let visibleCount = 0;
+
+    alertCards.forEach(card => {
+      const matchesStatus = statusVal === 'all' || card.dataset.status === statusVal;
+      const matchesSeverity = severityVal === 'all' || card.dataset.severity === severityVal;
+      const show = matchesStatus && matchesSeverity;
+      card.style.display = show ? '' : 'none';
+      if (show) visibleCount++;
+    });
+
+    if (emptyMsg) {
+      emptyMsg.style.display = visibleCount === 0 ? '' : 'none';
+    }
+  }
+
+  statusFilter.addEventListener('change', applyFilters);
+  severityFilter.addEventListener('change', applyFilters);
+})();
+</script>
+
+{% if just_added %}
+<script>
+// Async scoring poll: checks /transaction_status/<id> every second until the
+// background worker (stream_worker.py) has finished scoring the transaction
+// just submitted, then updates the banner and refreshes the page so the new
+// alert (if any) and updated charts show up without the user doing anything.
+(function () {
+  const transactionId = {{ just_added|tojson }};
+  const banner = document.getElementById('scoringBanner');
+  const text = document.getElementById('scoringText');
+  const spinner = document.getElementById('scoringSpinner');
+
+  if (!transactionId || !banner) return;
+
+  let attempts = 0;
+  const maxAttempts = 30; // ~30 seconds ceiling, matches retraining worst-case
+
+  const interval = setInterval(async () => {
+    attempts++;
+    try {
+      const res = await fetch(`/transaction_status/${transactionId}`);
+      if (!res.ok) throw new Error('status check failed');
+      const data = await res.json();
+
+      if (data.scored) {
+        clearInterval(interval);
+        spinner.style.display = 'none';
+        const scoreText = (data.fraud_score !== null && data.fraud_score !== undefined)
+          ? `Score: ${data.fraud_score.toFixed(2)}`
+          : 'Scored';
+        text.textContent = `✅ Transaction scored — ${scoreText}. Refreshing…`;
+        setTimeout(() => {
+          window.location.href = "{{ url_for('dashboard') }}";
+        }, 900);
+      }
+    } catch (e) {
+      // transient network hiccup — just try again next tick
+    }
+
+    if (attempts >= maxAttempts) {
+      clearInterval(interval);
+      spinner.style.display = 'none';
+      text.textContent = 'Still scoring — refresh the page in a moment to see the result.';
+    }
+  }, 1000);
+})();
+</script>
+{% endif %}
+
+{% endblock %}
