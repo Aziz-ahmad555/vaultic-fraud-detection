@@ -15,6 +15,7 @@ __pycache__/
 
 # Runtime data: local database and per-user models trained live
 instance/**/*.db
+instance/recovery/
 models_store/user_model_*.joblib
 scoring_latency.log
 
