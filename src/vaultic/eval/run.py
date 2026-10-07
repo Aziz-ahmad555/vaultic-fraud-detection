@@ -32,6 +32,7 @@ import yaml
 
 from vaultic.data.load import load_merged
 from vaultic.data.splits import SPLITS_PATH, load_splits
+from vaultic.data.uid import UID_PATH
 from vaultic.eval.bootstrap import seed_mean_ci
 from vaultic.eval.metrics import (
     RANKING_METRICS,
@@ -44,7 +45,7 @@ from vaultic.eval.metrics import (
     precision_at_k,
 )
 from vaultic.features.pipeline import features_path
-from vaultic.features.sets import NEEDS_BASE, design_matrix
+from vaultic.features.sets import NEEDS_BASE, NEEDS_UID, design_matrix
 from vaultic.paths import MERGED_PATH, RAW_DIR, REPO_ROOT, RESEARCH_DIR, RUNS_DIR
 from vaultic.views.tabular import make_model
 
@@ -244,6 +245,11 @@ def run(
                 )
             base = pd.read_parquet(path)
             inputs.append(path)
+        elif cfg["features"] in NEEDS_UID:
+            variant = cfg.get("uid_variant", splits.uid_variant)
+            base = pd.read_parquet(UID_PATH, columns=["TransactionID", variant])
+            base = base.rename(columns={variant: "uid"})
+            inputs.append(UID_PATH)
         data_version = {p.name: _file_hash(p) for p in inputs}
         data_version["raw_dvc_md5"] = _dvc_hashes()
     else:

@@ -1,0 +1,7 @@
+id: EXP-010
+question: "B6 / E2: FYP-1 models (global XGBoost + per-user Isolation Forest + extreme-amount rule) under the temporal split"
+model:
+  name: fyp1
+features: fyp1
+seeds: [0, 1, 2, 3, 4]
+bootstrap: {n: 1000, seed: 0}

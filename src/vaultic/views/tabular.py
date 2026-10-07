@@ -36,4 +36,8 @@ def make_model(name: str, params: dict[str, Any], seed: int):
         return LGBMClassifier(
             random_state=seed, n_jobs=-1, verbose=-1, deterministic=True, **params
         )
+    if name == "fyp1":
+        from vaultic.views.fyp1 import FYP1Model
+
+        return FYP1Model(seed=seed)
     raise ValueError(f"unknown model {name!r}")

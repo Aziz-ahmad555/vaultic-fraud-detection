@@ -9,6 +9,8 @@ import pandas as pd
 NON_FEATURES = {"TransactionID", "isFraud", "TransactionDT", "day"}
 # Feature sets that include the point-in-time base features.
 NEEDS_BASE = {"raw_base", "b5"}
+# Feature sets that need the customer id (passed as `base` with a `uid` column).
+NEEDS_UID = {"fyp1"}
 
 
 def raw_columns(df: pd.DataFrame) -> list[str]:
@@ -37,8 +39,15 @@ def design_matrix(df: pd.DataFrame, base: pd.DataFrame | None, name: str) -> pd.
     raw_lr      numeric columns + one-hot ProductCD (B1)
     raw_base    raw + point-in-time base features (B5 without V-reduction)
     b5          raw with V columns reduced (experiments/configs/v_columns.yaml) + base features
+    fyp1        FYP-1's global columns + point-in-time behavioural features + uid (B6)
     """
     raw = df[raw_columns(df)]
+    if name == "fyp1":
+        from vaultic.views.fyp1 import build_fyp1_frame
+
+        if base is None or "uid" not in base:
+            raise ValueError("feature set fyp1 needs a uid column")
+        return build_fyp1_frame(df, base["uid"].set_axis(df.index))
     if name == "b5":
         from vaultic.features.vreduce import load_kept, v_columns
 

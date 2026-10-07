@@ -29,6 +29,22 @@ def test_last_time_before():
     assert np.isnan(last[0]) and last[1] == 5 and last[2] == 5 and np.isnan(last[3])
 
 
+def test_max_last_k_and_previous_value():
+    key = np.array(["a", "a", "a", "a", "b", "a"])
+    time = np.array([1, 2, 3, 3, 3, 9])
+    value = np.array([5.0, 1.0, 7.0, 2.0, 100.0, 4.0])
+    dev = np.array(["x", "y", "y", "z", "q", "x"])
+    p = PastIndex(key, time)
+    assert np.isnan(p.max_before(value, time)[0])
+    # rows 2 and 3 tie at t=3: both see only rows 0-1 (max 5); row 5 sees 5, 1, 7, 2 -> 7
+    assert p.max_before(value, time)[[2, 3, 5]].tolist() == [5.0, 5.0, 7.0]
+    s, c = p.last_k_sum_count(value, time, k=2)
+    # row 5: last two earlier rows of key a are rows 2 and 3 (7 + 2)
+    assert (s[5], c[5]) == (9.0, 2) and (s[2], c[2]) == (6.0, 2) and (s[0], c[0]) == (0.0, 0)
+    prev = p.value_before(dev, time, fill="")
+    assert prev.tolist() == ["", "x", "y", "y", "", "z"]
+
+
 def test_label_cutoff_respects_delay_and_strict_past():
     t = np.array([40 * D])
     # label from day 10 is known on day 40 with L=30 (10 + 30 <= 40); from day 10 + 1s it is not

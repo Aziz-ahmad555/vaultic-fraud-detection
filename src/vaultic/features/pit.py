@@ -54,6 +54,42 @@ class PastIndex:
         out[has_prev] = within[pos[has_prev] - 1]
         return out
 
+    def _within(self, values: np.ndarray, how: str) -> np.ndarray:
+        v = np.asarray(values, dtype=np.float64)[self.order]
+        grouped = pd.Series(v).groupby(self.codes[self.order])
+        return getattr(grouped, how)().to_numpy()
+
+    def max_before(self, values: np.ndarray, cutoff: np.ndarray) -> np.ndarray:
+        """Max of values over rows with the same key and time < cutoff (NaN if none)."""
+        running = self._within(values, "cummax")
+        pos = self._positions(cutoff)
+        has_prev = pos > self.group_start[self.codes]
+        out = np.full(len(pos), np.nan)
+        out[has_prev] = running[pos[has_prev] - 1]
+        return out
+
+    def last_k_sum_count(
+        self, values: np.ndarray, cutoff: np.ndarray, k: int
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Sum and count of the last k rows with the same key and time < cutoff."""
+        within = self._within(np.nan_to_num(np.asarray(values, dtype=np.float64)), "cumsum")
+        pos = self._positions(cutoff)
+        start = self.group_start[self.codes]
+        lo = np.maximum(pos - k, start)
+        count = pos - lo
+        upper = np.where(pos > start, within[np.maximum(pos - 1, 0)], 0.0)
+        lower = np.where(lo > start, within[np.maximum(lo - 1, 0)], 0.0)
+        return upper - lower, count
+
+    def value_before(self, values: np.ndarray, cutoff: np.ndarray, fill=None) -> np.ndarray:
+        """Value of the latest row with the same key and time < cutoff (fill if none)."""
+        v = np.asarray(values, dtype=object)[self.order]
+        pos = self._positions(cutoff)
+        has_prev = pos > self.group_start[self.codes]
+        out = np.full(len(pos), fill, dtype=object)
+        out[has_prev] = v[pos[has_prev] - 1]
+        return out
+
     def last_time_before(self, cutoff: np.ndarray) -> np.ndarray:
         """Time of the latest row with the same key and time < cutoff (NaN if none)."""
         pos = self._positions(cutoff)
