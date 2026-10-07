@@ -41,7 +41,8 @@ ARMS = ("none", "scale_pos_weight")
 MAX_TREES = 2000
 EARLY_STOPPING = 100  # rounds without a better validation PR-AUC
 CHECK_EVERY = 25  # rounds between validation PR-AUC checks (pruning and early stopping)
-STARTUP_TRIALS = 5  # trials per arm that always run to completion before pruning starts
+STARTUP_TRIALS = 10  # trials per arm that always run to completion before pruning starts
+WARMUP_ROUNDS = 200  # no trial is pruned before this many boosting rounds (D30)
 LEARNING_RATE = (0.02, 0.3)
 
 
@@ -71,6 +72,17 @@ def suggest_params_lightgbm(trial) -> dict:
         "reg_alpha": trial.suggest_float("reg_alpha", 1e-3, 10.0, log=True),
         "min_split_gain": trial.suggest_float("min_split_gain", 0.0, 1.0),
     }
+
+
+def make_pruner():
+    """The one pruner every tuned baseline uses (B3, B4, B5): median pruning, but only after
+    STARTUP_TRIALS complete trials and never before WARMUP_ROUNDS boosting rounds (reported
+    steps are tree counts), so slow, low-learning-rate trials are not cut off early."""
+    import optuna
+
+    return optuna.pruners.MedianPruner(
+        n_startup_trials=STARTUP_TRIALS, n_warmup_steps=WARMUP_ROUNDS
+    )
 
 
 class ValidationMonitor:
@@ -194,7 +206,7 @@ def run_arm(
         storage=storage,
         direction="maximize",
         sampler=optuna.samplers.TPESampler(seed=seed),
-        pruner=optuna.pruners.MedianPruner(n_startup_trials=STARTUP_TRIALS, n_warmup_steps=0),
+        pruner=make_pruner(),
         load_if_exists=True,
     )
     weight = float((y_tr == 0).sum() / max((y_tr == 1).sum(), 1))
@@ -348,7 +360,8 @@ def _tune_boosting(args, X_tr, y_tr, X_va, y_va) -> None:
         "",
         f"Generated {date.today().isoformat()} by `python -m vaultic.eval.tune`. Validation period "
         "only; validation PR-AUC is checked every "
-        f"{CHECK_EVERY} rounds for median pruning and early stopping (max {MAX_TREES} trees, "
+        f"{CHECK_EVERY} rounds for median pruning (after {STARTUP_TRIALS} complete trials, never "
+        f"before {WARMUP_ROUNDS} rounds) and early stopping (max {MAX_TREES} trees, "
         f"stop after {EARLY_STOPPING} rounds without improvement; learning rate "
         f"{LEARNING_RATE[0]}–{LEARNING_RATE[1]}). Same sampler seed and budget per arm. "
         f"Device: {resolve_device(args.device)} (GPU and CPU results can differ slightly).",
