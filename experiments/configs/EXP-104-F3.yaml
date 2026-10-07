@@ -1,0 +1,11 @@
+# Appendix version of EXP-104 (roadmap E4) with F3 logistic-regression stacking (missing views
+# filled with a constant) instead of the primary F4 LightGBM stacking (research/decisions.md D41).
+id: EXP-104-F3
+roadmap: E4
+appendix: true
+status: planned
+needs:
+  - "everything EXP-104 needs; F3 stacking in the harness"
+extends: EXP-104.yaml
+question: "E4 (appendix): as EXP-104, with F3 logistic-regression stacking"
+fusion: {method: F3, missing_views: constant}

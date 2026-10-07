@@ -45,3 +45,22 @@ def test_e25_drops_only_immature_training_labels():
     cfg = _raw(Path(CONFIG_DIR) / "EXP-125.yaml")
     assert cfg["extends"] == "EXP-009.yaml" and cfg["train_label_maturity_days"] == 30
     assert "model" not in cfg and "features" not in cfg  # same model and features as B5
+
+
+APPENDIX = sorted(Path(CONFIG_DIR).glob("EXP-1[0-9][0-9]-F3.yaml"))
+
+
+def test_ablation_ladder_uses_f4_with_f3_appendix():
+    """D41: E4, E5, E8 stack with F4 (LightGBM, missing views as NaN); F3 only in appendix."""
+    assert [p.stem for p in APPENDIX] == ["EXP-104-F3", "EXP-105-F3", "EXP-108-F3"]
+    for path in APPENDIX:
+        primary = Path(CONFIG_DIR) / f"{path.stem[:-3]}.yaml"
+        assert _raw(primary)["fusion"] == {"method": "F4", "missing_views": "nan"}
+        with pytest.raises(ValueError, match="planned experiment"):
+            load_config(path)
+        from vaultic.eval.run import read_config
+
+        cfg = read_config(path)
+        assert cfg["appendix"] is True and cfg["id"] == path.stem
+        assert cfg["fusion"] == {"method": "F3", "missing_views": "constant"}
+        assert cfg["views"] == _raw(primary)["views"]  # identical apart from the fusion

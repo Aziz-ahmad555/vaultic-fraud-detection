@@ -4,7 +4,7 @@ roadmap: E8
 status: planned
 needs:
   - "anomaly view fitted on legit training rows of the full data (views/anomaly.py)"
-  - "stacking fusion in the harness"
+  - "stacking fusion in the harness (F4 LightGBM stacking, missing views as NaN)"
 question: "E8: + anomaly view vs E5 (ablation row '+ anomaly')"
 views:
   tabular: {experiment: EXP-103}
@@ -14,7 +14,7 @@ views:
     scores: [anomaly_if, anomaly_ae, anomaly_uid_if]
     per_uid_min_history: 20
     category_codes: training_period   # features/categories.py (D37)
-fusion: {method: F3}
+fusion: {method: F4, missing_views: nan}   # LightGBM stacking (D41); F3 version: EXP-108-F3.yaml (appendix)
 compare_to: [EXP-105]
 report:
   overall: [pr_auc, roc_auc, recall_at_1pct_fpr]
