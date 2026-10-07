@@ -5,7 +5,8 @@ Every feature of a transaction at time t uses only transactions with time < t; l
 features use only labels with its_time + L <= t; frequency encoders are fitted on the
 training period only and applied forward. tests/test_leakage.py checks all three.
 
-Run:  python -m vaultic.features.pipeline            (writes data/features/base_features.parquet)
+Run:  python -m vaultic.features.pipeline [--uid-variant uid]
+                                       (writes data/features/base_features_<variant>.parquet)
       python -m vaultic.features.pipeline --sample   (uses data/interim/merged_sample.parquet)
 """
 
@@ -23,7 +24,11 @@ from vaultic.data.uid import UID_PATH, build_uids
 from vaultic.features.pit import FrequencyEncoder, PastIndex, label_cutoff
 from vaultic.paths import FEATURES_DIR, INTERIM_DIR, MERGED_PATH
 
-FEATURES_PATH = FEATURES_DIR / "base_features.parquet"
+
+def features_path(uid_variant: str) -> Path:
+    return FEATURES_DIR / f"base_features_{uid_variant}.parquet"
+
+
 WINDOWS = {"1h": 3_600, "24h": 86_400, "7d": 7 * 86_400, "30d": 30 * 86_400}
 FREQ_COLUMNS = ["card1", "addr1", "P_emaildomain"]
 INPUT_COLUMNS = [
@@ -105,8 +110,10 @@ def build_features(
     return out
 
 
-def build_for_splits(df: pd.DataFrame, uids: pd.DataFrame, splits: Splits) -> pd.DataFrame:
-    uid = uids[splits.uid_variant]
+def build_for_splits(
+    df: pd.DataFrame, uids: pd.DataFrame, splits: Splits, uid_variant: str | None = None
+) -> pd.DataFrame:
+    uid = uids[uid_variant or splits.uid_variant]
     is_train = splits.train.contains(df["day"])
     encoders = fit_encoders(df[is_train], uid[is_train])
     return build_features(df, uid, encoders, splits.label_delay_days)
@@ -116,8 +123,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--sample", action="store_true", help="use merged_sample.parquet")
     parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument("--uid-variant", default=None, help="default: uid_variant in splits.yaml")
     args = parser.parse_args()
     splits = load_splits()
+    variant = args.uid_variant or splits.uid_variant
     if args.sample:
         df = load_merged(INTERIM_DIR / "merged_sample.parquet", columns=INPUT_COLUMNS)
         uids = build_uids(df)
@@ -127,8 +136,8 @@ def main() -> None:
         uids = pd.read_parquet(UID_PATH)
         if not (uids["TransactionID"].to_numpy() == df["TransactionID"].to_numpy()).all():
             raise ValueError("uids.parquet is out of date; rerun python -m vaultic.data.uid")
-        out = args.out or FEATURES_PATH
-    features = build_for_splits(df, uids, splits)
+        out = args.out or features_path(variant)
+    features = build_for_splits(df, uids, splits, variant)
     out.parent.mkdir(parents=True, exist_ok=True)
     features.to_parquet(out, index=False)
     print(f"wrote {out}: {len(features):,} rows x {features.shape[1] - 1} features")

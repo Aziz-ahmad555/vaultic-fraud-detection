@@ -35,7 +35,7 @@ Items 1-9 are done; item 10 (Phase 2A baselines) is running. Nothing has been pu
   | `uid_card` | 85.7% | 74.8% | — |
 
 - 46.4% of transactions are cold start under `uid2`.
-- EXP-000 (XGBoost, raw + base features, seed 0): test PR-AUC **0.6453** (95% CI 0.6286–0.6620). This is one harness run, not a tuned baseline.
+- EXP-000 (XGBoost, raw + base features, seed 0): test PR-AUC 0.6453 (95% CI 0.6286–0.6620). **EXPLORATORY, not for papers:** it was computed on the test period before the validation-only rule existed. The same applies to the EXP-001, EXP-003 and EXP-005 results in the experiment log.
 
 ## Phase 1 exit gate
 

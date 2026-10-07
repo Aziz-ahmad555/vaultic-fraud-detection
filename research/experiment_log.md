@@ -2,7 +2,12 @@
 
 One line per experiment, filled in from harness output only (`python -m vaultic.eval.run experiments/configs/EXP-XXX.yaml`).
 
+Development runs report validation metrics only. Test-period metrics come only from `--final` runs, marked **FINAL**. Rows marked EXPLORATORY were run before this rule and must not be used in papers.
+
 | ID | Date | Question | Result (from metrics.json) | Conclusion |
 |---|---|---|---|---|
-| EXP-000 | 2026-10-07 | Phase 1 exit gate: does the same config + seed give identical metrics twice? | PR-AUC 0.6453 ± 0.0000 (95% CI 0.6286–0.6620), 1 seeds, run `experiments/runs/EXP-000/20261007-170822-685400` | — |
-| EXP-000 | 2026-10-07 | Phase 1 exit gate: does the same config + seed give identical metrics twice? | PR-AUC 0.6453 ± 0.0000 (95% CI 0.6286–0.6620), 1 seeds, run `experiments/runs/EXP-000/20261007-171231-833707` | Identical to the previous run: harness is reproducible (exit gate passed) |
+| EXP-000 | 2026-10-07 | Phase 1 exit gate: does the same config + seed give identical metrics twice? | EXPLORATORY test-period result from before the validation-only rule (not for papers): PR-AUC 0.6453 ± 0.0000 (95% CI 0.6286–0.6620), 1 seeds, run `experiments/runs/EXP-000/20261007-170822-685400` | — |
+| EXP-000 | 2026-10-07 | Phase 1 exit gate: does the same config + seed give identical metrics twice? | EXPLORATORY test-period result from before the validation-only rule (not for papers): PR-AUC 0.6453 ± 0.0000 (95% CI 0.6286–0.6620), 1 seeds, run `experiments/runs/EXP-000/20261007-171231-833707` | Identical to the previous run: harness is reproducible (exit gate passed) |
+| EXP-001 | 2026-10-07 | B1 logistic regression: raw numeric + one-hot ProductCD, scaled (untuned) | EXPLORATORY test-period result from before the validation-only rule (not for papers): PR-AUC 0.1799 ± 0.0000 (95% CI 0.1702–0.1898), 5 seeds, run `experiments/runs/EXP-001/20261007-180548-232460` | — |
+| EXP-003 | 2026-10-07 | B3 XGBoost on raw columns, no feature engineering (untuned) | EXPLORATORY test-period result from before the validation-only rule (not for papers): PR-AUC 0.5287 ± 0.0000 (95% CI 0.5114–0.5462), 5 seeds, run `experiments/runs/EXP-003/20261007-182603-613676` | — |
+| EXP-005 | 2026-10-07 | B5 PARTIAL: XGBoost on raw + point-in-time base features; no V-reduction, untuned | EXPLORATORY test-period result from before the validation-only rule (not for papers): PR-AUC 0.6453 ± 0.0000 (95% CI 0.6286–0.6620), 5 seeds, run `experiments/runs/EXP-005/20261007-184554-349262` | — |
