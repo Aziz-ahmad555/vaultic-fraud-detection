@@ -64,3 +64,25 @@ def test_anomaly_view_columns_and_determinism():
     assert list(a.columns) == ["anomaly_if", "anomaly_ae", "anomaly_uid_if"]
     assert a.equals(b)
     assert a.notna().all().all()
+
+
+def test_anomaly_view_encodes_categoricals_with_the_shared_encoder():
+    import pandas as pd
+
+    from vaultic.features.categories import CategoryEncoder
+
+    rng = np.random.default_rng(0)
+    n = 300
+    frame = pd.DataFrame(
+        {"amt": rng.normal(size=n), "ProductCD": rng.choice(["W", "C"], n).astype(object)}
+    )
+    y = np.zeros(n, dtype=int)
+    uid = np.array([f"u{i % 5}" for i in range(n)])
+    with pytest.raises(ValueError, match="CategoryEncoder"):
+        AnomalyView(max_iter=20).fit(frame, y, uid)
+    enc = CategoryEncoder().fit(frame, columns=("ProductCD",))
+    view = AnomalyView(max_iter=20, encoder=enc).fit(frame, y, uid)
+    new = frame.iloc[:3].copy()
+    new.loc[new.index[0], "ProductCD"] = "R"  # unseen in training -> code 1, still scored
+    out = view.transform(new, uid[:3], np.full(3, 30))
+    assert out.notna().all().all()

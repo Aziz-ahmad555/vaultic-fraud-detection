@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from vaultic.features.categories import CategoryEncoder
 from vaultic.features.sequences import build_sequences
 
 
@@ -25,13 +26,17 @@ def _example():
     return df, uid
 
 
+# fitted on the first 6 rows ("training period"): C, H, W seen -> codes 2, 3, 4
+ENC = CategoryEncoder().fit(_example()[0].iloc[:6], columns=("ProductCD",))
+
+
 def _amounts(log_amounts):
     return np.expm1(log_amounts.astype(np.float64)).round(3).tolist()
 
 
 def test_left_padding_mask_and_order():
     df, uid = _example()
-    s = build_sequences(df, uid, n_steps=4, extra_columns=("C1",))
+    s = build_sequences(df, uid, ENC, n_steps=4, extra_columns=("C1",))
     # find the row of uid A at t=1000 (amount 39): its strictly earlier A rows are
     # t=0 (9), 100 (99), 400 (19), 400 (29)
     r = int(np.flatnonzero((df["TransactionAmt"] == 39.0).to_numpy())[0])
@@ -43,7 +48,7 @@ def test_left_padding_mask_and_order():
 
 def test_most_recent_steps_kept_when_history_is_long():
     df, uid = _example()
-    s = build_sequences(df, uid, n_steps=2)
+    s = build_sequences(df, uid, ENC, n_steps=2)
     r = int(np.flatnonzero((df["TransactionAmt"] == 49.0).to_numpy())[0])  # A at t=2000
     # A's earlier rows: 9, 99, 19, 29, 39 -> the last two are 29/19 (t=400) and 39 (t=1000)
     assert _amounts(s.values[r, :, 0])[1] == 39.0
@@ -52,7 +57,7 @@ def test_most_recent_steps_kept_when_history_is_long():
 
 def test_gap_to_next_step_and_to_the_transaction():
     df, uid = _example()
-    s = build_sequences(df, uid, n_steps=3)
+    s = build_sequences(df, uid, ENC, n_steps=3)
     r = int(np.flatnonzero((df["TransactionAmt"] == 2.0).to_numpy())[0])  # B at t=900
     # B's history before 900: t=300 (1.0) and t=400 (4.0) -> left-padded to 3 steps
     assert s.mask[r].tolist() == [False, True, True]
@@ -63,7 +68,7 @@ def test_gap_to_next_step_and_to_the_transaction():
 
 def test_ties_are_not_history_and_no_history_is_masked():
     df, uid = _example()
-    s = build_sequences(df, uid, n_steps=3)
+    s = build_sequences(df, uid, ENC, n_steps=3)
     first_a = int(np.flatnonzero((df["TransactionAmt"] == 9.0).to_numpy())[0])
     assert not s.has_history[first_a] and not s.mask[first_a].any()
     # the two A rows at t=400 do not see each other: each has exactly t=0 and t=100 before it
@@ -75,10 +80,10 @@ def test_ties_are_not_history_and_no_history_is_masked():
 
 def test_product_codes_missing_values_and_row_subset():
     df, uid = _example()
-    s = build_sequences(df, uid, n_steps=3, extra_columns=("C1",), rows=np.array([8, 9]))
+    s = build_sequences(df, uid, ENC, n_steps=3, extra_columns=("C1",), rows=np.array([8, 9]))
     assert s.values.shape == (2, 3, 4) and s.rows.tolist() == [8, 9]
     assert s.values.dtype == np.float32
-    full = build_sequences(df, uid, n_steps=3, extra_columns=("C1",))
+    full = build_sequences(df, uid, ENC, n_steps=3, extra_columns=("C1",))
     assert np.array_equal(full.values[[8, 9]], s.values)
     # the missing ProductCD and the missing C1 (both on the 29.0 row) become 0
     r = int(np.flatnonzero((df["TransactionAmt"] == 39.0).to_numpy())[0])
@@ -101,7 +106,8 @@ def test_future_rows_never_change_a_sequence():
         }
     )
     uid = pd.Series(rng.choice([f"u{i}" for i in range(15)], n))
-    base = build_sequences(df, uid, n_steps=10, extra_columns=("C1",))
+    enc = CategoryEncoder().fit(df.iloc[: n // 4], columns=("ProductCD",))
+    base = build_sequences(df, uid, enc, n_steps=10, extra_columns=("C1",))
     cut = int(df["TransactionDT"].iloc[n // 2])
     keep = (df["TransactionDT"] <= cut).to_numpy()
     changed = df.copy()
@@ -109,15 +115,31 @@ def test_future_rows_never_change_a_sequence():
     changed.loc[future, "TransactionAmt"] = 1e6
     changed.loc[future, "ProductCD"] = "S"
     changed.loc[future, "C1"] = -7.0
-    after = build_sequences(changed, uid, n_steps=10, extra_columns=("C1",))
+    after = build_sequences(changed, uid, enc, n_steps=10, extra_columns=("C1",))
     assert np.array_equal(base.values[keep], after.values[keep])
-    truncated = build_sequences(df[keep], uid[keep], n_steps=10, extra_columns=("C1",))
+    truncated = build_sequences(df[keep], uid[keep], enc, n_steps=10, extra_columns=("C1",))
     assert np.array_equal(base.mask[keep], truncated.mask)
-    # product codes are category codes of the whole frame, so compare the other features
-    assert np.array_equal(base.values[keep][..., [0, 1, 3]], truncated.values[..., [0, 1, 3]])
+    assert np.array_equal(base.values[keep], truncated.values)  # one shared encoder
 
 
 def test_rejects_unsorted_rows():
     df, uid = _example()
     with pytest.raises(ValueError, match="sorted"):
-        build_sequences(df.iloc[::-1], uid.iloc[::-1])
+        build_sequences(df.iloc[::-1], uid.iloc[::-1], ENC)
+
+
+def test_product_codes_come_from_the_training_encoder():
+    df, uid = _example()
+    s = build_sequences(df, uid, ENC, n_steps=4)
+    r = int(np.flatnonzero((df["TransactionAmt"] == 39.0).to_numpy())[0])  # A at t=1000
+    codes = dict(zip(_amounts(s.values[r, :, 0]), s.values[r, :, 2].tolist(), strict=True))
+    assert codes == {9.0: 4.0, 99.0: 4.0, 19.0: 3.0, 29.0: 0.0}  # W, W, H, missing
+    # a category never seen in training is 1 (unknown), not a new code
+    later = df.copy()
+    later.loc[0, "ProductCD"] = "R"
+    s2 = build_sequences(later, uid, ENC, n_steps=4)
+    assert s2.values[r, 0, 2] == 1.0
+    # the same row gets the same code whether the frame is the full data or a slice
+    part = build_sequences(df.iloc[:8].reset_index(drop=True), uid.iloc[:8].reset_index(drop=True),
+                           ENC, n_steps=4)  # fmt: skip
+    assert np.array_equal(part.values[r], s.values[r])

@@ -11,6 +11,10 @@ anomalous):
 
 The autoencoder uses scikit-learn's MLPRegressor for now; it may move to PyTorch together with
 Phase 5 (research/decisions.md D35).
+
+Categorical columns are turned into codes by the shared CategoryEncoder fitted on the training
+period (features.categories, D37): pass it to AnomalyView together with DataFrame inputs, so a
+category gets the same code in training, validation and replay; unseen values become 1.
 """
 
 from __future__ import annotations
@@ -22,6 +26,8 @@ from sklearn.impute import SimpleImputer
 from sklearn.neural_network import MLPRegressor
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
+
+from vaultic.features.categories import CategoryEncoder
 
 MIN_HISTORY = 20
 
@@ -116,21 +122,42 @@ class PerUidIsolationForest:
         return raw if self.norm_ is None else self.norm_.transform(raw)
 
 
+def numeric_matrix(X, encoder: CategoryEncoder | None = None) -> np.ndarray:
+    """Model input as float: DataFrame categoricals via the shared training-period encoder."""
+    if isinstance(X, pd.DataFrame):
+        if encoder is not None:
+            X = encoder.transform(X)
+        bad = [c for c in X.columns if not pd.api.types.is_numeric_dtype(X[c])]
+        if bad:
+            raise ValueError(f"non-numeric columns need the CategoryEncoder: {bad}")
+        return X.to_numpy(dtype=float)
+    return np.asarray(X, dtype=float)
+
+
 class AnomalyView:
     """All three scores; fit on the training period only."""
 
-    def __init__(self, seed: int = 0, min_history: int = MIN_HISTORY, **ae_kwargs):
+    def __init__(
+        self,
+        seed: int = 0,
+        min_history: int = MIN_HISTORY,
+        encoder: CategoryEncoder | None = None,
+        **ae_kwargs,
+    ):
+        self.encoder = encoder
         self.global_if = GlobalIsolationForest(seed=seed)
         self.autoencoder = AutoencoderAnomaly(seed=seed, **ae_kwargs)
         self.per_uid = PerUidIsolationForest(min_history=min_history, seed=seed)
 
     def fit(self, X_train, y_train, uid_train) -> AnomalyView:
+        X_train = numeric_matrix(X_train, self.encoder)
         self.global_if.fit(X_train, y_train)
         self.autoencoder.fit(X_train, y_train)
         self.per_uid.fit(X_train, uid_train)
         return self
 
     def transform(self, X, uid, n_past) -> pd.DataFrame:
+        X = numeric_matrix(X, self.encoder)
         return pd.DataFrame(
             {
                 "anomaly_if": self.global_if.transform(X),
