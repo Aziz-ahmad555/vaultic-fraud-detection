@@ -19,6 +19,8 @@ data/raw/*
 data/interim/*
 data/features/*
 !data/*/.gitkeep
+!data/raw/*.dvc
+!data/raw/.gitignore
 *.csv
 *.parquet
 

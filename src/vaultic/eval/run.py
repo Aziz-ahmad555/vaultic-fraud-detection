@@ -44,7 +44,7 @@ from vaultic.eval.metrics import (
 )
 from vaultic.features.pipeline import FEATURES_PATH
 from vaultic.features.sets import design_matrix
-from vaultic.paths import MERGED_PATH, REPO_ROOT, RESEARCH_DIR, RUNS_DIR
+from vaultic.paths import MERGED_PATH, RAW_DIR, REPO_ROOT, RESEARCH_DIR, RUNS_DIR
 from vaultic.views.tabular import make_model
 
 PRECISION_K = 500
@@ -74,6 +74,15 @@ def _file_hash(path: Path) -> str:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()[:16]
+
+
+def _dvc_hashes() -> dict[str, str]:
+    """md5 of each raw file as recorded by DVC (data/raw/*.dvc)."""
+    hashes = {}
+    for dvc_file in sorted(RAW_DIR.glob("*.dvc")):
+        out = yaml.safe_load(dvc_file.read_text(encoding="utf-8"))["outs"][0]
+        hashes[out["path"]] = out["md5"]
+    return hashes
 
 
 def evaluate(
@@ -188,6 +197,7 @@ def run(
             p.name: _file_hash(p)
             for p in [MERGED_PATH] + ([FEATURES_PATH] if base is not None else [])
         }
+        data_version["raw_dvc_md5"] = _dvc_hashes()
     else:
         df, base = data
         data_version = {"injected": True}

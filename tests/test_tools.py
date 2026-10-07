@@ -29,6 +29,8 @@ def test_allows_code_and_examples():
                 ".env.example",
                 "src/vaultic/data/load.py",
                 "data/raw/.gitkeep",
+                "data/raw/.gitignore",
+                "data/raw/train_transaction.csv.dvc",
                 "experiments/configs/splits.yaml",
             ]
         )

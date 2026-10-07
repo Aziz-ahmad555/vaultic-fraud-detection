@@ -4,7 +4,9 @@ import re
 import sys
 
 FORBIDDEN = re.compile(
-    r"(\.(csv|parquet|db|sqlite3?|joblib|pkl|pt|pth|ckpt)$)|(^|/)\.env$|(^|/)data/raw/(?!\.gitkeep$)",
+    # data/raw may only hold .gitkeep, DVC pointer files (*.dvc) and DVC's .gitignore
+    r"(\.(csv|parquet|db|sqlite3?|joblib|pkl|pt|pth|ckpt)$)|(^|/)\.env$"
+    r"|(^|/)data/raw/(?!(\.gitkeep|\.gitignore|[^/]+\.dvc)$)",
     re.IGNORECASE,
 )
 
