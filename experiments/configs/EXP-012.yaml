@@ -1,0 +1,17 @@
+id: EXP-012
+question: B1 logistic regression, C chosen on validation from a grid of 5 values
+model:
+  name: logistic_regression
+  params:
+    C: 10.0
+    max_iter: 1000
+features: raw_lr
+seeds:
+- 0
+- 1
+- 2
+- 3
+- 4
+bootstrap:
+  n: 1000
+  seed: 0

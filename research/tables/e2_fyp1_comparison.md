@@ -1,15 +1,15 @@
 # E2: FYP-1's original evaluation vs. the temporal split
 
-Generated 2026-10-07 by `python -m vaultic.reports.e2_fyp1`.
+Generated 2026-10-08 by `python -m vaultic.reports.e2_fyp1`.
 
 - **FYP-1 original:** FYP-1's saved XGBoost on its saved random 80/20 test split (118,108 rows), FYP-1's 0.5 threshold. FYP-1 never stored these numbers; they are reproduced from its own artifacts.
-- **B6 temporal:** the same method ported to the time-based split (global XGBoost + per-user Isolation Forest + 5x-max rule, fitted on days 1-120), validation period, days 128-150 (development run; final pending), run `20261007-202216-735428`.
+- **B6 temporal:** the same method ported to the time-based split (global XGBoost + per-user Isolation Forest + 5x-max rule, fitted on days 1-120), test period, days 151-182 (--final), run `20261008-212952-637972`.
 
 | metric | FYP-1 original (random split) | B6 temporal |
 |---|---|---|
-| PR-AUC | 0.5418 | 0.3675 |
-| ROC-AUC | 0.9121 | 0.8548 |
-| Recall@1%FPR | 0.4549 | 0.3198 |
+| PR-AUC | 0.5418 | 0.4216 |
+| ROC-AUC | 0.9121 | 0.8525 |
+| Recall@1%FPR | 0.4549 | 0.3747 |
 | Precision@0.5 | 0.1958 | — |
 | Recall@0.5 | 0.7619 | — |
 | F1@0.5 | 0.3115 | — |

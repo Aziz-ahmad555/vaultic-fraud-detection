@@ -1,0 +1,12 @@
+# Table 1: baselines
+
+Generated 2026-10-08 by `python -m vaultic.reports.table1 --mode final` from harness runs. Metrics on the **test period (FINAL runs)**: mean ± std over seeds; PR-AUC also shows the 95% bootstrap CI (1,000 resamples). Do not edit by hand.
+
+| Baseline | Model | Features | Tuning | Experiment | PR-AUC | ROC-AUC | Recall@1%FPR | Recall@5%FPR | Precision@500 | Brier | ECE | F1 (val threshold) | Cost ($) | Seeds | Training s/seed | Inference ms/1k | Run |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| B1 | Logistic regression | raw numeric + one-hot ProductCD | grid over C (5 values), validation | EXP-012 | 0.1827 ± 0.0000 [0.1731, 0.1926] | 0.8188 ± 0.0000 | 0.0000 ± 0.0000 | 0.4382 ± 0.0000 | 0.0060 ± 0.0000 | 0.0388 ± 0.0000 | 0.0167 ± 0.0000 | 0.3236 ± 0.0000 | 381126.4010 ± 0.0000 | 5 | 512 | 25.1 | 20261008-185520-644386 |
+| B2 | Random forest | raw | untuned reference (defaults) | EXP-002 | 0.4579 ± 0.0034 [0.4412, 0.4751] | 0.8837 ± 0.0010 | 0.3508 ± 0.0114 | 0.5486 ± 0.0035 | 0.9584 ± 0.0050 | 0.0250 ± 0.0002 | 0.0102 ± 0.0003 | 0.3891 ± 0.0009 | 317433.0424 ± 2207.7601 | 5 | 110 | 17.9 | 20261008-191428-988293 |
+| B3 | XGBoost | raw, no engineering | Optuna, 50 trials (2 weighting arms x 25), median pruning | EXP-011 | 0.5570 ± 0.0016 [0.5403, 0.5739] | 0.9034 ± 0.0009 | 0.4789 ± 0.0032 | 0.6599 ± 0.0046 | 0.9416 ± 0.0034 | 0.0216 ± 0.0001 | 0.0106 ± 0.0001 | 0.5320 ± 0.0078 | 251834.9994 ± 3443.7903 | 5 | 391 | 40.6 | 20261008-195820-697730 |
+| B4 | LightGBM | raw | Optuna, 50 trials (2 weighting arms x 25), median pruning | EXP-013 | 0.5611 ± 0.0019 [0.5443, 0.5775] | 0.9011 ± 0.0024 | 0.4808 ± 0.0049 | 0.6678 ± 0.0032 | 0.9428 ± 0.0092 | 0.0225 ± 0.0001 | 0.0189 ± 0.0001 | 0.5438 ± 0.0052 | 255279.1554 ± 2451.1867 | 5 | 210 | 107.2 | 20261008-204121-543487 |
+| B5 | XGBoost | raw + V-reduction + point-in-time uid features | Optuna, 50 trials (2 weighting arms x 25), median pruning | EXP-009 | 0.6494 ± 0.0017 [0.6331, 0.6659] | 0.9378 ± 0.0007 | 0.5696 ± 0.0019 | 0.7283 ± 0.0047 | 0.9644 ± 0.0041 | 0.0184 ± 0.0001 | 0.0082 ± 0.0001 | 0.6198 ± 0.0037 | 222178.1542 ± 4353.0398 | 5 | 178 | 30.3 | 20261008-211052-888539 |
+| B6 | FYP-1 XGBoost + per-user Isolation Forest | FYP-1 columns + behavioural | none: FYP-1 settings as built | EXP-010 | 0.4216 ± 0.0000 [0.4028, 0.4397] | 0.8525 ± 0.0000 | 0.3747 ± 0.0000 | 0.5319 ± 0.0000 | 0.8620 ± 0.0000 | 0.1022 ± 0.0000 | 0.2334 ± 0.0000 | 0.4473 ± 0.0000 | 373320.4480 ± 9.4868 | 5 | 111 | 27.9 | 20261008-212952-637972 |
