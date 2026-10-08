@@ -34,6 +34,9 @@ and communities use a daily snapshot of the `window_days` days before the transa
 so they never see the current day. In A and B they use one static graph of all transactions.
 Email domains and addresses are hubs (one domain or region links most transactions), so
 components and communities use only uid, card and device (research/decisions.md D34).
+In C the group's known-fraud rate counts every earlier transaction on the group's nodes whose
+label is known by the day's start, not only the window's (D50): with L = 30 and a 30-day
+window, no window label would ever be known.
 """
 
 from __future__ import annotations
@@ -234,16 +237,32 @@ def _partitions(tx_nodes: pd.DataFrame, seed: int):
     return nodes, {"comp": _components(nodes, a, b), "comm": _communities(nodes, a, b, w, seed)}
 
 
-def _apply_partitions(out, query_nodes, tx_nodes, nodes, partitions, known_fn, exclude_self):
+def _first_node_in(label_nodes: pd.DataFrame, nodes: pd.Index) -> pd.DataFrame:
+    """One row per transaction: its first entity node (card first) that is in the graph."""
+    inside = label_nodes[label_nodes["node"].isin(nodes)]
+    return inside.drop_duplicates("row").set_index("row")
+
+
+def _apply_partitions(out, query_nodes, tx_nodes, nodes, partitions, known_fn, exclude_self,
+                      label_nodes=None):  # fmt: skip
     """Write group statistics for the query rows. Each transaction is counted once, in the
     group of its first entity node (its card): its nodes share one component, but may fall in
-    different Louvain communities."""
+    different Louvain communities.
+
+    Transactions and uids are counted on the graph's own transactions (tx_nodes). Known labels
+    and frauds are counted on `label_nodes` when given (setting C: every past transaction on
+    the group's nodes, D50), else on tx_nodes."""
     per_tx = tx_nodes.drop_duplicates("row").set_index("row")
     known = known_fn(per_tx)
+    per_label = None if label_nodes is None else _first_node_in(label_nodes, nodes)
     for name, labels in partitions.items():
         node_group = pd.Series(labels, index=nodes)
         group_of_tx = node_group.reindex(per_tx["node"]).set_axis(per_tx.index)
         stats = _group_stats(group_of_tx, per_tx, known)
+        if per_label is not None:
+            group_of_label = node_group.reindex(per_label["node"]).set_axis(per_label.index)
+            lab = _group_stats(group_of_label, per_label, known_fn(per_label))
+            stats[["known", "fraud"]] = lab[["known", "fraud"]].reindex(stats.index).fillna(0.0)
         union = _query_union(query_nodes, node_group, stats)
         if union.empty:
             continue
@@ -285,8 +304,12 @@ def _structure_features(edges, n_rows, setting, delay_days, window_days, seed):
                 continue
             nodes, parts = _partitions(tx_nodes, seed)
             query = struct[struct["row"].isin(day[day == d].index)]
+            # structure from the window; known labels from ALL earlier transactions on the
+            # group's nodes (the label rule still applies: known by the day's start, D50)
+            past = struct[struct["row"].isin(day[day < d].index)]
             _apply_partitions(out, query, tx_nodes, nodes, parts,
-                              _known_by_day_start(d, delay_days), exclude_self=False)  # fmt: skip
+                              _known_by_day_start(d, delay_days), exclude_self=False,
+                              label_nodes=past)  # fmt: skip
         return out
 
     nodes, parts = _partitions(struct, seed)  # A and B: one static graph of all transactions

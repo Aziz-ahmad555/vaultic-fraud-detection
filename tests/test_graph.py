@@ -213,3 +213,52 @@ def test_setting_a_does_use_the_future():
     keep = (df["TransactionDT"] <= t).to_numpy()
     cut = build_graph_features(df[keep], uid[keep], "A", label_delay_days=3)
     assert not full[keep].reset_index(drop=True).equals(cut.reset_index(drop=True))
+
+
+def test_setting_c_group_fraud_rates_exist_with_a_30_day_delay_and_window():
+    """D50: with L = 30 and a 30-day window no window transaction's label is known, so the
+    group rates were always NaN. Known labels now come from all earlier transactions on the
+    group's nodes; a non-trivial share of rows must get a value."""
+    rng = np.random.default_rng(1)
+    n = 3000
+    time = np.sort(rng.integers(0, 150 * D, n))
+    users = rng.integers(0, 80, n)
+    cards = users % 40  # pairs of customers share a card: stable groups over time
+    df = pd.DataFrame(
+        {
+            "TransactionID": np.arange(n),
+            "TransactionDT": time,
+            "isFraud": (rng.random(n) < 0.1).astype(int),
+            "card1": cards.astype(float), "card2": 1.0, "card3": 1.0, "card4": "visa",
+            "card5": 1.0, "card6": "debit", "P_emaildomain": "a.com", "R_emaildomain": None,
+            "addr1": np.nan, "addr2": np.nan, "DeviceInfo": None, "DeviceType": None,
+        }
+    )  # fmt: skip
+    f = build_graph_features(
+        df, pd.Series(users.astype(str)), "C", label_delay_days=30, window_days=30
+    )
+    late = (df["TransactionDT"] >= 70 * D).to_numpy()  # enough history for labels to mature
+    for col in ("g_comp_fraud_rate", "g_comm_fraud_rate"):
+        share = f.loc[late, col].notna().mean()
+        assert share > 0.5, (col, share)
+        assert f[col].dropna().between(0, 1).all()
+    assert (
+        f.loc[df["TransactionDT"] < 30 * D, "g_comp_fraud_rate"].isna().all()
+    )  # nothing known yet
+
+
+@pytest.mark.parametrize("q", [0.4, 0.8])
+def test_setting_c_l30_truncation_with_long_label_history(q):
+    """Labels from outside the window: still nothing from after t - L, nothing from the future."""
+    df, uid = _synthetic(n=800)
+    df["TransactionDT"] = np.sort(np.random.default_rng(3).integers(0, 120 * D, len(df)))
+    full = build_graph_features(df, uid, "C", label_delay_days=30, window_days=30)
+    t = int(df["TransactionDT"].quantile(q))
+    keep = (df["TransactionDT"] <= t).to_numpy()
+    cut = build_graph_features(df[keep], uid[keep], "C", label_delay_days=30, window_days=30)
+    pd.testing.assert_frame_equal(full[keep], cut, check_exact=True)
+    flipped = df.copy()
+    recent = (df["TransactionDT"] > t - 30 * D).to_numpy()
+    flipped.loc[recent, "isFraud"] = 1 - flipped.loc[recent, "isFraud"]
+    again = build_graph_features(flipped, uid, "C", label_delay_days=30, window_days=30)
+    pd.testing.assert_frame_equal(full[keep], again[keep], check_exact=True)
