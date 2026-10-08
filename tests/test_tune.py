@@ -119,3 +119,34 @@ def test_trial_reports_every_check_and_returns_the_best():
     steps = [s for s, _ in reported]
     assert steps == list(range(25, steps[-1] + 1, 25))
     assert score == max(v for _, v in reported) and (trees, score) in reported
+
+
+def _study_with_finished_trials(n_finished, steps=range(25, 401, 25)):
+    from vaultic.eval.tune import make_pruner
+
+    study = optuna.create_study(direction="maximize", pruner=make_pruner())
+    for _ in range(n_finished):
+        t = study.ask()
+        for step in steps:
+            t.report(0.9, step)
+        study.tell(t, 0.9)
+    return study
+
+
+def test_no_pruning_before_200_rounds():
+    study = _study_with_finished_trials(10)
+    slow = study.ask()  # a slow learner, far below the median at every check
+    decisions = {}
+    for step in range(25, 401, 25):
+        slow.report(0.1, step)
+        decisions[step] = slow.should_prune()
+    assert not any(v for s, v in decisions.items() if s < 200)
+    assert bool(decisions[200])  # Optuna returns numpy.bool_
+
+
+def test_no_pruning_before_ten_finished_trials():
+    study = _study_with_finished_trials(9)
+    trial = study.ask()
+    for step in range(25, 401, 25):
+        trial.report(0.1, step)
+        assert not trial.should_prune()
