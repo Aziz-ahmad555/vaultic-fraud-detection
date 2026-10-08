@@ -15,7 +15,8 @@ with t_step <= t_hold <= t_block. Without conformal sets only EL and d are used.
 Cost model (roadmap Phase 13): missed fraud amount + C_FP x false positives + C_rev x reviews,
 C_FP = $10, C_rev = $5. How each action enters it (research/decisions.md D43):
   Allow, Monitor  fraud is missed (its amount); legit costs nothing
-  Step-up         a simulated OTP costing c_step (default = C_rev) for every customer asked;
+  Step-up         a simulated OTP costing c_step (default $0.50: SMS + support overhead, not
+                  a human review; D46) for every customer asked;
                   fraud is stopped with probability step_up_success_rate (default 0.9) and
                   missed otherwise; a legit customer also bears legit_step_up_friction
                   (default $1) (D45)
@@ -42,13 +43,9 @@ ALLOW, MONITOR, STEP_UP, HOLD, BLOCK = range(5)
 class CostModel:
     c_fp: float = 10.0
     c_rev: float = 5.0
-    c_step: float | None = None  # None: same as c_rev
+    c_step: float = 0.50  # per-OTP operational cost: SMS + support overhead (D46)
     step_up_success_rate: float = 0.9  # share of fraud a step-up stops (D45)
     legit_step_up_friction: float = 1.0  # cost to a legit customer asked to step up (D45)
-
-    @property
-    def step(self) -> float:
-        return self.c_rev if self.c_step is None else self.c_step
 
     def per_action(self, y: np.ndarray, amount: np.ndarray) -> np.ndarray:
         """(n, 5) cost of taking each action for each transaction."""
@@ -58,7 +55,7 @@ class CostModel:
             [
                 missed,  # allow
                 missed,  # monitor
-                self.step
+                self.c_step
                 + (1 - self.step_up_success_rate) * missed
                 + (1 - y) * self.legit_step_up_friction,  # step-up
                 np.full(len(y), self.c_rev),  # hold
@@ -186,18 +183,21 @@ def cost_sensitivity(
     c_fp_values=(2, 5, 10, 20, 50),
     success_rates=(0.7, 0.9, 1.0),
     frictions=(0.0, 1.0, 5.0),
+    c_step_values=(0.10, 0.50, 2.00),
     **kwargs,
 ) -> list[dict]:
     """Roadmap 13 sensitivity: re-choose thresholds on validation for every combination of
-    C_FP ($2-$50), step-up success rate and legit step-up friction (D45)."""
+    C_FP ($2-$50), step-up success rate, legit step-up friction (D45) and per-OTP cost (D46)."""
     base = kwargs.pop("cost", DEFAULT_COST)
     out = []
     for c_fp in c_fp_values:
         for rate in success_rates:
             for friction in frictions:
-                cost = CostModel(c_fp, base.c_rev, base.c_step, rate, friction)
-                th, info = choose_thresholds(p, amount, y, cost=cost, **kwargs)
-                out.append({"c_fp": c_fp, "step_up_success_rate": rate,
-                            "legit_step_up_friction": friction, "thresholds": asdict(th),
-                            "validation_cost": info["validation_cost"]})  # fmt: skip
+                for c_step in c_step_values:
+                    cost = CostModel(c_fp, base.c_rev, c_step, rate, friction)
+                    th, info = choose_thresholds(p, amount, y, cost=cost, **kwargs)
+                    out.append({"c_fp": c_fp, "step_up_success_rate": rate,
+                                "legit_step_up_friction": friction, "c_step": c_step,
+                                "thresholds": asdict(th),
+                                "validation_cost": info["validation_cost"]})  # fmt: skip
     return out

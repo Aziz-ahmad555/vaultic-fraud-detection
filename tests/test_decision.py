@@ -56,15 +56,16 @@ def test_costs_by_hand():
     y = np.array([1, 0, 1, 0, 1, 0, 1, 0, 0, 0])
     amount = np.array([200, 50, 80, 70, 500, 30, 40, 20, 10, 60.0])
     action = np.array([ALLOW, ALLOW, MONITOR, MONITOR, STEP_UP, STEP_UP, HOLD, HOLD, BLOCK, BLOCK])
-    perfect = CostModel(step_up_success_rate=1.0, legit_step_up_friction=0.0)
+    perfect = CostModel(c_step=5.0, step_up_success_rate=1.0, legit_step_up_friction=0.0)
     # missed 200 + 80; step-ups 2 x 5; holds 2 x 5; blocks 2 x 5 + 2 FP x 10
     assert total_cost(action, y, amount, perfect) == 200 + 80 + 10 + 10 + 10 + 20
     b = breakdown(action, y, amount, perfect)
     assert b["missed_fraud_value"] == 280 and b["missed_fraud_count"] == 2
     assert b["false_positives"] == 2 and b["reviews"] == 4 and b["total_cost"] == 330
-    # defaults (D45): step-up stops 90% of fraud, a legit customer bears $1 friction
-    # step-ups: 2 x 5 OTP + 10% of the 500 fraud missed + $1 for the legit one
-    assert total_cost(action, y, amount) == pytest.approx(280 + 10 + 50 + 1 + 10 + 30)
+    # defaults (D45, D46): an OTP costs $0.50, step-up stops 90% of fraud, a legit customer
+    # bears $1 friction. step-ups: 2 x 0.50 + 10% of the 500 fraud missed + $1 for the legit one
+    assert CostModel().c_step == 0.50
+    assert total_cost(action, y, amount) == pytest.approx(280 + 1 + 50 + 1 + 10 + 30)
     b = breakdown(action, y, amount)
     assert b["missed_fraud_value"] == pytest.approx(330) and b["missed_fraud_count"] == 2.1
     assert b["legit_step_ups"] == 1
@@ -121,7 +122,7 @@ def test_validation_only_api_and_fixed_thresholds_on_new_data():
 def test_cost_sensitivity_blocks_less_as_false_positives_get_dearer():
     p, amount, y = _validation(seed=5)
     out = cost_sensitivity(p, amount, y, c_fp_values=(2, 50), success_rates=(0.9,),
-                           frictions=(1.0,), grid_size=8)  # fmt: skip
+                           frictions=(1.0,), c_step_values=(0.5,), grid_size=8)  # fmt: skip
     assert [o["c_fp"] for o in out] == [2, 50]
     cheap, dear = (Thresholds(**o["thresholds"]) for o in out)
     blocks = [int((decide(p, amount, t) == BLOCK).sum()) for t in (cheap, dear)]
@@ -131,7 +132,7 @@ def test_cost_sensitivity_blocks_less_as_false_positives_get_dearer():
 def test_sensitivity_sweeps_step_up_success_and_friction():
     p, amount, y = _validation(seed=6, n=1500)
     out = cost_sensitivity(p, amount, y, c_fp_values=(10,), success_rates=(0.5, 1.0),
-                           frictions=(0.0, 20.0), grid_size=6)  # fmt: skip
+                           frictions=(0.0, 20.0), c_step_values=(0.5,), grid_size=6)  # fmt: skip
     combos = {(o["step_up_success_rate"], o["legit_step_up_friction"]) for o in out}
     assert combos == {(0.5, 0.0), (0.5, 20.0), (1.0, 0.0), (1.0, 20.0)}
     step_ups = {}
@@ -142,3 +143,13 @@ def test_sensitivity_sweeps_step_up_success_and_friction():
     # dearer friction or a weaker step-up never makes the engine step up more customers
     assert step_ups[(1.0, 20.0)] <= step_ups[(1.0, 0.0)]
     assert step_ups[(0.5, 0.0)] <= step_ups[(1.0, 0.0)]
+
+
+def test_sensitivity_sweeps_the_otp_cost():
+    p, amount, y = _validation(seed=7, n=1500)
+    out = cost_sensitivity(p, amount, y, c_fp_values=(10,), success_rates=(0.9,),
+                           frictions=(1.0,), grid_size=6)  # fmt: skip
+    assert [o["c_step"] for o in out] == [0.10, 0.50, 2.00]  # default sweep (D46)
+    step_ups = [int((decide(p, amount, Thresholds(**o["thresholds"])) == STEP_UP).sum())
+                for o in out]  # fmt: skip
+    assert step_ups[2] <= step_ups[0]  # a dearer OTP never means more step-ups
