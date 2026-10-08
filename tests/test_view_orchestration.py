@@ -19,6 +19,7 @@ from vaultic.views.orchestrate import (
     CONTEXT,
     VIEWS,
     SupervisedView,
+    calibrate_views,
     has_graph_evidence,
     has_history,
     mvaf_inputs,
@@ -134,8 +135,7 @@ def dev_table():
 def test_table_layout_and_missing_views(dev_table):
     df, features, table = dev_table
     expected = ["TransactionID", "TransactionDT", "day", "fold", "role", "split", "label",
-                *[f"p_{v}" for v in VIEWS], *CONTEXT,
-                *[c for v in VIEWS for c in (f"m_{v}", f"c_{v}")], "disagreement"]  # fmt: skip
+                *[f"raw_{v}" for v in VIEWS], *CONTEXT, *[f"m_{v}" for v in VIEWS]]  # fmt: skip
     assert sorted(table.columns) == sorted(expected)
     assert set(table["split"]) == {"validation"} and set(table["role"]) == {
         "gate_train",
@@ -144,19 +144,43 @@ def test_table_layout_and_missing_views(dev_table):
     assert set(table.loc[table["role"] == "calibrate", "day"]) <= set(range(144, 151))  # D53
     assert table["day"].between(128, 150).all()  # development: no test-period rows at all
     rows = features.loc[SPLITS.validation.contains(df["day"].to_numpy())].reset_index(drop=True)
-    assert np.array_equal(np.isnan(table["p_behavioral"]), ~has_history(rows))
-    assert np.array_equal(np.isnan(table["p_graph"]), ~has_graph_evidence(rows))
-    assert table["p_tabular"].notna().all()
-    assert table["p_temporal"].isna().all() and (table["m_temporal"] == 0).all()  # not given
-    assert table["p_anomaly"].isna().all()
-    mask, _, conf, dis = view_inputs(table[[f"p_{v}" for v in VIEWS]].to_numpy())
+    assert np.array_equal(np.isnan(table["raw_behavioral"]), ~has_history(rows))
+    assert np.array_equal(np.isnan(table["raw_graph"]), ~has_graph_evidence(rows))
+    assert table["raw_tabular"].notna().all()
+    assert table["raw_temporal"].isna().all() and (table["m_temporal"] == 0).all()  # not given
+    assert table["raw_anomaly"].isna().all()
+    assert not table.attrs.get("calibrated")  # c_* and disagreement only after calibration (D56)
+
+
+def test_calibration_uses_only_the_calibrate_tail_and_feeds_confidence(dev_table):
+    """D56: p_* are calibrated on calibrate rows only; c_* and disagreement come from them."""
+    df, features, table = dev_table
+    cal, info = calibrate_views(table)
+    assert set(info) == {"tabular", "behavioral", "graph"}  # temporal / anomaly not given
+    assert cal["p_temporal"].isna().all() and (cal["c_temporal"] == 0).all()
+    mask, _, conf, dis = view_inputs(cal[[f"p_{v}" for v in VIEWS]].to_numpy())
     assert np.array_equal(table[[f"m_{v}" for v in VIEWS]].to_numpy() == 1, mask)
-    assert np.allclose(table[[f"c_{v}" for v in VIEWS]].to_numpy(), conf)
-    assert np.allclose(table["disagreement"], dis)
+    assert np.array_equal(mask, cal[[f"m_{v}" for v in VIEWS]].to_numpy() == 1)
+    assert np.allclose(cal[[f"c_{v}" for v in VIEWS]].to_numpy(), conf)
+    assert np.allclose(cal["disagreement"], dis)
+    _, _, raw_conf, raw_dis = view_inputs(cal[[f"raw_{v}" for v in VIEWS]].to_numpy())
+    assert not np.allclose(raw_dis, dis)  # raw-score disagreement would differ
+    # labels outside the calibrate tail never reach the calibrators
+    flipped = table.copy()
+    outside = (flipped["role"] != "calibrate").to_numpy()
+    flipped.loc[outside, "label"] = 1 - flipped.loc[outside, "label"]
+    again, _ = calibrate_views(flipped)
+    assert np.allclose(again[[f"p_{v}" for v in VIEWS]].to_numpy(), cal[[f"p_{v}" for v in VIEWS]].to_numpy(),
+                       equal_nan=True)  # fmt: skip
+    with pytest.raises(ValueError, match="calibrate rows"):
+        calibrate_views(table[table["role"] != "calibrate"])
 
 
 def test_table_feeds_mvaf(dev_table):
     _, _, table = dev_table
+    with pytest.raises(ValueError, match="not calibrated"):
+        mvaf_inputs(table, role="gate_train")
+    table, _ = calibrate_views(table)
     views, ctx, y = mvaf_inputs(table, role="gate_train")
     n_gate = int((table["role"] == "gate_train").sum())
     assert views.shape == (n_gate, 5) and ctx.shape == (n_gate, len(CONTEXT))
@@ -213,7 +237,7 @@ def test_external_view_is_joined_and_checked(dev_table):
     ext = table[["TransactionID", "fold"]].assign(p_temporal=0.3)
     ext.loc[ext.index[:10], "p_temporal"] = np.nan  # masked rows stay masked
     out = view_table(df, features, _views(), plan, _encoder(df), SPLITS, {"temporal": ext})
-    assert out["p_temporal"].isna().sum() == 10 and (out["m_temporal"] == 0).sum() == 10
+    assert out["raw_temporal"].isna().sum() == 10 and (out["m_temporal"] == 0).sum() == 10
     with pytest.raises(ValueError, match="missing predictions"):
         view_table(df, features, _views(), plan, _encoder(df), SPLITS, {"temporal": ext.iloc[5:]})
     with pytest.raises(ValueError, match="not in the plan"):
@@ -254,8 +278,8 @@ def test_end_to_end_across_venvs(tmp_path, dev_table):
     ext = pd.read_parquet(tmp_path / "p_temporal.parquet")
     out = view_table(df, features, _views(), plan, _encoder(df), SPLITS, {"temporal": ext})
     no_history = out["ctx_hist_n_past"].to_numpy() == 0
-    assert np.array_equal(out["p_temporal"].isna().to_numpy(), no_history)
-    assert out.loc[~no_history, "p_temporal"].between(0, 1).all()
+    assert np.array_equal(out["raw_temporal"].isna().to_numpy(), no_history)
+    assert out.loc[~no_history, "raw_temporal"].between(0, 1).all()
     assert sys.executable != str(TORCH_PY)  # the assembling side really is another venv
 
 
@@ -265,7 +289,7 @@ def test_anomaly_view_scores_every_row_and_stays_label_free_inside():
     df, features, _ = _synthetic(n=3000, n_uids=60)
     view = AnomalyScoreView(["amt", "V1"], max_iter=30)
     table = view_table(df, features, {"anomaly": view}, fixed_plan(SPLITS), _encoder(df), SPLITS)
-    assert table["p_anomaly"].between(0, 1).all()  # global scores exist for every row
+    assert table["raw_anomaly"].between(0, 1).all()  # global scores exist for every row
     train = SPLITS.train.contains(df["day"].to_numpy())
     y = df["isFraud"].to_numpy()[train]
     assert view.view_.global_if.n_fit_ == int((y == 0).sum())  # anomaly models: legit rows only

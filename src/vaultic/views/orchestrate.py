@@ -4,23 +4,24 @@ For every fold of a plan (views/plan.py) each view is trained on the fold's trai
 predicts the fold's later block; the result is one table, one row per predicted transaction:
 
   TransactionID, TransactionDT, day, fold, role, split, label
-  p_<view>     fraud probability of each view, NaN where the view is missing (rule 11)
+  raw_<view>   the view model's own fraud probability, NaN where the view is missing (rule 11)
   m_<view>     availability mask (1 / 0)
-  c_<view>     confidence |2p - 1| (0 where missing)
-  disagreement std of the available probabilities (0 with fewer than two)
   ctx_*        context for the gate: log amount, history length, has_identity, ProductCD code
                (shared training-period encoder, D37), relative hour
 
-for the five views tabular, behavioral, temporal, graph, anomaly. mask / confidence /
-disagreement use exactly MVAF's definitions (fusion.mvaf.view_inputs).
+for the five views tabular, behavioral, temporal, graph, anomaly. `calibrate_views` then fits
+one calibrator per view on the calibrate-tail rows only (D53) and adds, for every row,
+  p_<view>     calibrated probability (NaN where missing)
+  c_<view>     confidence |2p - 1| from the CALIBRATED p (0 where missing)
+  disagreement std of the available CALIBRATED probabilities (0 with fewer than two)
+using exactly MVAF's definitions (fusion.mvaf.view_inputs). Confidence and disagreement are
+never computed from raw scores, whose scales differ between views (D56).
 
 Views that need another environment (the GRU in .venv-torch) are external: they run as a
 separate step (views/temporal_step.py) that writes a parquet file of TransactionID, fold,
 p_<view>, which `view_table` joins. A view that is neither given nor external is missing for
 every row and says so (all NaN, mask 0).
 
-View probabilities are the views' own model outputs; per-view calibration is Phase 8 and
-happens on top of this table.
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from sklearn.linear_model import LogisticRegression
 
 from vaultic.features.categories import CategoryEncoder
 from vaultic.fusion.mvaf import view_inputs
+from vaultic.trust.calibration import choose_calibrator
 from vaultic.views.plan import Fold
 
 VIEWS = ("tabular", "behavioral", "temporal", "graph", "anomaly")
@@ -195,10 +197,10 @@ def view_table(
         if splits is not None:
             part.insert(5, "split", splits.assign(day[pr]))
         for name in VIEWS:
-            part[f"p_{name}"] = np.nan
+            part[f"raw_{name}"] = np.nan
         for name, view in views.items():
             view.fit(features.loc[tr].reset_index(drop=True), y[tr])
-            part[f"p_{name}"] = view.predict(features.loc[pr].reset_index(drop=True))
+            part[f"raw_{name}"] = view.predict(features.loc[pr].reset_index(drop=True))
         parts.append(pd.concat([part, ctx.loc[pr].reset_index(drop=True)], axis=1))
     table = pd.concat(parts, ignore_index=True)
 
@@ -208,19 +210,57 @@ def view_table(
         joined = table[["TransactionID", "fold"]].merge(
             ext[["TransactionID", "fold", col]], on=["TransactionID", "fold"], how="left"
         )
-        table[col] = joined[col].to_numpy()
+        table[f"raw_{name}"] = joined[col].to_numpy()
 
-    probs = table[[f"p_{v}" for v in VIEWS]].to_numpy(dtype=float)
-    mask, _, confidence, disagreement = view_inputs(probs)
-    for j, name in enumerate(VIEWS):
-        table[f"m_{name}"] = mask[:, j].astype(np.int8)
-        table[f"c_{name}"] = confidence[:, j]
-    table["disagreement"] = disagreement
+    for name in VIEWS:
+        table[f"m_{name}"] = table[f"raw_{name}"].notna().astype(np.int8)
     return table
+
+
+def calibrate_views(table: pd.DataFrame, folds: int = 5) -> tuple[pd.DataFrame, dict]:
+    """Calibrated p_<view>, then c_<view> and disagreement from them (D56).
+
+    One calibrator per view (Platt or isotonic, chosen by out-of-fold ECE as in D29) fitted ONLY
+    on calibrate-role rows where the view is available, applied to every row. A view missing on
+    every row stays missing; a view with too few calibrate rows or one class there raises."""
+    out = table.copy()
+    cal = out["role"] == "calibrate"
+    if not cal.any():
+        raise ValueError("no calibrate rows: the plan needs splits.yaml's calibrate tail (D53)")
+    info = {}
+    for name in VIEWS:
+        raw = out[f"raw_{name}"].to_numpy(dtype=float)
+        p = np.full(len(out), np.nan)
+        avail = ~np.isnan(raw)
+        if avail.any():
+            fit_rows = cal.to_numpy() & avail
+            y = out.loc[fit_rows, "label"].to_numpy()
+            if fit_rows.sum() < 2 * folds or len(np.unique(y)) < 2:
+                raise ValueError(
+                    f"cannot calibrate view {name}: needs both classes among enough calibrate rows"
+                )
+            calibrator, report = choose_calibrator(y, raw[fit_rows], folds=folds)
+            p[avail] = calibrator.predict(raw[avail])
+            info[name] = report
+        out[f"p_{name}"] = p
+    mask, _, confidence, disagreement = view_inputs(
+        out[[f"p_{v}" for v in VIEWS]].to_numpy(dtype=float)
+    )
+    for j, name in enumerate(VIEWS):
+        out[f"c_{name}"] = confidence[:, j]
+    out["disagreement"] = disagreement
+    out.attrs["calibrated"] = True
+    return out, info
+
+
+def require_calibrated(table: pd.DataFrame) -> None:
+    if not table.attrs.get("calibrated", False):
+        raise ValueError("view table is not calibrated: run calibrate_views first (D56)")
 
 
 def mvaf_inputs(table: pd.DataFrame, role: str | None = None) -> tuple:
     """(views, context, y) arrays for MVAF / the fusion baselines, optionally for one role."""
+    require_calibrated(table)
     t = table if role is None else table[table["role"] == role]
     views = t[[f"p_{v}" for v in VIEWS]].to_numpy(dtype=float)
     return views, t[list(CONTEXT)].to_numpy(dtype=float), t["label"].to_numpy()

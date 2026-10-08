@@ -6,7 +6,7 @@ import pytest
 from vaultic.data.splits import load_splits
 from vaultic.fusion.baselines import make_fusion
 from vaultic.fusion.data import fit_all, fusion_split
-from vaultic.views.orchestrate import view_table
+from vaultic.views.orchestrate import calibrate_views, view_table
 from vaultic.views.plan import fixed_plan, plan_from_json, plan_to_json, rolling_plan
 
 SPLITS = load_splits()
@@ -35,7 +35,10 @@ def table():
     from test_view_orchestration import _encoder, _synthetic, _views
 
     df, features, _ = _synthetic()
-    return view_table(df, features, _views(), rolling_plan(SPLITS), _encoder(df), SPLITS)
+    raw = view_table(df, features, _views(), rolling_plan(SPLITS), _encoder(df), SPLITS)
+    with pytest.raises(ValueError, match="not calibrated"):
+        fusion_split(raw)
+    return calibrate_views(raw)[0]
 
 
 def test_view_table_roles_and_fusion_split(table):
@@ -78,5 +81,6 @@ def test_every_fusion_method_gets_exactly_the_same_rows(table):
 
 def test_inner_split_needs_two_days(table):
     one_day = table[table["day"] == table["day"].min()]
+    one_day.attrs["calibrated"] = True
     with pytest.raises(ValueError, match="two days"):
         fusion_split(one_day)

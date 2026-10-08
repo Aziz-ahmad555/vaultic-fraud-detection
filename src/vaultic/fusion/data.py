@@ -20,7 +20,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from vaultic.views.orchestrate import CONTEXT, VIEWS
+from vaultic.views.orchestrate import CONTEXT, VIEWS, require_calibrated
 
 
 @dataclass(frozen=True)
@@ -56,6 +56,7 @@ def _rows(t: pd.DataFrame) -> Rows:
 
 def fusion_split(table: pd.DataFrame, tune_fraction: float = 0.2) -> FusionSplit:
     """Split the view table by role; the tune rows are the latest whole days of gate_train."""
+    require_calibrated(table)  # p_* must be calibrated views (D56)
     if not 0 < tune_fraction < 1:
         raise ValueError("tune_fraction must be in (0, 1)")
     gate = table[table["role"] == "gate_train"]
