@@ -4,7 +4,12 @@ Run:  python -m vaultic.reports.table1 --mode final         (test metrics, for p
       python -m vaultic.reports.table1 --mode development   (validation metrics)
 
 Writes research/tables/table1_<mode>.md and .csv. Each row uses the latest run of its
-experiment in that mode; rows without such a run are shown as "not run".
+experiment in that mode, or the run named by the row's `run:` key (e.g. the original B1 shown
+next to its re-run); rows without such a run are shown as "not run".
+
+Recall@1%FPR, Recall@5%FPR and Precision@500 are recomputed per seed from each run's saved
+predictions with the current metric code (D49 fixed their tie handling); every other metric
+comes from the run's metrics.json (D61).
 """
 
 from __future__ import annotations
@@ -32,6 +37,30 @@ METRIC_COLUMNS = [
     ("ece", "ECE"),
 ]
 FINAL_ONLY = [("f1_at_val_threshold", "F1 (val threshold)"), ("cost_at_val_threshold", "Cost ($)")]
+RECOMPUTED = ("recall_at_1pct_fpr", "recall_at_5pct_fpr", "precision_at_500")
+
+
+def recompute_from_predictions(run_dir: Path, period: str) -> dict[str, dict]:
+    """Per-seed values of the D49-affected metrics from predictions.parquet (mean and std)."""
+    from vaultic.eval.metrics import precision_at_k, recall_at_fpr
+
+    funcs = {
+        "recall_at_1pct_fpr": lambda y, s: recall_at_fpr(y, s, 0.01),
+        "recall_at_5pct_fpr": lambda y, s: recall_at_fpr(y, s, 0.05),
+        "precision_at_500": lambda y, s: precision_at_k(y, s, 500),
+    }
+    path = run_dir / "predictions.parquet"
+    if not path.exists():  # nothing saved to recompute from: keep the stored values
+        return {}
+    preds = pd.read_parquet(path)
+    part = preds[preds["split"] == period]
+    y = part["label"].to_numpy()
+    seeds = [c for c in part.columns if c.startswith("score_seed")]
+    out = {}
+    for key, f in funcs.items():
+        values = [f(y, part[c].to_numpy()) for c in seeds]
+        out[key] = {"mean": float(np.mean(values)), "std": float(np.std(values))}
+    return out
 
 
 def latest_run(experiment: str, mode: str, runs_dir: Path = RUNS_DIR) -> Path | None:
@@ -64,14 +93,21 @@ def build_table(spec: dict, mode: str, runs_dir: Path = RUNS_DIR) -> pd.DataFram
             "Tuning": row["tuning"],
             "Experiment": row["experiment"],
         }
-        run_dir = latest_run(row["experiment"], mode, runs_dir)
+        pinned = row.get("run")
+        run_dir = (
+            (runs_dir / row["experiment"] / pinned)
+            if pinned
+            else latest_run(row["experiment"], mode, runs_dir)
+        )
+        if pinned and not (run_dir / "metrics.json").exists():
+            raise FileNotFoundError(f"pinned run {pinned} of {row['experiment']} not found")
         if run_dir is None:
             out.update({label: "not run" for _, label in metric_cols})
             out.update({"Seeds": "", "Training s/seed": "", "Inference ms/1k": "", "Run": ""})
         else:
             result = json.loads((run_dir / "metrics.json").read_text(encoding="utf-8"))
             info = json.loads((run_dir / "run_info.json").read_text(encoding="utf-8"))
-            metrics = result[period]
+            metrics = {**result[period], **recompute_from_predictions(run_dir, period)}
             for key, label in metric_cols:
                 out[label] = _fmt(metrics[key], ci=(key == "pr_auc")) if key in metrics else ""
             timing = info.get("per_seed_timing", [])
@@ -94,7 +130,9 @@ def to_markdown(table: pd.DataFrame, mode: str) -> str:
         "",
         f"Generated {date.today().isoformat()} by `python -m vaultic.reports.table1 --mode {mode}` "
         f"from harness runs. Metrics on the **{period}**: mean ± std over seeds; PR-AUC also "
-        "shows the 95% bootstrap CI (1,000 resamples). Do not edit by hand.",
+        "shows the 95% bootstrap CI (1,000 resamples). Recall@1%FPR, Recall@5%FPR and "
+        "Precision@500 are recomputed from each run's saved predictions with the D49 metric "
+        "fixes. Do not edit by hand.",
         "",
         "| " + " | ".join(table.columns) + " |",
         "|" + "---|" * len(table.columns),

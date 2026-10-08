@@ -1,8 +1,9 @@
 # Table 1 (baselines). Each row points at an experiment config; the table uses the latest
 # run of that experiment in the requested mode (final -> test metrics, development ->
-# validation metrics). Generate with: python -m vaultic.reports.table1 --mode final
+# validation metrics); a row with `run:` pins that run instead (D61). Generate with: python -m vaultic.reports.table1 --mode final
 rows:
   - {baseline: B1, experiment: EXP-012, model: Logistic regression, features: "raw numeric + one-hot ProductCD", tuning: "grid over C (5 values), validation"}
+  - {baseline: "B1 (original)", experiment: EXP-012, run: "20261008-185520-644386", model: "Logistic regression, unclipped, lbfgs not converged (1000 iterations)", features: "raw numeric + one-hot ProductCD", tuning: "grid over C (5 values), validation; superseded by the D61 re-run"}
   - {baseline: B2, experiment: EXP-002, model: Random forest, features: raw, tuning: "untuned reference (defaults)"}
   - {baseline: B3, experiment: EXP-011, model: XGBoost, features: "raw, no engineering", tuning: "Optuna, 50 trials (2 weighting arms x 25), median pruning"}
   - {baseline: B4, experiment: EXP-013, model: LightGBM, features: raw, tuning: "Optuna, 50 trials (2 weighting arms x 25), median pruning"}

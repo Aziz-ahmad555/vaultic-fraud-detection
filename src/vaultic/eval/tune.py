@@ -180,18 +180,34 @@ MODELS = {
 }
 
 
+# B1 as redefined in D61: clip to training quantiles, then standardise; lbfgs gets enough
+# iterations to converge (convergence is recorded per C, never silenced)
+LR_FIXED = {"max_iter": 5000, "clip_quantiles": [0.001, 0.999]}
+
+
 def grid_logistic_regression(X_tr, y_tr, X_va, y_va, grid_c) -> list[dict]:
     """B1: one model per C (lbfgs is deterministic, so one seed suffices)."""
+    import warnings
+
+    from sklearn.exceptions import ConvergenceWarning
+
     from vaultic.views.tabular import make_model
 
     rows = []
     for c in grid_c:
         started = time.perf_counter()
-        model = make_model("logistic_regression", {"C": c, "max_iter": 1000}, seed=0)
-        model.fit(X_tr, y_tr)
+        model = make_model("logistic_regression", {"C": c, **LR_FIXED}, seed=0)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", ConvergenceWarning)
+            model.fit(X_tr, y_tr)
+        converged = not any(issubclass(w.category, ConvergenceWarning) for w in caught)
         score = pr_auc(y_va, model.predict_proba(X_va)[:, 1])
-        rows.append({"C": c, "val PR-AUC": score, "seconds": time.perf_counter() - started})
-        print(f"[B1 grid] C={c}: val PR-AUC {score:.4f}")
+        n_iter = int(model[-1].n_iter_[0])
+        rows.append({"C": c, "val PR-AUC": score, "seconds": time.perf_counter() - started,
+                     "iterations": n_iter, "converged": converged})  # fmt: skip
+        print(
+            f"[B1 grid] C={c}: val PR-AUC {score:.4f}, {n_iter} iterations, converged {converged}"
+        )
     return rows
 
 
@@ -283,7 +299,7 @@ def _tune_logistic_regression(args, X_tr, y_tr, X_va, y_va) -> None:
         f"{args.name} logistic regression, C chosen on validation from a grid of "
         f"{len(rows)} values",
         "logistic_regression",
-        {"C": best["C"], "max_iter": 1000},
+        {"C": best["C"], **LR_FIXED},
         args.features,
     )
     lines = [
@@ -291,11 +307,13 @@ def _tune_logistic_regression(args, X_tr, y_tr, X_va, y_va) -> None:
         "",
         f"Generated {date.today().isoformat()} by `python -m vaultic.eval.tune`. Grid over the "
         "inverse regularisation strength C, one fit per value (lbfgs is deterministic), scored "
-        "on the validation period only.",
+        "on the validation period only. Model as redefined in D61: median imputation, clipping "
+        "to the training 0.1%/99.9% quantiles, standardisation, lbfgs with up to 5000 iterations.",
         "",
-        "| C | val PR-AUC | seconds |",
-        "|---|---|---|",
-        *[f"| {r['C']:g} | {r['val PR-AUC']:.4f} | {r['seconds']:.0f} |" for r in rows],
+        "| C | val PR-AUC | seconds | iterations | converged |",
+        "|---|---|---|---|---|",
+        *[f"| {r['C']:g} | {r['val PR-AUC']:.4f} | {r['seconds']:.0f} | {r['iterations']} | "
+          f"{'yes' if r['converged'] else '**no**'} |" for r in rows],  # fmt: skip
         "",
         f"Chosen: **C = {best['C']:g}**. Config: `experiments/configs/{args.config_id}.yaml`.",
         "",

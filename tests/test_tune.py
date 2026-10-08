@@ -150,3 +150,16 @@ def test_no_pruning_before_ten_finished_trials():
     for step in range(25, 401, 25):
         trial.report(0.1, step)
         assert not trial.should_prune()
+
+
+def test_b1_grid_reports_convergence_and_writes_the_redefined_model():
+    """D61: the grid records iterations and convergence for every C."""
+    from vaultic.eval.tune import LR_FIXED, grid_logistic_regression
+
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(600, 4))
+    y = (X[:, 0] + rng.normal(0, 1, 600) > 1).astype(int)
+    rows = grid_logistic_regression(X[:400], y[:400], X[400:], y[400:], [0.1, 1.0])
+    assert [r["C"] for r in rows] == [0.1, 1.0]
+    assert all(r["converged"] and 0 < r["iterations"] <= LR_FIXED["max_iter"] for r in rows)
+    assert LR_FIXED == {"max_iter": 5000, "clip_quantiles": [0.001, 0.999]}

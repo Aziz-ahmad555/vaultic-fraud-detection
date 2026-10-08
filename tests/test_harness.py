@@ -240,3 +240,33 @@ def test_drop_features_removes_a_feature_and_rejects_unknown_names(tmp_path):
     path.write_text(yaml.safe_dump(cfg))
     with pytest.raises(ValueError, match="no_such_column"):
         _run(tmp_path, cfg=path, runs="bad")
+
+
+def test_quantile_clipper_uses_training_quantiles_only():
+    """D61, by hand: quantiles 0.25 / 0.75 of the training column [0, 1, 2, 3, 4] are 1 and 3."""
+    from vaultic.views.tabular import QuantileClipper, make_model
+
+    train = np.array([[0.0], [1.0], [2.0], [3.0], [4.0]])
+    clip = QuantileClipper(0.25, 0.75).fit(train)
+    assert clip.transform(np.array([[-100.0], [2.5], [1e9]])).ravel().tolist() == [1.0, 2.5, 3.0]
+    model = make_model(
+        "logistic_regression", {"C": 1.0, "max_iter": 200, "clip_quantiles": [0.01, 0.99]}, seed=0
+    )
+    assert [type(s).__name__ for s in model] == [
+        "SimpleImputer",
+        "QuantileClipper",
+        "StandardScaler",
+        "LogisticRegression",
+    ]
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(300, 2))
+    y = (X[:, 0] > 0).astype(int)
+    model.fit(X, y)
+    extreme = np.array([[1e6, 0.0]])  # far outside training: the logit stays finite
+    assert model.decision_function(extreme)[0] == pytest.approx(
+        model.decision_function(np.array([[X[:, 0].max(), 0.0]]))[0], abs=0.5
+    )
+    plain = make_model("logistic_regression", {"C": 1.0}, seed=0)
+    assert "QuantileClipper" not in [
+        type(s).__name__ for s in plain
+    ]  # unchanged without the option
