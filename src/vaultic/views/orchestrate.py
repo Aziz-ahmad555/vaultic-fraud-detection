@@ -47,10 +47,15 @@ def has_history(frame: pd.DataFrame) -> np.ndarray:
     return frame["hist_n_past"].to_numpy(dtype=float) > 0
 
 
-def has_graph_edges(frame: pd.DataFrame) -> np.ndarray:
-    """Graph view: some entity of the transaction was seen in an earlier transaction."""
-    cols = [c for c in frame.columns if c.startswith("g_deg_tx_")]
-    return (frame[cols].fillna(0).to_numpy(dtype=float) > 0).any(axis=1)
+def has_graph_evidence(frame: pd.DataFrame) -> np.ndarray:
+    """Graph view: a non-hub card or device of the transaction was used by another uid before t
+    (g_shared_nonhub > 0; hub threshold fitted on the training period, D52). An entity seen
+    before only by the same customer, or only hubs, is not relational evidence."""
+    if "g_shared_nonhub" not in frame:
+        raise ValueError(
+            "graph availability needs g_shared_nonhub: build graph features with hub_thresholds"
+        )
+    return frame["g_shared_nonhub"].fillna(0).to_numpy(dtype=float) > 0
 
 
 # ---- in-process views ------------------------------------------------------------------------

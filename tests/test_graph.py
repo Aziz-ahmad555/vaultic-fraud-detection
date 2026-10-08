@@ -20,7 +20,7 @@ import pandas as pd
 import pytest
 
 from vaultic.data.load import SECONDS_PER_DAY
-from vaultic.features.graph import EventIndex, build_graph_features
+from vaultic.features.graph import EventIndex, build_graph_features, fit_hub_thresholds
 
 D = SECONDS_PER_DAY
 NAN = np.nan
@@ -278,3 +278,39 @@ def test_setting_c_rows_without_a_group_are_missing_not_zero():
     assert (f.loc[grouped, "g_comp_uids"] >= 1).all() and f.loc[grouped, "g_comm_tx"].notna().all()
     a = build_graph_features(df, uid, "A", label_delay_days=3)
     assert a["g_comp_tx"].notna().all()  # A and B: every row is in the static graph
+
+
+def test_nonhub_shared_evidence_ignores_hubs_and_own_history():
+    """D52, by hand. Day 1: U1 on card k1 / device H; U2 on k1 / H; U3..U8 on device H only.
+    Training thresholds: card 2 uids, device 2 uids (H, with 8 uids, is a hub).
+    Day 3: U2 on k1 + H -> k1 shared with 1 other uid (U1), H is a hub -> 1.
+           U9 on new card k9 + H -> only the hub -> 0 (no relational evidence).
+           U1 again on its own card k5, no device -> 0 (own history is not shared evidence)."""
+    rows = (
+        [(1, "U1", 1.0, "H")]
+        + [(1, "U2", 1.0, "H")]
+        + [(1, f"U{i}", 50.0 + i, "H") for i in range(3, 9)]
+    )
+    rows += [(3, "U2", 1.0, "H"), (3, "U9", 9.0, "H"), (3, "U1", 5.0, None)]
+    rows += [(2, "U1", 5.0, None)]
+    rows.sort(key=lambda r: r[0])
+    df = pd.DataFrame(
+        {
+            "TransactionID": np.arange(len(rows)),
+            "TransactionDT": [d * D + i for i, (d, *_rest) in enumerate(rows)],
+            "isFraud": 0,
+            "card1": [r[2] for r in rows], "card2": 1.0, "card3": 1.0, "card4": "visa",
+            "card5": 1.0, "card6": "debit", "P_emaildomain": None, "R_emaildomain": None,
+            "addr1": np.nan, "addr2": np.nan, "DeviceInfo": [r[3] for r in rows],
+            "DeviceType": [None if r[3] is None else "mobile" for r in rows],
+        }
+    )  # fmt: skip
+    uid = pd.Series([r[1] for r in rows])
+    train = (df["TransactionDT"] < 2 * D).to_numpy()
+    th = fit_hub_thresholds(df[train], uid[train], quantile=0.5)
+    assert th == {"card": 1.0, "device": 8.0}  # median card has 1 uid; the only device has 8
+    th = {"card": 2.0, "device": 2.0}  # the threshold the docstring walks through
+    f = build_graph_features(df, uid, "C", label_delay_days=30, hub_thresholds=th)
+    day3 = (df["TransactionDT"] // D == 3).to_numpy()
+    got = dict(zip(uid[day3], f.loc[day3, "g_shared_nonhub"], strict=True))
+    assert got == {"U2": 1.0, "U9": 0.0, "U1": 0.0}

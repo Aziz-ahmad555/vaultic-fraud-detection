@@ -19,7 +19,7 @@ from vaultic.views.orchestrate import (
     CONTEXT,
     VIEWS,
     SupervisedView,
-    has_graph_edges,
+    has_graph_evidence,
     has_history,
     mvaf_inputs,
     view_table,
@@ -61,6 +61,7 @@ def _synthetic(n=6000, n_uids=150, seed=0):
             "hist_n_past": n_past,
             "amt_ratio": np.where(n_past > 0, amount / np.where(n_past > 0, mean, 1), np.nan),
             "g_deg_tx_card": card_seen.astype(float),
+            "g_shared_nonhub": np.where(card_seen > 0, rng.poisson(0.8, n), np.nan),
             "g_fraud_rate_card": np.where(card_seen > 0, rng.random(n) * 0.1, np.nan),
         }
     )
@@ -73,8 +74,8 @@ def _views(seed=0):
         "tabular": SupervisedView(["amt", "V1"], params=params, seed=seed),
         "behavioral": SupervisedView(["amt_ratio", "hist_n_past"], params=params,
                                      available=has_history, seed=seed),  # fmt: skip
-        "graph": SupervisedView(["g_deg_tx_card", "g_fraud_rate_card"], params=params,
-                                available=has_graph_edges, seed=seed),  # fmt: skip
+        "graph": SupervisedView(["g_shared_nonhub", "g_fraud_rate_card"], params=params,
+                                available=has_graph_evidence, seed=seed),  # fmt: skip
     }
 
 
@@ -140,7 +141,7 @@ def test_table_layout_and_missing_views(dev_table):
     assert table["day"].between(128, 150).all()  # development: no test-period rows at all
     rows = features.loc[SPLITS.validation.contains(df["day"].to_numpy())].reset_index(drop=True)
     assert np.array_equal(np.isnan(table["p_behavioral"]), ~has_history(rows))
-    assert np.array_equal(np.isnan(table["p_graph"]), ~has_graph_edges(rows))
+    assert np.array_equal(np.isnan(table["p_graph"]), ~has_graph_evidence(rows))
     assert table["p_tabular"].notna().all()
     assert table["p_temporal"].isna().all() and (table["m_temporal"] == 0).all()  # not given
     assert table["p_anomaly"].isna().all()

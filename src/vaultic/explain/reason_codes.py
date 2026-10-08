@@ -155,6 +155,10 @@ LIBRARY: list[tuple[str, Template]] = [
     (rf"g_fraud_rate_{_E}", Template("{v:.0%} of earlier labelled transactions on this "
                                      "{e_text} were confirmed fraud",
                                      missing="No confirmed labels yet on this {e_text}")),  # fmt: skip
+    ("g_shared_nonhub", Template("{v:.0f} other customers share this card or device "
+                                 "(shared terminals and other hubs excluded)",
+                                 when={0: "No other customer shares this card or device"},
+                                 missing="No card or device on this transaction")),  # fmt: skip
     ("g_twohop_fraud", Template("Linked through shared entities to {v:.0f} confirmed-fraud "
                                 "transactions (counted once per shared entity)")),  # fmt: skip
     ("g_comp_tx", Template("Its linked group (shared customer, card, device) has {v:.0f} "

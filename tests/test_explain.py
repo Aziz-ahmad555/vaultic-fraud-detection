@@ -94,7 +94,7 @@ def test_every_engineered_feature_has_a_template():
     names = [
         *build_features(df, uid, enc, 30).columns,
         *build_behavioral(df, uid).columns,
-        *build_graph_features(df, uid).columns,
+        *build_graph_features(df, uid, hub_thresholds={"card": 5.0, "device": 5.0}).columns,
         "anomaly_if",
         "anomaly_ae",
         "anomaly_uid_if",

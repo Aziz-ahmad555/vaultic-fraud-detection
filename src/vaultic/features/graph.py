@@ -56,6 +56,8 @@ ENTITY_COLUMNS = {
 }
 EMAIL_COLUMNS = ["P_emaildomain", "R_emaildomain"]
 FEATURE_TYPES = ("card", "email", "address", "device")
+NONHUB_TYPES = ("card", "device")  # entities that can carry relational evidence (D52)
+HUB_QUANTILE = 0.99
 COMPONENT_TYPES = ("uid", "card", "device")
 SETTINGS = ("A", "B", "C")
 
@@ -172,6 +174,35 @@ def _edge_features(edges: pd.DataFrame, setting: str, delay_days: int) -> pd.Dat
         out["n_known"] = labels.count_before(node, cutoff)
         out["fraud_known"] = labels.sum_before(node, cutoff)
     return out
+
+
+# ---- non-hub relational evidence (graph-view availability, D52) -----------------------------
+
+
+def fit_hub_thresholds(
+    df: pd.DataFrame, uid: pd.Series, quantile: float = HUB_QUANTILE
+) -> dict[str, float]:
+    """Hub threshold per entity type, fitted on TRAINING-period rows only: the `quantile` of
+    the number of distinct uids per card / device. An entity whose distinct uids before t
+    exceed it is a hub (a shared terminal, a default device string) and is not evidence."""
+    edges = build_edges(df.reset_index(drop=True), uid.reset_index(drop=True))
+    out = {}
+    for etype in NONHUB_TYPES:
+        counts = edges[edges["type"] == etype].groupby("node")["uid"].nunique()
+        out[etype] = float(np.quantile(counts, quantile)) if len(counts) else float("inf")
+    return out
+
+
+def _nonhub_shared(edges: pd.DataFrame, n_rows: int, thresholds: dict[str, float]) -> np.ndarray:
+    """Per row: most other uids sharing one of its non-hub cards / devices (NaN if the row has
+    neither a card nor a device). Uses the edge features (point-in-time in setting C)."""
+    e = edges[edges["type"].isin(NONHUB_TYPES)]
+    limit = e["type"].map(thresholds).to_numpy(dtype=float)
+    shared = np.where(
+        e["deg_uid"].to_numpy(dtype=float) <= limit, e["shared_uids"].to_numpy(dtype=float), 0.0
+    )
+    per_row = pd.Series(shared, index=e["row"].to_numpy()).groupby(level=0).max()
+    return per_row.reindex(np.arange(n_rows)).to_numpy(dtype=float)
 
 
 # ---- components and communities ------------------------------------------------------------
@@ -335,8 +366,13 @@ def build_graph_features(
     label_delay_days: int = 30,
     window_days: int = 30,
     seed: int = 0,
+    hub_thresholds: dict[str, float] | None = None,
 ) -> pd.DataFrame:
-    """Graph features for every row of df (rows sorted by TransactionDT)."""
+    """Graph features for every row of df (rows sorted by TransactionDT).
+
+    With `hub_thresholds` (fit_hub_thresholds on the training period) the output also has
+    g_shared_nonhub: other uids sharing a non-hub card or device before t; the graph view is
+    available only where it is > 0 (D52)."""
     if setting not in SETTINGS:
         raise ValueError(f"setting must be one of {SETTINGS}")
     time = df["TransactionDT"].to_numpy(dtype=np.int64)
@@ -366,6 +402,8 @@ def build_graph_features(
         with np.errstate(invalid="ignore", divide="ignore"):
             rate = agg["fraud_known"] / agg["n_known"]
         out[f"g_fraud_rate_{etype}"] = rate.where(agg["n_known"] > 0).to_numpy(dtype=float)
+    if hub_thresholds is not None:
+        out["g_shared_nonhub"] = _nonhub_shared(edges, len(df), hub_thresholds)
     entity_edges = edges[edges["type"].isin(FEATURE_TYPES)]
     out["g_twohop_fraud"] = (
         entity_edges.groupby("row")["fraud_known"].sum().reindex(np.arange(len(df)), fill_value=0)
