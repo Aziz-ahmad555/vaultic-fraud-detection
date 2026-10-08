@@ -1,4 +1,5 @@
 # Roadmap E14 (RQ4, Paper 3): retraining policies and active learning. SHOULD scope (D31).
+# This config is the all-history training window; the window is an experiment variable (D45).
 id: EXP-114
 roadmap: E14
 scope: SHOULD
@@ -8,10 +9,12 @@ needs:
 question: "E14: retraining policies P0-P3 and active-learning strategies"
 retraining:
   policies: {P0: never, P1: monthly, P2: label_free_detector, P3: label_based_detector}
-  champion_challenger:
+  champion_challenger:   # D45: significant gain, never a fixed margin
     window: most_recent_matured_labels
-    metrics: [pr_auc, cost]
-    margin: "set on validation"
+    pr_auc: {test: paired_bootstrap, alpha: 0.05, n_boot: 1000, require: "95% CI of gain > 0"}
+    cost: not_worse
+    retry: {every_days: 7, max_retries: 6}
+  train_window_days: null   # all matured history; variants EXP-114-w45 / -w60 / -w90
 active_learning:
   strategies: [random, uncertainty, disagreement, expected_loss]
   labels_per_day: [50, 100, 200, 500]

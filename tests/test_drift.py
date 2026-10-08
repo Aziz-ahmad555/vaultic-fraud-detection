@@ -257,3 +257,28 @@ def test_training_window_limits_history(drifted):
 
     simulate(drifted, ["x1", "x2"], "P1", 120, 239, spy, train_window_days=45, holdout_days=14)
     assert all(span <= 45 - 14 for span in seen)
+
+
+def test_gate_needs_a_significant_gain_not_just_a_higher_number(drifted):
+    """A challenger equal to the champion (same data, same model) never replaces it; P1 then
+    keeps the first model even though challengers tie or win by noise."""
+    calls = []
+
+    def same_model_every_time(X, y):
+        calls.append(1)
+        if len(calls) == 1:
+            same_model_every_time.first = _fit(X, y)
+        return same_model_every_time.first
+
+    result, _ = simulate(drifted, ["x1", "x2"], "P1", 120, 239, same_model_every_time,
+                         gate_n_boot=200)  # fmt: skip
+    assert result.n_attempts == 4 and result.n_retrains == 0
+    for e in result.events:
+        assert e["gain_ci_low"] <= 0 <= e["gain_ci_high"]
+
+
+def test_accepted_challengers_have_a_significant_gain(drifted):
+    result, _ = simulate(drifted, ["x1", "x2"], "P3", 120, 239, _fit, train_window_days=45)
+    accepted = [e for e in result.events if e["accepted"]]
+    assert accepted and all(e["gain_ci_low"] > 0 for e in accepted)
+    assert all(e["cost_challenger"] <= e["cost_champion"] for e in accepted)

@@ -16,8 +16,9 @@ Cost model (roadmap Phase 13): missed fraud amount + C_FP x false positives + C_
 C_FP = $10, C_rev = $5. How each action enters it (research/decisions.md D43):
   Allow, Monitor  fraud is missed (its amount); legit costs nothing
   Step-up         a simulated OTP costing c_step (default = C_rev) for every customer asked;
-                  fraud is stopped with probability step_up_catch (default 1.0), missed
-                  otherwise
+                  fraud is stopped with probability step_up_success_rate (default 0.9) and
+                  missed otherwise; a legit customer also bears legit_step_up_friction
+                  (default $1) (D45)
   Hold            one analyst review (C_rev); fraud caught; a legit transaction is released
   Block           a case is opened (C_rev); fraud caught; a legit transaction is a false
                   positive (C_FP)
@@ -42,7 +43,8 @@ class CostModel:
     c_fp: float = 10.0
     c_rev: float = 5.0
     c_step: float | None = None  # None: same as c_rev
-    step_up_catch: float = 1.0
+    step_up_success_rate: float = 0.9  # share of fraud a step-up stops (D45)
+    legit_step_up_friction: float = 1.0  # cost to a legit customer asked to step up (D45)
 
     @property
     def step(self) -> float:
@@ -56,7 +58,9 @@ class CostModel:
             [
                 missed,  # allow
                 missed,  # monitor
-                self.step + (1 - self.step_up_catch) * missed,  # step-up
+                self.step
+                + (1 - self.step_up_success_rate) * missed
+                + (1 - y) * self.legit_step_up_friction,  # step-up
                 np.full(len(y), self.c_rev),  # hold
                 self.c_rev + (1 - y) * self.c_fp,  # block
             ]
@@ -111,12 +115,13 @@ def breakdown(action, y, amount, cost: CostModel = DEFAULT_COST) -> dict:
     action, y, a = np.asarray(action), np.asarray(y), np.asarray(amount, dtype=float)
     passed = np.isin(action, [ALLOW, MONITOR])
     stepped = action == STEP_UP
-    miss = (1 - cost.step_up_catch) * stepped + passed  # expected share of each fraud missed
+    miss = (1 - cost.step_up_success_rate) * stepped + passed  # expected share missed
     out = {name: int((action == i).sum()) for i, name in enumerate(ACTIONS)}
     out.update(
         missed_fraud_value=float((a * y * miss).sum()),
         missed_fraud_count=float((y * miss).sum()),  # expected count when step-up can fail
         false_positives=int(((action == BLOCK) & (y == 0)).sum()),
+        legit_step_ups=int((stepped & (y == 0)).sum()),
         reviews=int(np.isin(action, [HOLD, BLOCK]).sum()),
         total_cost=total_cost(action, y, a, cost),
     )
@@ -174,14 +179,25 @@ def choose_thresholds(
     return th, info
 
 
-def cost_sensitivity(p, amount, y, c_fp_values=(2, 5, 10, 20, 50), **kwargs) -> list[dict]:
-    """Roadmap 13: re-choose thresholds on validation for each C_FP in $2-$50."""
+def cost_sensitivity(
+    p,
+    amount,
+    y,
+    c_fp_values=(2, 5, 10, 20, 50),
+    success_rates=(0.7, 0.9, 1.0),
+    frictions=(0.0, 1.0, 5.0),
+    **kwargs,
+) -> list[dict]:
+    """Roadmap 13 sensitivity: re-choose thresholds on validation for every combination of
+    C_FP ($2-$50), step-up success rate and legit step-up friction (D45)."""
     base = kwargs.pop("cost", DEFAULT_COST)
     out = []
     for c_fp in c_fp_values:
-        cost = CostModel(c_fp, base.c_rev, base.c_step, base.step_up_catch)
-        th, info = choose_thresholds(p, amount, y, cost=cost, **kwargs)
-        out.append(
-            {"c_fp": c_fp, "thresholds": asdict(th), "validation_cost": info["validation_cost"]}
-        )
+        for rate in success_rates:
+            for friction in frictions:
+                cost = CostModel(c_fp, base.c_rev, base.c_step, rate, friction)
+                th, info = choose_thresholds(p, amount, y, cost=cost, **kwargs)
+                out.append({"c_fp": c_fp, "step_up_success_rate": rate,
+                            "legit_step_up_friction": friction, "thresholds": asdict(th),
+                            "validation_cost": info["validation_cost"]})  # fmt: skip
     return out

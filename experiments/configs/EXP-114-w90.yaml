@@ -1,0 +1,12 @@
+# E14 variant (D45): retraining uses only the most recent 90 days of matured labels.
+id: EXP-114-w90
+roadmap: E14
+scope: SHOULD
+variant_of: EXP-114
+status: planned
+needs:
+  - "everything EXP-114 needs"
+extends: EXP-114.yaml
+question: "E14: retraining policies with a 90-day training window"
+retraining:
+  train_window_days: 90

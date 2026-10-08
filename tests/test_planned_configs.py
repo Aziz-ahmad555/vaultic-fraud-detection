@@ -64,3 +64,21 @@ def test_ablation_ladder_uses_f4_with_f3_appendix():
         assert cfg["appendix"] is True and cfg["id"] == path.stem
         assert cfg["fusion"] == {"method": "F3", "missing_views": "constant"}
         assert cfg["views"] == _raw(primary)["views"]  # identical apart from the fusion
+
+
+def test_e14_training_window_variants():
+    """D45: train_window_days is an E14 experiment variable: all history, 45, 60, 90 days."""
+    from vaultic.eval.run import read_config
+
+    base = _raw(Path(CONFIG_DIR) / "EXP-114.yaml")
+    assert base["retraining"]["train_window_days"] is None
+    assert "margin" not in str(base["retraining"]["champion_challenger"])
+    windows = {}
+    for path in sorted(Path(CONFIG_DIR).glob("EXP-114-w*.yaml")):
+        cfg = read_config(path)
+        assert cfg["status"] == "planned" and cfg["id"] == path.stem
+        assert cfg["retraining"]["policies"] == base["retraining"]["policies"]  # merged
+        windows[path.stem] = cfg["retraining"]["train_window_days"]
+        with pytest.raises(ValueError, match="planned experiment"):
+            load_config(path)
+    assert windows == {"EXP-114-w45": 45, "EXP-114-w60": 60, "EXP-114-w90": 90}

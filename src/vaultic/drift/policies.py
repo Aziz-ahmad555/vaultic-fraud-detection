@@ -15,9 +15,10 @@ Training only ever uses labels known at that moment: rows with its_time + L <= t
 the training day; with `train_window_days` only the most recent such days (default: all
 history; after a drift a long history dilutes the new pattern). Each model is fitted on those rows minus the most recent `holdout_days` of
 them; its cost threshold and reference scores come from that holdout. Champion-challenger
-gate: the challenger replaces the champion only if, on the challenger's holdout (the most
-recent matured labels, excluding any row the champion trained on), its PR-AUC is at least
-the champion's + `margin` AND its cost is not higher. A rejected challenger is logged.
+gate (D45): the challenger replaces the champion only if, on the challenger's holdout (the
+most recent matured labels, excluding any row the champion trained on), its PR-AUC gain over
+the champion is significant by a paired bootstrap (95% CI of the gain entirely above 0,
+`gate_n_boot` resamples) AND its cost is not higher. A rejected challenger is logged.
 P2/P3 wait `cooldown_days` between retraining attempts. An alarm stays pending until a
 challenger is accepted, retried every `cooldown_days` up to `max_retries` attempts: right after
 a label-based alarm few post-drift labels have matured, so the first challenger is usually
@@ -35,6 +36,7 @@ import pandas as pd
 from vaultic.data.load import SECONDS_PER_DAY
 from vaultic.drift.detectors import ADWIN
 from vaultic.drift.signals import score_drift
+from vaultic.eval.bootstrap import paired_bootstrap
 from vaultic.eval.metrics import C_FP, C_REVIEW, choose_cost_threshold, pr_auc
 from vaultic.eval.stats import cost_breakdown
 
@@ -90,7 +92,8 @@ def simulate(
     retrain_every: int = 30,
     cooldown_days: int = 7,
     holdout_days: int = 14,
-    margin: float = 0.0,
+    gate_alpha: float = 0.05,
+    gate_n_boot: int = 1000,
     c_fp: float = C_FP,
     c_rev: float = C_REVIEW,
     psi_threshold: float = 0.2,
@@ -173,12 +176,14 @@ def simulate(
         ev = {"day": d + 1, "trigger": "schedule" if policy == "P1" else "alarm",
               "gate_rows": len(gate)}  # fmt: skip
         if len(gate) and y[gate].min() != y[gate].max():
-            pr_new, pr_old = pr_auc(y[gate], score(challenger, gate)), pr_auc(
-                y[gate], score(champion, gate)
-            )
+            s_new, s_old = score(challenger, gate), score(champion, gate)
+            pr_new, pr_old = pr_auc(y[gate], s_new), pr_auc(y[gate], s_old)
+            test = paired_bootstrap(y[gate], [s_new], [s_old], pr_auc, n_boot=gate_n_boot,
+                                    seed=d, alpha=gate_alpha)  # fmt: skip
             cost_new, cost_old = gate_cost(challenger, gate), gate_cost(champion, gate)
-            accepted = pr_new >= pr_old + margin and cost_new <= cost_old
-            ev.update(pr_auc_challenger=pr_new, pr_auc_champion=pr_old, cost_challenger=cost_new,
+            accepted = test["ci_low"] > 0 and cost_new <= cost_old
+            ev.update(pr_auc_challenger=pr_new, pr_auc_champion=pr_old, gain_ci_low=test["ci_low"],
+                      gain_ci_high=test["ci_high"], cost_challenger=cost_new,
                       cost_champion=cost_old, accepted=bool(accepted))  # fmt: skip
         else:
             ev.update(accepted=False, reason="gate window has one class only")
