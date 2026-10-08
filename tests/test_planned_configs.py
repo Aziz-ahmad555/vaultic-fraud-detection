@@ -82,3 +82,19 @@ def test_e14_training_window_variants():
         with pytest.raises(ValueError, match="planned experiment"):
             load_config(path)
     assert windows == {"EXP-114-w45": 45, "EXP-114-w60": 60, "EXP-114-w90": 90}
+
+
+def test_no_planned_config_early_stops_on_validation():
+    """D45 / D54: GRU early stopping uses the latest 20% of each fold's training rows."""
+    from vaultic.eval.run import read_config
+
+    for path in sorted(Path(CONFIG_DIR).glob("EXP-1*.yaml")):
+        text = path.read_text(encoding="utf-8")
+        assert (
+            "early_stopping: validation" not in text and "validation_pr_auc" not in text
+        ), path.name
+    temporal = read_config(Path(CONFIG_DIR) / "EXP-104.yaml")["views"]["temporal"]
+    assert temporal["early_stopping"] == {
+        "metric": "pr_auc",
+        "rows": "latest_20pct_of_fold_training_rows",
+    }
