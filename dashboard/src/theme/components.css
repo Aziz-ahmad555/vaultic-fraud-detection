@@ -246,11 +246,11 @@
   vertical-align: middle;
 }
 .braid-label {
-  font-size: 13px;
+  font-size: 14px;
   fill: var(--ink);
 }
 .braid-meta {
-  font-size: 12px;
+  font-size: 13px;
   fill: var(--graphite);
 }
 .braid-strand {

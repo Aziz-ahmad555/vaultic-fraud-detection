@@ -1,1 +1,241 @@
-/* Page-specific layout; filled page by page. */
+/* Page-specific layout. */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+.field-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--graphite);
+  font-size: var(--fs-sm);
+}
+.field-inline input,
+.field-inline select {
+  color: var(--ink);
+}
+
+/* ---- live monitor: the one orchestrated motion moment ----------------------------------- */
+
+.live-wrap {
+  max-height: calc(100vh - 220px);
+}
+.reason-cell {
+  max-width: 360px;
+}
+.row-new {
+  animation: settle 300ms ease-out;
+}
+@keyframes settle {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+    background: var(--sheet-selected);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .row-new {
+    animation: none;
+  }
+}
+
+/* ---- three-pane investigator console ------------------------------------------------------- */
+
+.console {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) 360px;
+  height: 100%;
+  min-height: 0;
+}
+.console > * {
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid var(--rule);
+}
+.console > *:last-child {
+  border-right: 0;
+}
+.console-queue {
+  background: var(--ledger);
+}
+.console-case {
+  background: var(--sheet);
+}
+.console-evidence {
+  background: var(--ledger);
+}
+@media (max-width: 1279px) {
+  .console {
+    grid-template-columns: 240px minmax(0, 1fr);
+  }
+  .console-evidence {
+    grid-column: 2;
+    border-top: 1px solid var(--rule);
+  }
+}
+.queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.queue-list li a {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: var(--s-2);
+  align-items: center;
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--rule);
+  text-decoration: none;
+  color: var(--ink);
+}
+.queue-list li a:hover {
+  background: var(--sheet-hover);
+}
+.queue-list li a[aria-current="true"] {
+  background: var(--sheet);
+  box-shadow: inset 3px 0 0 var(--ink);
+  font-weight: 600;
+}
+.section {
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--rule);
+}
+.section > h2 {
+  margin-bottom: var(--s-3);
+}
+.case-head {
+  display: flex;
+  gap: var(--s-5);
+  align-items: center;
+  flex-wrap: wrap;
+}
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--s-1) var(--s-4);
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+.facts dt {
+  color: var(--graphite);
+}
+.facts dd {
+  margin: 0;
+}
+.narrative {
+  font-family: var(--font-narrative);
+  font-size: var(--fs-narrative);
+  line-height: var(--lh-narrative);
+  max-width: 68ch;
+}
+.actions {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+.timeline {
+  display: block;
+  width: 100%;
+}
+.locked {
+  display: flex;
+  gap: var(--s-2);
+  align-items: center;
+  color: var(--graphite);
+  font-size: var(--fs-sm);
+}
+.cf-row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  gap: var(--s-2);
+  align-items: center;
+  font-size: var(--fs-sm);
+}
+.cf-row input[type="range"] {
+  width: 100%;
+  min-width: 0;
+}
+.cf-row + .cf-row {
+  margin-top: var(--s-2);
+}
+.locked-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cf-result {
+  margin-top: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-left: 3px solid var(--ink);
+  background: var(--sheet);
+}
+
+/* ---- network --------------------------------------------------------------------------------- */
+
+.network {
+  height: calc(100vh - 260px);
+  min-height: 420px;
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+}
+.network-mini {
+  height: 240px;
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+}
+.slider-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--s-3);
+  align-items: center;
+}
+.slider-row input[type="range"] {
+  width: 100%;
+}
+
+/* ---- queue policies side by side --------------------------------------------------------- */
+
+.policies {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--s-4);
+}
+.policy-figure {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+
+/* ---- drift timeline -------------------------------------------------------------------------- */
+
+.timeline-legend {
+  display: flex;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+  font-size: var(--fs-sm);
+}
+
+/* ---- print: only the case report ----------------------------------------------------------- */
+
+@media print {
+  .shell {
+    display: block;
+  }
+  .console {
+    display: block;
+  }
+  .console-queue {
+    display: none;
+  }
+  .console > * {
+    overflow: visible;
+    border: 0;
+  }
+}

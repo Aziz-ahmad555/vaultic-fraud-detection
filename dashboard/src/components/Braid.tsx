@@ -30,7 +30,7 @@ export function braidWeights(weights: Record<View, number>, scores: Record<View,
 
 export function Braid({ weights, scores, size = "inline", reasons = [], animate = false, label }: BraidProps) {
   const large = size === "large";
-  const width = large ? 640 : 72;
+  const width = large ? 560 : 72;
   const lane = large ? 30 : 4;
   const height = lane * VIEWS.length;
   const capW = large ? 14 : 5;
@@ -61,7 +61,7 @@ export function Braid({ weights, scores, size = "inline", reasons = [], animate 
     const p = scores[v];
     const missing = p === null;
     const thick = missing ? 1 : Math.max(w[v] * maxThick, large ? 1.5 : 1);
-    const x1 = large ? 120 : 0;
+    const x1 = large ? 104 : 0;
     const x2 = width - capW - (large ? 90 : 1);
     // a gentle weave in the large version; straight inline
     const amp = large && !missing ? Math.min(lane * 0.18, 4) : 0;
@@ -145,7 +145,9 @@ export function Braid({ weights, scores, size = "inline", reasons = [], animate 
   return (
     <div className="braid-large" onMouseLeave={() => setActive(null)}>
       <svg
-        width="100%"
+        width={width}
+        height={height}
+        style={{ maxWidth: "100%", height: "auto" }}
         viewBox={`0 0 ${width} ${height}`}
         aria-labelledby={titleId}
         className="braid"
