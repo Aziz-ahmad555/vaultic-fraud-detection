@@ -25,11 +25,19 @@
   grid-area: top;
   display: flex;
   align-items: center;
-  gap: var(--s-4);
-  padding: var(--s-2) var(--s-4);
+  gap: var(--s-3);
+  padding: 6px var(--s-3);
+  min-height: 44px;
   background: var(--sheet);
   border-bottom: 1px solid var(--graphite);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.rail-brand {
+  display: flex;
+  flex-direction: column;
+  padding: var(--s-3) var(--s-4) var(--s-2);
+  border-bottom: 1px solid var(--rule);
 }
 .brand {
   display: flex;
@@ -54,17 +62,18 @@
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 .asof-title {
   font-weight: 600;
 }
 .asof-range input {
-  width: 200px;
+  width: 160px;
   vertical-align: middle;
 }
 .asof-value {
-  min-width: 112px;
+  min-width: 118px;
   font-weight: 600;
 }
 .asof-delay {
@@ -102,7 +111,8 @@
 .rail ul {
   list-style: none;
   margin: 0;
-  padding: var(--s-3) 0;
+  padding: var(--s-2) 0;
+  flex: 1;
 }
 .rail a {
   display: block;
@@ -125,6 +135,12 @@
 .rail-foot {
   padding: var(--s-3) var(--s-4);
   border-top: 1px solid var(--rule);
+  margin: 0;
+  display: grid;
+  gap: 2px;
+}
+.rail-foot dd {
+  margin: 0 0 var(--s-1);
 }
 .main {
   grid-area: main;
@@ -140,7 +156,18 @@
     grid-template-columns: 64px minmax(0, 1fr);
   }
   .rail-label,
-  .rail-foot {
+  .rail-foot,
+  .rail-brand .xs {
+    display: none;
+  }
+  .rail-brand {
+    padding: var(--s-3) 0;
+    align-items: center;
+  }
+  .asof-range input {
+    width: 110px;
+  }
+  .topbar .btn kbd {
     display: none;
   }
   .rail-short {
@@ -246,12 +273,21 @@
   vertical-align: middle;
 }
 .braid-label {
-  font-size: 14px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
   fill: var(--ink);
 }
 .braid-meta {
-  font-size: 13px;
+  font-size: var(--fs-xs);
   fill: var(--graphite);
+}
+.braid-val {
+  fill: var(--ink);
+  font-weight: 600;
+}
+.braid-risk-num {
+  font-size: var(--fs-lg);
+  font-weight: 600;
 }
 .braid-strand {
   transition: opacity var(--t-fast) ease-out;
@@ -309,9 +345,15 @@
 }
 .reason {
   display: grid;
-  grid-template-columns: 40px 80px minmax(0, 1fr);
+  grid-template-columns: 36px 64px minmax(0, 1fr) auto;
   gap: var(--s-3);
   align-items: center;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+}
+.reason-view {
+  font-weight: 600;
+  text-align: right;
 }
 .pts {
   font-weight: 600;
@@ -330,17 +372,6 @@
 
 /* ---- gauge, legend, charts ---------------------------------------------------------------- */
 
-.gauge {
-  margin: 0;
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-}
-.gauge-num {
-  font-size: 30px;
-  font-weight: 600;
-  fill: var(--ink);
-}
 .legend {
   list-style: none;
   margin: var(--s-2) 0 0;
@@ -372,11 +403,11 @@
 }
 .chart-label,
 .chart-value {
-  font-size: 12px;
+  font-size: var(--fs-xs);
   fill: var(--ink);
 }
 .chart-tick {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   fill: var(--graphite);
 }
 .lock-icon {
@@ -393,7 +424,7 @@
   background: var(--sheet);
 }
 .figure {
-  padding: var(--s-4) var(--s-5);
+  padding: var(--s-3) var(--s-4);
   border-right: 1px solid var(--rule);
   min-width: 160px;
   flex: 1;
@@ -409,4 +440,27 @@
 .figure-note {
   font-size: var(--fs-xs);
   color: var(--graphite);
+}
+
+/* ---- scrollbars: thin, theme-styled ------------------------------------------------------- */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--rule);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--graphite);
 }

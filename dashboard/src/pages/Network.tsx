@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import type { NetworkNode } from "../api/types";
 import { NetworkGraph } from "../components/NetworkGraph";
@@ -17,7 +18,8 @@ const TYPE_LABEL: Record<NetworkNode["type"], string> = {
 
 export function Network() {
   const { asOf, range } = useApp();
-  const [focus, setFocus] = useState<string | null>(null);
+  const [params] = useSearchParams();
+  const [focus, setFocus] = useState<string | null>(params.get("focus"));
   const [selected, setSelected] = useState<string | null>(null);
   const [until, setUntil] = useState(asOf.time);
   useEffect(() => setUntil(asOf.time), [asOf.time]);
@@ -71,7 +73,10 @@ export function Network() {
               onChange={(e) => setUntil(Number(e.target.value))}
               aria-valuetext={fmtClock(until)}
             />
-            <output className="num small">{fmtClock(until)} · {shownEdges} links</output>
+            <output className="num small slider-out">
+              <span>{fmtClock(until)}</span>
+              <span className="muted">{shownEdges} links</span>
+            </output>
           </div>
         </section>
         <aside className="pane" aria-label="Details">
@@ -124,7 +129,11 @@ export function Network() {
               <p className="muted small">No rings yet at this as-of time.</p>
             )}
             <ul className="legend" style={{ marginTop: 16 }}>
-              <li>Circle customer · square card · diamond device · triangle email · hexagon region</li>
+              <li>Circle: customer</li>
+              <li>Square: card</li>
+              <li>Diamond: device</li>
+              <li>Triangle: email domain</li>
+              <li>Hexagon: billing region</li>
               <li><span className="swatch" style={{ background: "var(--risk-3)" }} /> Has confirmed fraud</li>
               <li><span className="swatch" style={{ borderColor: "var(--risk-5)", borderWidth: 3 }} /> Ring member</li>
               <li><span className="swatch line" style={{ borderTopColor: "var(--view-relational)" }} /> Link (relational view colour)</li>

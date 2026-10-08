@@ -186,17 +186,17 @@ input[type="range"] {
   align-items: baseline;
   justify-content: space-between;
   gap: var(--s-3);
-  padding: var(--s-3) var(--s-4);
+  padding: var(--s-2) var(--s-3);
   border-bottom: 1px solid var(--rule);
 }
 .pane-body {
-  padding: var(--s-4);
+  padding: var(--s-3);
 }
 .page {
-  padding: var(--s-5);
+  padding: var(--s-4);
   display: flex;
   flex-direction: column;
-  gap: var(--s-4);
+  gap: var(--s-3);
   min-width: 0;
 }
 .page-head {
@@ -238,7 +238,7 @@ table.data th {
   text-align: left;
   font-weight: 600;
   color: var(--graphite);
-  padding: var(--s-2) var(--s-3);
+  padding: 6px var(--s-3);
   border-bottom: 1px solid var(--graphite);
   white-space: nowrap;
   position: sticky;
@@ -254,7 +254,7 @@ table.data th button:focus-visible {
   outline-offset: 2px;
 }
 table.data td {
-  padding: var(--s-2) var(--s-3);
+  padding: 5px var(--s-3);
   border-bottom: 1px solid var(--rule);
   vertical-align: middle;
 }
@@ -317,10 +317,11 @@ table.data th.num {
 
 .risk-cell {
   display: inline-block;
-  min-width: 34px;
-  padding: 0 6px;
+  min-width: 30px;
+  padding: 0 5px;
   border-radius: var(--radius);
   text-align: right;
+  font-weight: 600;
 }
 
 /* ---- view dots, legends ------------------------------------------------------------------ */

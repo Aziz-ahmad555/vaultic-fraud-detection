@@ -153,28 +153,44 @@ export function Shell({ children }: { children: ReactNode }) {
         Skip to content
       </a>
       <header className="topbar no-print">
-        <div className="brand">
-          <strong>Vaultic</strong> <span className="muted">Evidence Room</span>
-        </div>
         <AsOfControl />
         {DATA_SOURCE === "mock" && (
-          <p className="mock-note small" title="Every number on these screens is synthetic until the research pipeline produces real scores">
+          <p className="mock-note xs" title="Every number on these screens is synthetic until the research pipeline produces real scores">
             Synthetic mock data
           </p>
         )}
         <div className="topbar-actions">
           <button type="button" className="btn" onClick={() => setPaletteOpen(true)}>
-            Search or jump <kbd>Ctrl K</kbd>
+            Search <kbd>Ctrl K</kbd>
           </button>
-          <button type="button" className="btn" onClick={() => setTheme(theme === "light" ? "dark" : "light")} aria-pressed={theme === "dark"}>
-            {theme === "light" ? "Dark theme" : "Light theme"}
+          <button
+            type="button"
+            className="btn btn-icon"
+            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+            aria-label={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
+            title={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
+          >
+            {theme === "light" ? (
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M13.5 9.6A6 6 0 0 1 6.4 2.5a6 6 0 1 0 7.1 7.1Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                <circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.4 1.4M11.6 11.6 13 13M3 13l1.4-1.4M11.6 4.4 13 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            )}
           </button>
-          <button type="button" className="btn btn-icon" onClick={() => setHelpOpen(true)} aria-label="Keyboard shortcuts (?)">
+          <button type="button" className="btn btn-icon" onClick={() => setHelpOpen(true)} aria-label="Keyboard shortcuts (?)" title="Keyboard shortcuts (?)">
             ?
           </button>
         </div>
       </header>
       <nav className="rail no-print" aria-label="Pages">
+        <div className="rail-brand">
+          <strong>Vaultic</strong>
+          <span className="muted xs">Evidence Room</span>
+        </div>
         <ul>
           {PAGES.map((p) => (
             <li key={p.path}>
@@ -187,7 +203,12 @@ export function Shell({ children }: { children: ReactNode }) {
             </li>
           ))}
         </ul>
-        <p className="rail-foot xs muted">As of {fmtClock(asOf.time)} · labels known up to day {Math.floor((asOf.time - asOf.labelDelayDays * DAY) / DAY)}</p>
+        <dl className="rail-foot xs">
+          <dt className="muted">As of</dt>
+          <dd>{fmtClock(asOf.time)}</dd>
+          <dt className="muted">Labels known up to</dt>
+          <dd>Day {Math.floor((asOf.time - asOf.labelDelayDays * DAY) / DAY)}</dd>
+        </dl>
       </nav>
       <main id="main" className="main" tabIndex={-1}>
         {children}

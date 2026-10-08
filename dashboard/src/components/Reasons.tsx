@@ -24,9 +24,9 @@ export function ReasonList({ reasons, limit = 5 }: { reasons: Reason[]; limit?: 
               }}
             />
           </span>
-          <span className="reason-text">
-            {r.text}
-            <span className="muted xs"> · {VIEW_LABEL[r.view]}</span>
+          <span className="reason-text">{r.text}</span>
+          <span className="reason-view xs" style={{ color: VIEW_VAR[r.view] }}>
+            {VIEW_LABEL[r.view]}
           </span>
         </li>
       ))}

@@ -9,14 +9,16 @@ export const VIEW_VAR: Record<View, string> = {
   anomaly: "var(--view-anomaly)",
 };
 
-/** Single-hue risk scale step (1-5) for a probability. */
-export function riskStep(p: number): 1 | 2 | 3 | 4 | 5 {
-  if (p < 0.1) return 1;
-  if (p < 0.3) return 2;
-  if (p < 0.55) return 3;
-  if (p < 0.8) return 4;
-  return 5;
+export const RISK_STEPS = 8;
+
+/**
+ * Single-hue risk scale step (1-8), deeper with higher probability. p^0.6 spreads the many
+ * low risks over the light steps so 14 and 27 do not look the same (DESIGN.md 1).
+ */
+export function riskStep(p: number): number {
+  const t = Math.pow(Math.min(Math.max(p, 0), 1), 0.6);
+  return Math.min(RISK_STEPS, 1 + Math.floor(t * RISK_STEPS));
 }
 export const riskVar = (p: number) => `var(--risk-${riskStep(p)})`;
-/** Text colour that stays readable on each risk step. */
-export const riskInk = (p: number) => (riskStep(p) >= 4 ? "var(--sheet)" : "var(--ink)");
+/** AA text colour for each risk step (checked per step in DESIGN.md). */
+export const riskInk = (p: number) => `var(--risk-${riskStep(p)}-fg)`;

@@ -26,7 +26,8 @@ export interface ViewPredictionRow {
   TransactionDT: number; // seconds, relative dataset clock
   day: number;
   fold: string;
-  role: "gate_train" | "test";
+  /** "history": training-period context for timelines and the network, not a gate row */
+  role: "gate_train" | "test" | "history";
   split: "train" | "validation" | "test" | "unused";
   /** null when the label is not known at the as-of time (label-delay curtain) */
   label: 0 | 1 | null;

@@ -101,9 +101,10 @@ export function createMockApi(seed = 7): Api {
     return all.slice(0, lo);
   };
   const dayOf = (asOf: AsOf) => Math.floor(asOf.time / DAY);
+  const scored = (t: Transaction) => t.row.role !== "history";
   const dayRows = (asOf: AsOf, day = dayOf(asOf)) =>
     upTo(asOf)
-      .filter((t) => t.row.day === day)
+      .filter((t) => t.row.day === day && scored(t))
       .map((t) => withLabel(t, asOf));
 
   const audit = (actor: Role, action: string, detail: string) => {
@@ -178,13 +179,13 @@ export function createMockApi(seed = 7): Api {
     async stream(asOf, from, to) {
       const end = Math.min(to, asOf.time);
       return upTo({ ...asOf, time: end })
-        .filter((t) => t.row.TransactionDT > from)
+        .filter((t) => t.row.TransactionDT > from && scored(t))
         .map((t) => withLabel(t, { ...asOf, time: end }));
     },
 
     async transaction(id, asOf) {
       const t = ds().byId.get(id);
-      if (!t || t.row.TransactionDT > asOf.time) return null;
+      if (!t || t.row.TransactionDT > asOf.time || !scored(t)) return null;
       return withLabel(t, asOf);
     },
 
@@ -212,7 +213,7 @@ export function createMockApi(seed = 7): Api {
         maturedDay === null
           ? []
           : ds()
-              .transactions.filter((t) => t.row.day === maturedDay)
+              .transactions.filter((t) => t.row.day === maturedDay && scored(t))
               .map((t) => withLabel(t, asOf));
       return POLICIES.map((policy): PolicyQueue => {
         const rank = (rows: Transaction[]) =>

@@ -74,7 +74,7 @@ export function Queue() {
                   bars={POLICIES.map((p) => ({
                     label: `${p} ${POLICY_LABEL[p]}`,
                     value: byPolicy(p).matured.fraudValueCaught,
-                    text: `${fmtMoney(byPolicy(p).matured.fraudValueCaught)} · ${fmtInt(byPolicy(p).matured.fraudCaught)} frauds`,
+                    text: `${fmtMoney(byPolicy(p).matured.fraudValueCaught)} (${fmtInt(byPolicy(p).matured.fraudCaught)} frauds)`,
                   }))}
                 />
               )}

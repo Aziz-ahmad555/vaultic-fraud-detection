@@ -15,12 +15,12 @@ export const fmtPoints = (pts: number) => {
   return `${r > 0 ? "+" : r < 0 ? "−" : ""}${Math.abs(r)}`;
 };
 
-/** Dataset clock (relative seconds) as "day 141 · 14:05". */
+/** Dataset clock (relative seconds) as "Day 141, 14:05". */
 export function fmtClock(t: number, withDay = true) {
   const day = Math.floor(t / DAY);
   const sec = t - day * DAY;
   const hh = String(Math.floor(sec / 3600)).padStart(2, "0");
   const mm = String(Math.floor((sec % 3600) / 60)).padStart(2, "0");
-  return withDay ? `day ${day} · ${hh}:${mm}` : `${hh}:${mm}`;
+  return withDay ? `Day ${day}, ${hh}:${mm}` : `${hh}:${mm}`;
 }
 export const dayOf = (t: number) => Math.floor(t / DAY);

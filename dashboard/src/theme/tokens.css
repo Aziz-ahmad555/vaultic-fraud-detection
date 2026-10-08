@@ -10,19 +10,30 @@
   --sheet-hover: #eaeef3;
   --sheet-selected: #dde4ec;
 
-  /* one colour per evidence view */
-  --view-tabular: #1f5fa8;
-  --view-behavioral: #9a5b00;
-  --view-temporal: #00735c;
-  --view-relational: #8b3d83;
-  --view-anomaly: #566400;
+  /* one colour per evidence view: equal OKLCH lightness, chroma 0.09 (DESIGN.md 1) */
+  --view-tabular: #64619b;
+  --view-behavioral: #716c26;
+  --view-temporal: #087970;
+  --view-relational: #835685;
+  --view-anomaly: #467748;
 
-  /* single-hue risk scale (vermilion), low to high */
-  --risk-1: #fbeae3;
-  --risk-2: #f2bca5;
-  --risk-3: #e2875f;
-  --risk-4: #c4501d;
-  --risk-5: #8a3210;
+  /* single-hue risk scale (crimson, OKLCH h 15), 8 steps, low to high; -fg = AA text */
+  --risk-1: #ffe8e9;
+  --risk-1-fg: var(--ink);
+  --risk-2: #f6cbcd;
+  --risk-2-fg: var(--ink);
+  --risk-3: #eaafb3;
+  --risk-3-fg: var(--ink);
+  --risk-4: #dd9499;
+  --risk-4-fg: var(--ink);
+  --risk-5: #d27c83;
+  --risk-5-fg: var(--ink);
+  --risk-6: #af4e59;
+  --risk-6-fg: #ffffff;
+  --risk-7: #a23345;
+  --risk-7-fg: #ffffff;
+  --risk-8: #950c31;
+  --risk-8-fg: #ffffff;
 
   /* decisions: blue-grey ramp, light to dark with severity */
   --dec-allow-bg: #e3e8ed;
@@ -62,8 +73,8 @@
   --s-2: 8px;
   --s-3: 12px;
   --s-4: 16px;
-  --s-5: 24px;
-  --s-6: 32px;
+  --s-5: 20px;
+  --s-6: 28px;
   --s-7: 48px;
 
   --radius: 2px;
@@ -84,17 +95,30 @@
   --sheet-hover: #3b4958;
   --sheet-selected: #445465;
 
-  --view-tabular: #86b6ee;
-  --view-behavioral: #e8a852;
-  --view-temporal: #5acbae;
-  --view-relational: #dda0d6;
-  --view-anomaly: #b9c657;
+  /* one colour per evidence view: equal OKLCH lightness, chroma 0.09 (DESIGN.md 1) */
+  --view-tabular: #b4b3f3;
+  --view-behavioral: #c3be79;
+  --view-temporal: #72cec2;
+  --view-relational: #d8a7db;
+  --view-anomaly: #96ca97;
 
-  --risk-1: #4a3b37;
-  --risk-2: #7a4a36;
-  --risk-3: #b5603a;
-  --risk-4: #e07f52;
-  --risk-5: #f6b595;
+  /* single-hue risk scale (crimson, OKLCH h 15), 8 steps, low to high; -fg = AA text */
+  --risk-1: #4c3738;
+  --risk-1-fg: #e9eef3;
+  --risk-2: #654244;
+  --risk-2-fg: #e9eef3;
+  --risk-3: #804d51;
+  --risk-3-fg: #e9eef3;
+  --risk-4: #c27c81;
+  --risk-4-fg: #17212b;
+  --risk-5: #d98289;
+  --risk-5-fg: #17212b;
+  --risk-6: #ef8891;
+  --risk-6-fg: #17212b;
+  --risk-7: #fd959d;
+  --risk-7-fg: #17212b;
+  --risk-8: #fea9af;
+  --risk-8-fg: #17212b;
 
   --dec-allow-bg: #3b4959;
   --dec-allow-fg: #e9eef3;

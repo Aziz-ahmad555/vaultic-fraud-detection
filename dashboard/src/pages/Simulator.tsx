@@ -2,10 +2,9 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { ScoreInput, ScoreResult, View } from "../api/types";
 import { VIEWS, VIEW_LABEL } from "../api/types";
-import { DecisionBadge, SetBadge } from "../components/Badges";
+import { DecisionBadge, setText } from "../components/Badges";
 import { Braid } from "../components/Braid";
 import { ReasonList } from "../components/Reasons";
-import { RiskGauge } from "../components/RiskGauge";
 import { fmtMoney2 } from "../lib/format";
 
 const START: ScoreInput = {
@@ -87,16 +86,25 @@ export function Simulator() {
           <div className="pane-head"><h2>Result</h2></div>
           {r && (
             <div className="pane-body">
-              <div className="case-head">
-                <RiskGauge p={r.p} />
-                <div className="actions">
-                  <DecisionBadge action={r.decision.action} />
-                  <SetBadge set={r.decision.conformal_set} />
-                  <span className="badge set-badge">Expected loss {fmtMoney2(r.decision.expected_loss)}</span>
-                </div>
+              <div className="case-title">
+                <DecisionBadge action={r.decision.action} />
               </div>
-              <div style={{ marginTop: 16 }}>
-                <Braid size="large" weights={r.weights} scores={r.views} reasons={r.reasons} />
+              <dl className="facts facts-grid">
+                <div>
+                  <dt>Conformal set</dt>
+                  <dd>{setText(r.decision.conformal_set)}</dd>
+                </div>
+                <div>
+                  <dt>Disagreement</dt>
+                  <dd className="num">{r.decision.disagreement.toFixed(2)}</dd>
+                </div>
+                <div>
+                  <dt>Expected loss</dt>
+                  <dd className="num">{fmtMoney2(r.decision.expected_loss)}</dd>
+                </div>
+              </dl>
+              <div style={{ marginTop: 12 }}>
+                <Braid size="large" weights={r.weights} scores={r.views} reasons={r.reasons} risk={r.p} />
               </div>
               <h3 style={{ margin: "16px 0 8px" }}>Reasons</h3>
               <ReasonList reasons={r.reasons} limit={7} />

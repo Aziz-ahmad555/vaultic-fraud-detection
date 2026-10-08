@@ -3,11 +3,10 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import type { Feedback, ScoreInput, ScoreResult, Transaction } from "../api/types";
 import { ACTION_LABEL, VIEWS, VIEW_LABEL } from "../api/types";
-import { DecisionBadge, LabelCell, LockIcon, RiskCell, SetBadge } from "../components/Badges";
+import { DecisionBadge, LockIcon, RiskCell, labelText, setText } from "../components/Badges";
 import { Braid } from "../components/Braid";
 import { NetworkGraph } from "../components/NetworkGraph";
 import { ReasonList } from "../components/Reasons";
-import { RiskGauge } from "../components/RiskGauge";
 import { Empty, ErrorState, Loading } from "../components/States";
 import { DAY, fmtClock, fmtMoney2, fmtPct, fmtPoints, risk } from "../lib/format";
 import { useData } from "../lib/useData";
@@ -62,7 +61,7 @@ function Timeline({ history, current, asOf }: { history: Transaction[]; current:
                 stroke={isCurrent ? "var(--ink)" : "var(--graphite)"}
                 strokeWidth={isCurrent ? 2 : 1}
               >
-                <title>{`${fmtClock(h.row.TransactionDT)} · ${fmtMoney2(h.amount)} · ${label === null ? "label not known yet" : label ? "confirmed fraud" : "confirmed legit"}`}</title>
+                <title>{`${fmtMoney2(h.amount)}, ${fmtClock(h.row.TransactionDT)}. ${label === null ? "Label not known yet" : label ? "Confirmed fraud" : "Confirmed legit"}`}</title>
               </circle>
             </g>
           );
@@ -150,12 +149,36 @@ function Counterfactual({ t, onDescribe }: { t: Transaction; onDescribe: (s: str
   );
 }
 
+/** How fully a transaction shows the console: all five views, history, linked entities. */
+function richness(t: Transaction) {
+  const allViews = VIEWS.every((v) => t.row[`m_${v}`] === 1);
+  return (allViews ? 1000 : 0) + Math.min(t.inputs.historyCount, 50) + 5 * Math.min(t.inputs.sharedEntities, 6);
+}
+const isRich = (t: Transaction) => VIEWS.every((v) => t.row[`m_${v}`] === 1) && t.inputs.historyCount >= 5 && t.inputs.sharedEntities > 0;
+
+/**
+ * Default case: the richest of today's alerts that has all five views, real history and linked
+ * entities; if no alert qualifies, the richest of today's transactions (flagged as not an alert).
+ */
+export function defaultCase(alerts: Transaction[], today: Transaction[] = []): { id: number; alert: boolean } | null {
+  const best = (xs: Transaction[]) => [...xs].sort((a, b) => richness(b) - richness(a))[0];
+  const richAlerts = alerts.filter(isRich);
+  if (richAlerts.length) return { id: best(richAlerts).row.TransactionID, alert: true };
+  const richToday = today.filter(isRich);
+  if (richToday.length) return { id: best(richToday).row.TransactionID, alert: false };
+  if (alerts.length) return { id: best(alerts).row.TransactionID, alert: true };
+  return today.length ? { id: best(today).row.TransactionID, alert: false } : null;
+}
+
 export function Case() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { asOf, role, toast } = useApp();
   const alerts = useData(() => api.alerts(asOf), [asOf.time, asOf.labelDelayDays]);
-  const caseId = id ? Number(id) : (alerts.data?.[0]?.row.TransactionID ?? null);
+  const dayStart = Math.floor(asOf.time / DAY) * DAY;
+  const today = useData(() => (id ? Promise.resolve([]) : api.stream(asOf, dayStart, asOf.time)), [id, asOf.time, asOf.labelDelayDays]);
+  const pick = id ? null : defaultCase(alerts.data ?? [], today.data ?? []);
+  const caseId = id ? Number(id) : (pick?.id ?? null);
   const tx = useData(() => (caseId ? api.transaction(caseId, asOf) : Promise.resolve(null)), [caseId, asOf.time, asOf.labelDelayDays]);
   const t = tx.data;
   const history = useData(() => (t ? api.customerHistory(t.entities.uid, asOf) : Promise.resolve([])), [t?.entities.uid, asOf.time, asOf.labelDelayDays]);
@@ -207,10 +230,12 @@ export function Case() {
           {list.map((a) => (
             <li key={a.row.TransactionID}>
               <Link to={`/cases/${a.row.TransactionID}`} aria-current={a.row.TransactionID === caseId ? "true" : undefined}>
-                <span>
-                  {a.row.TransactionID}
-                  <br />
-                  <span className="muted xs">{fmtClock(a.row.TransactionDT, false)} · {fmtMoney2(a.amount)}</span>
+                <span className="q-main">
+                  <span className="q-amount num">{fmtMoney2(a.amount)}</span>
+                  <span className="q-sub">
+                    <span className="muted">{fmtClock(a.row.TransactionDT, false)}</span>
+                    <span className="muted">Case {a.row.TransactionID}</span>
+                  </span>
                 </span>
                 <RiskCell p={a.decision.p} />
                 <DecisionBadge action={a.decision.action} />
@@ -230,25 +255,53 @@ export function Case() {
         )}
         {t && (
           <>
-            <div className="section case-head">
-              <RiskGauge p={t.decision.p} />
-              <div>
+            {pick && !pick.alert && (
+              <p className="section small muted case-note">
+                Showing today's most complete transaction as an example: it is not an alert. No alert today has all five views, history and linked
+                entities.
+              </p>
+            )}
+            <header className="section case-head">
+              <div className="case-title">
                 <h1>Case {t.row.TransactionID}</h1>
-                <p className="muted small">
-                  {fmtClock(t.row.TransactionDT)} · customer {t.entities.uid} · {fmtMoney2(t.amount)} · product {t.product}
-                </p>
-                <div className="actions" style={{ marginTop: 8 }}>
-                  <DecisionBadge action={t.decision.action} />
-                  <SetBadge set={t.decision.conformal_set} />
-                  <span className="badge set-badge">Disagreement {t.decision.disagreement.toFixed(2)}</span>
-                  <span className="badge set-badge">Expected loss {fmtMoney2(t.decision.expected_loss)}</span>
-                  <LabelCell label={t.row.label} />
-                </div>
+                <DecisionBadge action={t.decision.action} />
               </div>
-            </div>
+              <div className="case-key">
+                <span className="case-amount num">{fmtMoney2(t.amount)}</span>
+                <span className="muted">{fmtClock(t.row.TransactionDT)}</span>
+              </div>
+              <dl className="facts facts-grid">
+                <div>
+                  <dt>Customer</dt>
+                  <dd>
+                    <Link to={`/network?focus=uid:${encodeURIComponent(t.entities.uid)}`}>{t.entities.uid}</Link>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Product</dt>
+                  <dd>{t.product}</dd>
+                </div>
+                <div>
+                  <dt>Conformal set</dt>
+                  <dd>{setText(t.decision.conformal_set)}</dd>
+                </div>
+                <div>
+                  <dt>Disagreement</dt>
+                  <dd className="num">{t.decision.disagreement.toFixed(2)}</dd>
+                </div>
+                <div>
+                  <dt>Expected loss</dt>
+                  <dd className="num">{fmtMoney2(t.decision.expected_loss)}</dd>
+                </div>
+                <div>
+                  <dt>Outcome</dt>
+                  <dd className={t.row.label === null ? "muted" : undefined}>{labelText(t.row.label, asOf.labelDelayDays)}</dd>
+                </div>
+              </dl>
+            </header>
             <div className="section">
               <h2>Evidence braid</h2>
-              <Braid size="large" weights={t.weights} scores={viewScores(t)} reasons={t.reasons} />
+              <Braid size="large" weights={t.weights} scores={viewScores(t)} reasons={t.reasons} risk={t.decision.p} />
             </div>
             <div className="section">
               <h2>Reasons</h2>

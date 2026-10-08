@@ -70,8 +70,10 @@ export function generate(seed = 7): Dataset {
   const customers = makeCustomers(r);
   const weightsCum: number[] = [];
   let acc = 0;
+  // skewed activity: most customers are occasional, a few are heavy users with long histories
+  // ring members are active accounts, as fraud rings usually are
   for (let i = 0; i < customers.length; i++) {
-    acc += 0.4 + r.next();
+    acc += customers[i].ring !== null ? 6 : 0.2 + 12 * r.next() ** 6;
     weightsCum.push(acc);
   }
   const pickCustomer = () => {
@@ -140,16 +142,17 @@ export function generate(seed = 7): Dataset {
       available: { tabular: true, behavioral: true, temporal: true, graph: entitySeen, anomaly: true },
     };
 
-    if (e.t >= FIRST_DAY * DAY) {
+    {
       const s = score(input);
       const day = Math.floor(e.t / DAY);
+      const isHistory = e.t < FIRST_DAY * DAY;
       const row = {
         TransactionID: id,
         TransactionDT: e.t,
         day,
-        fold: "fixed_validation",
-        role: "gate_train",
-        split: "validation",
+        fold: isHistory ? "history" : "fixed_validation",
+        role: isHistory ? "history" : "gate_train",
+        split: isHistory ? (day <= 120 ? "train" : "unused") : "validation",
         label: null,
         disagreement: s.decision.disagreement,
         ctx_log_amount: Math.log1p(e.amount),

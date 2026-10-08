@@ -55,7 +55,7 @@ export function Lab() {
               yLabel="precision"
               series={chosen.map((r, i) => ({ name: r.name, ...RUN_STYLE[i], points: r.pr.map((p) => ({ x: p.recall, y: p.precision })) }))}
             />
-            <Legend items={chosen.map((r, i) => ({ label: `${r.name} · PR-AUC ${r.prAuc.toFixed(3)}`, ...RUN_STYLE[i] }))} />
+            <Legend items={chosen.map((r, i) => ({ label: `${r.name}, PR-AUC ${r.prAuc.toFixed(3)}`, ...RUN_STYLE[i] }))} />
           </div>
         </section>
         <section className="pane">

@@ -31,26 +31,44 @@ Checked contrast (WCAG 2.1):
 ### View colours: one per evidence view, used everywhere
 
 The same colour marks a view in the braid, charts, reason codes, graph edges and legends.
+All five sit at **equal perceived lightness** (OKLCH L 0.52 light / 0.79 dark) with the same
+muted chroma (C 0.09), so no view looks more important than another. Only the hue differs:
 
-| View | Light | Dark | Contrast on Sheet (light / dark) |
-|---|---|---|---|
-| Tabular | `#1F5FA8` blue | `#86B6EE` | 5.95 / 4.93 |
-| Behavioral | `#9A5B00` amber | `#E8A852` | 5.01 / 5.04 |
-| Temporal | `#00735C` bluish green | `#5ACBAE` | 5.38 / 5.25 |
-| Relational | `#8B3D83` reddish purple | `#DDA0D6` | 6.27 / 5.00 |
-| Anomaly | `#566400` olive | `#B9C657` | 6.03 / 5.60 |
+| View | Hue (OKLCH h) | Light | Dark | Text contrast on Sheet (light / dark) |
+|---|---|---|---|---|
+| Tabular | 285 (indigo) | `#64619B` | `#B4B3F3` | 5.2 / 5.3 |
+| Behavioral | 105 (olive) | `#716C26` | `#C3BE79` | 5.0 / 5.5 |
+| Temporal | 185 (teal) | `#087970` | `#72CEC2` | 4.9 / 5.6 |
+| Relational | 325 (plum) | `#835685` | `#D8A7DB` | 5.3 / 5.2 |
+| Anomaly | 145 (green) | `#467748` | `#96CA97` | 4.9 / 5.6 |
 
-- The hues follow the Okabe–Ito colour-blind-safe set, darkened (light theme) or lightened
-  (dark theme) until each passes 4.5:1 as text.
-- Colour is never the only cue: braid strands are always in the same order (tabular on top
-  to anomaly at the bottom), and every view is also named in text.
+How these were chosen: an exhaustive search over hue sets on a 10° grid, at chroma 0.09–0.12.
+- Hues from 0° to 80° were excluded: the crimson risk hue and every orange or terracotta.
+- Each set had to stay inside the sRGB gamut and pass AA as text on both Sheets.
+- Among sets with a minimum normal-vision OKLab distance of at least 0.06, the winner is the
+  set with the largest worst-case distance under simulated deuteranopia, protanopia and
+  tritanopia (Machado et al. 2009). For this set:
+  - normal vision: minimum distance 0.062;
+  - colour-blind: worst case 0.032.
+- A set with 0.076 normal-vision distance was rejected because its 85° member reads as ochre.
 
-### Risk scale: a single hue (vermilion)
+The two closest hues (green and teal) are never neighbours in the braid. Colour is also never
+the only cue:
+- strands keep a fixed order (tabular on top to anomaly at the bottom);
+- every strand and reason names its view in text.
 
-Light `#FBEAE3 → #F2BCA5 → #E2875F → #C4501D → #8A3210`; dark `#4A3B37 → … → #F6B595`.
-- Used only for risk (gauge, risk cells, heat-map).
-- The risk number is always printed next to its colour.
-- Vermilion is used for nothing else.
+### Risk scale: a single hue (crimson, OKLCH h 15), 8 steps
+
+- **Light** `#FFE8E9 → #F6CBCD → #EAAFB3 → #DD9499 → #D27C83 → #AF4E59 → #A23345 → #950C31`.
+  Higher risk is deeper and darker.
+- **Dark** `#4C3738 → … → #FEA9AF`. Higher risk is brighter and more saturated, so it still
+  stands out on the steel background.
+- Each step has its own text colour (`--risk-N-fg`), checked at 5.0:1 or better. The middle
+  lightness band, where neither ink nor white reaches 4.5:1, is skipped.
+- The step is chosen from p^0.6, which spreads the many low risks over the light steps so
+  that 14 and 27 no longer look the same.
+- Used only for risk: the end of the braid cord, risk cells, the heat-map and confirmed-fraud
+  marks. The number is always printed with its colour.
 
 ### Decisions: a restrained blue-grey ramp, from Allow to Block
 
@@ -73,8 +91,8 @@ never from a red/green pair.
 
 | Step | Size / line height | Use |
 |---|---|---|
-| xs | 12 / 16 | axis ticks, footnotes |
-| sm | 13 / 18 | table cells, badges |
+| xs | 12 / 16 | axis ticks, chart values, braid meta, footnotes |
+| sm | 13 / 18 | table cells, badges, braid view names, reasons |
 | base | 14 / 20 | body, controls |
 | md | 16 / 24 | pane titles |
 | lg | 20 / 28 | page titles |
@@ -82,11 +100,17 @@ never from a red/green pair.
 | narrative | 18 / 29 (Newsreader) | case narrative |
 
 Weights: 400 and 600 only. Labels are sentence case: no ALL-CAPS, no letter-spaced
-eyebrows, no monospace data labels.
+eyebrows, no monospace data labels. Charts and the braid use the same steps: no 11 px or
+other off-scale text.
 
 ### Space, shape, depth
 
-- **Spacing** on a 4 px base: 4, 8, 12, 16, 24, 32, 48.
+- **Spacing** on a 4 px base: 4, 8, 12, 16, 20, 28, 48. The analyst-console density is:
+  - table rows 5 px vertical padding;
+  - pane heads 8 × 12 px;
+  - case sections 12 × 16 px.
+- **Scrollbars**: thin (8 px), in the Rule colour, Graphite on hover, no track; they follow
+  the theme.
 - **Radius** 2 px for controls and badges; 0 for panes, which are ruled like paper.
 - **Depth** comes from Sheet against Ledger plus 1 px rules. Shadows appear only on
   floating layers (palette, popovers, toasts), and differ per layer.
@@ -102,27 +126,38 @@ eyebrows, no monospace data labels.
 
 ---
 
-## 2. Signature element: the evidence braid
+## 2. Signature element: the evidence braid (a convergence)
 
-For each transaction:
-- **Five strands**, one per view, in fixed order: tabular, behavioral, temporal, relational,
-  anomaly.
-- **Thickness** = that view's MVAF gate weight. The weights of the available views sum to 1,
-  so the braid always has the same total thickness.
-- **A missing view** keeps its lane: the strand is drawn as a thin dashed gap with no fill,
-  so missing evidence is *visible as missing* and never as zero (rule 11).
-- **Strand end** (right cap) = that view's fraud probability, shown as the view colour's
-  lightness, from pale (low) to full (high).
-- **Inline braid** (tables): 72 × 20 px, no labels.
-- **Case braid**: full width with view names and weights. Hovering or focusing a strand
-  shows that view's reasons; the arrow keys move between strands.
+For each transaction, the braid shows how five pieces of evidence become one score:
+- **Five strands** start apart on the left, one lane per view, in fixed order: tabular,
+  behavioral, temporal, relational, anomaly.
+- **Start labels.** Each strand is labelled with its view name, its own score, and its
+  weight as a percentage.
+- **The merge.** The strands flow (Sankey-style bands) and merge into **one cord** on the right.
+- **Thickness = gate weight.** A strand's thickness is its MVAF gate weight, constant along its
+  length. At the merge, the cord is exactly the stack of the available weights, which sum to 1.
+  On the case braid the cord is 72 px, so a 0.41 and a 0.26 strand differ by about 11 px.
+- **The cord ends in the final risk number**, coloured on the risk scale. The separate risk
+  gauge was removed, so there is one place to read the risk.
+- **A missing view** is a thin dashed ghost strand in its view colour. It stops halfway, before
+  the merge, and is labelled "not available". It never feeds the cord, so missing evidence is
+  visibly missing and never zero (rule 11).
+- **Inline braid** (tables): 80 × 22 px. It has the same convergence, without labels or the
+  risk box; the row's risk cell carries the number.
+- **Interaction.** Hovering or focusing a strand shows that view's reasons, and the arrow keys
+  move between strands.
 
 ```
-tabular     ═══════════════════════════════■   w .31  p .82
-behavioral  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━■   w .24  p .77
-temporal    ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─    not available (no history)
-relational  ████████████████████████████████■   w .38  p .91
-anomaly     ───────────────────────────────▫   w .07  p .40
+Tabular         ======\
+score 44  20%          \=====
+Behavioral      ========\=====\
+score 35  22%                   ########  +------+
+Temporal        ########################  |  32  |  risk, on the risk scale
+score 20  29%                   ########  +------+
+Relational      ========//=====//
+score 52  17%          //=====
+Anomaly         - - - - -          dashed ghost, stops before the merge
+not available
 ```
 
 ---
@@ -131,19 +166,16 @@ anomaly     ──────────────────────�
 
 ### Shell
 
-A global bar holds:
-- the **as-of time machine**;
-- the label-delay setting;
-- search / command palette (Ctrl+K);
-- the theme toggle and role switch;
-- the mock-data notice.
+A **single-row** global bar:
+- **Left:** the as-of time machine, the label-delay setting and the mock-data notice.
+- **Right:** Search (Ctrl K), a theme icon toggle (moon or sun, with an accessible name) and
+  help.
 
-The left rail holds the navigation.
+The brand sits at the top of the left rail, above the navigation.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────┐
-│ Vaultic · Evidence Room   As of [◂ Day 141 · 14:00 ▸] [⏵]   Label delay L [30 d]      │
-│                           Synthetic mock data            [Search or jump… Ctrl+K]  ◐  │
+│ As of [◂ ──●── ▸] Day 141, 14:00  Label delay [30 days]  Synthetic mock data  Search Ctrl K  ◐  ? │
 ├────────┬─────────────────────────────────────────────────────────────────────────────┤
 │Overview│                                                                             │
 │Live    │                         page                                                │
@@ -189,25 +221,26 @@ shown, even though the mock knows it.
 ### 3 Case investigation: three panes (queue | case | evidence), keyboard-first
 
 ```
-┌ Queue (J/K) ──────┬ Case 3115204 ─────────────────────────────┬ Evidence ─────────────┐
-│ ▸ 3115204  87 Blk │ Risk [gauge 87]  Decision Block            │ Customer timeline     │
-│   3115188  74 Hld │ Conformal set: fraud    Disagreement 0.08  │ ·  ·· · ··· ·   ◆     │
-│   3115170  69 Hld │ ┌ Evidence braid (large, hover strand) ──┐ │ Mini network          │
-│   …               │ └───────────────────────────────────────┘ │  (card)─(uid)─(device)│
-│                   │ Reasons (signed points, view colour bar)   │ Counterfactual        │
-│                   │ +20 Amount is 25.0x usual (behavioral)     │ Amount  [====|----]   │
-│                   │ +12 Unusual value in masked counter C13    │ Device  [known ▾]     │
-│                   │  −6 Card seen 41 times before              │ [lock] Card, address, │
-│                   │ Narrative (Newsreader)                     │   history: locked     │
-│                   │ [Mark as fraud F] [Mark as legit L] [U]    │ Risk would be 31      │
-│                   │ [Print or save as PDF]                     │                       │
-└───────────────────┴────────────────────────────────────────────┴───────────────────────┘
+┌ Alerts today (J/K) ┬ Case 3105477  [Step-up] ────────────────────┬ Evidence ─────────────┐
+│ $53.70        32 Su│ $53.70   Day 141, 05:40                      │ Customer timeline     │
+│ 05:40 Case 3105477 │ Customer  u8cw     Product      S            │ .  .. . ... .   o     │
+│ $321.60       27 Hd│ Conformal set  Uncertain (both classes)      │ Linked entities       │
+│ 03:04 Case 3105445 │ Disagreement 0.11  Expected loss $17.19      │  (card)-(uid)-(device)│
+│ ...                │ Outcome  Not known yet (labels after 30 days)│ Counterfactual        │
+│                    │ Evidence braid: five labelled strands merge  │ Amount  [====|----]   │
+│                    │ into one cord that ends in the risk [ 32 ]   │ Device  [Known|New]   │
+│                    │ Reasons (signed points, view name at right)  │ Locked                │
+│                    │ +28 Amount is 5.1x usual        Temporal     │ [lock] Card ...       │
+│                    │ Narrative (Newsreader)                       │ Risk would be 21      │
+│                    │ [Mark as fraud F] [Mark as legit L] [U]      │                       │
+│                    │ [Print or save as PDF]                       │                       │
+└────────────────────┴──────────────────────────────────────────────┴───────────────────────┘
 ```
 
 ### 4 Fraud network
 
 ```
-┌ Entity network, as of day 141 · 14:00 ──────────────────────────────── Legend: views ─┐
+┌ Entity network, as of Day 141, 14:00 ───────────────────────────────── Legend: views ─┐
 │                                                                                       │
 │        (device)━━(uid)━━(card)        rings outlined in risk hue, labelled            │
 │            ┃                ┃         "Ring 3: 5 customers, 4 confirmed frauds"       │
@@ -233,7 +266,7 @@ shown, even though the mock knows it.
 ```
 ┌ PSI per feature (bars, 0.2 alert rule)  ┬ Score drift / disagreement drift (lines)     ┐
 ├──────────────────────────────────────────┴───────────────────────────────────────────┤
-│ Timeline: ADWIN ● Page-Hinkley ◆ alarms · injected drift ▮ start · retrains ▲ (accepted│
+│ Timeline: ADWIN ● and Page-Hinkley ◆ alarms, injected drift start, retrains ▲ (accepted│
 │ / rejected with CI)                     Label delay L: (0) (7) (•30) (60)            │
 ├──────────────────────────────────────────────────────────────────────────────────────┤
 │ Champion–challenger history table (day, trigger, PR-AUC both, gain CI, cost, outcome)│
@@ -316,7 +349,7 @@ Shortcuts are ignored while typing in an input.
 
 | Tell | Status |
 |---|---|
-| Cream background with a terracotta accent | Avoided: cool grey Ledger, no warm accent; vermilion is reserved for risk |
+| Cream background with a terracotta accent | Avoided: cool grey Ledger, no orange or terracotta anywhere; crimson is reserved for risk |
 | Black background with a neon accent | Avoided: dark theme is steel blue-grey, colours are muted and AA-checked |
 | Identical rounded cards with one shadow | Avoided: ruled panes, 0 radius, no card grid; shadows only on floating layers |
 | Gradient washes, glass, glow | None |
@@ -327,3 +360,23 @@ Shortcuts are ignored while typing in an input.
 | Decorative animation on load | None; motion only on user action, plus the live stream |
 | Fake precision | Probabilities as 0–100 integers; CIs shown where they exist; masked data says it is masked; mock data says it is mock |
 | Red/green as the only signal | Decisions use a lightness ramp and words; views use fixed order and names |
+
+
+---
+
+## 7. Revision log
+
+### Design review 1, Cases page (2026-10-08)
+
+| Change | Why |
+|---|---|
+| Braid rebuilt as a convergence: labelled strands merge into one cord that ends in the risk number; missing views are dashed ghosts that stop before the merge | Straight lanes showed weights but not that the evidence *combines* into one score; the merge makes the fusion legible and makes weight differences visible as width at one point |
+| Risk gauge removed | Two places showed the risk; the number now sits where the evidence ends |
+| Only the decision is a badge; conformal set, disagreement, expected loss and outcome are label–value text | A row of equal badges flattened the hierarchy; the decision is the one actionable state, the rest is evidence |
+| View colours retuned to equal OKLCH lightness, muted chroma, no orange or terracotta, checked for colour-blind distance and AA | The Okabe–Ito-based set differed in lightness (some views looked heavier) and used amber, which competed with the risk hue |
+| Risk scale: 8 crimson steps on p^0.6 with per-step AA text, replacing 5 vermilion steps | Queue risks 14–27 all landed on one orange; the scale now shows higher as deeper, and is not orange |
+| Header is one row; the brand moved to the rail | Two header rows wasted height in a dense console |
+| No middle-dot meta strings: amount is prominent, time secondary, customer and product are labelled fields or links | "day 148 · 02:09 · customer u880 · $162.56" hid the amount and mixed field types |
+| Thin, theme-styled scrollbars; braid and chart text on the type scale; denser spacing | Default scrollbars and off-scale 11 px text broke the system; an analyst console should show more per screen |
+| Default case: the richest of today's alerts (all five views, at least 5 earlier transactions, shared entities). If no alert qualifies, today's richest transaction, with a note that it is not an alert | The first alert was often a cold start with missing views, which hid most of the console |
+| Mock data: fraud-ring members are active accounts; customer activity is skewed; warm-up days kept as history | Rich cases need history; timelines showed "cold start" because pre-period transactions were dropped |

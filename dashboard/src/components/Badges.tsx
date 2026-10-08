@@ -1,6 +1,6 @@
 import type { Action, ConformalSet, View } from "../api/types";
 import { ACTION_LABEL, VIEW_LABEL } from "../api/types";
-import { VIEW_VAR, riskInk, riskVar } from "../lib/colors";
+import { VIEW_VAR, riskInk, riskStep, riskVar } from "../lib/colors";
 import { risk } from "../lib/format";
 
 export function DecisionBadge({ action }: { action: Action }) {
@@ -10,20 +10,21 @@ export function DecisionBadge({ action }: { action: Action }) {
 const SET_TEXT: Record<ConformalSet, string> = {
   legit: "Legit",
   fraud: "Fraud",
-  uncertain: "Uncertain",
-  empty: "Empty set",
+  uncertain: "Uncertain (both classes)",
+  empty: "Empty (neither class)",
 };
-export function SetBadge({ set }: { set: ConformalSet }) {
-  return (
-    <span className="badge set-badge" data-set={set} title="Conformal prediction set">
-      {SET_TEXT[set]}
-    </span>
-  );
+/** Conformal prediction set as plain text: only the decision is a badge (DESIGN.md 5). */
+export const setText = (set: ConformalSet) => SET_TEXT[set];
+
+/** Outcome label as plain text, honest about the label delay. */
+export function labelText(label: 0 | 1 | null, delayDays: number): string {
+  if (label === null) return `Not known yet (labels arrive after ${delayDays} days)`;
+  return label === 1 ? "Confirmed fraud" : "Confirmed legit";
 }
 
 export function RiskCell({ p }: { p: number }) {
   return (
-    <span className="risk-cell" style={{ background: riskVar(p), color: riskInk(p) }} aria-label={`Risk ${risk(p)} of 100`}>
+    <span className="risk-cell" style={{ background: riskVar(p), color: riskInk(p) }} aria-label={`Risk ${risk(p)} of 100`} data-step={riskStep(p)}>
       {risk(p)}
     </span>
   );
@@ -35,16 +36,6 @@ export function ViewKey({ view }: { view: View }) {
       {VIEW_LABEL[view]}
     </span>
   );
-}
-
-export function LabelCell({ label }: { label: 0 | 1 | null }) {
-  if (label === null)
-    return (
-      <span className="badge curtain" title="The label is not known yet at the as-of time (label delay)">
-        Not known yet
-      </span>
-    );
-  return <span className="badge set-badge">{label === 1 ? "Confirmed fraud" : "Confirmed legit"}</span>;
 }
 
 export function LockIcon({ title = "Locked" }: { title?: string }) {

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import type { Action, Transaction } from "../api/types";
 import { ACTIONS, ACTION_LABEL } from "../api/types";
-import { DecisionBadge, RiskCell, SetBadge } from "../components/Badges";
+import { DecisionBadge, RiskCell, setText } from "../components/Badges";
 import { Braid } from "../components/Braid";
 import { topReason } from "../components/Reasons";
 import { Empty } from "../components/States";
@@ -142,7 +142,7 @@ export function Live() {
                       <RiskCell p={t.decision.p} />
                     </td>
                     <td>
-                      <SetBadge set={t.decision.conformal_set} />
+                      {setText(t.decision.conformal_set)}
                     </td>
                     <td>
                       <DecisionBadge action={t.decision.action} />
