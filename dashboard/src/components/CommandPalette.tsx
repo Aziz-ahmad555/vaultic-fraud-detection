@@ -64,7 +64,10 @@ export function CommandPalette() {
   }, [query, theme, role, asOf]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "ArrowDown") {
+    if (e.key === "Escape") {
+      e.preventDefault(); // a search field would only clear itself; Esc closes the palette
+      close();
+    } else if (e.key === "ArrowDown") {
       e.preventDefault();
       setIndex((i) => Math.min(i + 1, commands.length - 1));
     } else if (e.key === "ArrowUp") {

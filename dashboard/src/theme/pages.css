@@ -72,8 +72,21 @@
   background: var(--ledger);
 }
 @media (max-width: 1279px) {
+  /* tablet: the evidence pane folds under the case pane and the page scrolls as one */
   .console {
     grid-template-columns: 240px minmax(0, 1fr);
+    height: auto;
+    align-items: start;
+  }
+  .console > * {
+    overflow: visible;
+  }
+  .console-queue {
+    grid-row: 1 / span 2;
+    position: sticky;
+    top: 0;
+    max-height: calc(100vh - 110px);
+    overflow: auto;
   }
   .console-evidence {
     grid-column: 2;

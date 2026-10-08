@@ -47,7 +47,7 @@ function Timeline({ history, current, asOf }: { history: Transaction[]; current:
   const y = (amt: number) => height - 18 - ((Math.log10(Math.max(amt, 1)) - lo) / (hi - lo)) * (height - 32);
   return (
     <figure className="m0">
-      <svg viewBox={`0 0 ${width} ${height}`} className="timeline" role="img" aria-label={`Customer timeline: ${history.length} transactions up to the as-of time`}>
+      <svg width={width} height={height} style={{ maxWidth: "100%", height: "auto" }} viewBox={`0 0 ${width} ${height}`} className="timeline" role="img" aria-label={`Customer timeline: ${history.length} transactions up to the as-of time`}>
         <line x1={8} x2={width - 8} y1={height - 14} y2={height - 14} stroke="var(--rule)" />
         {history.map((h) => {
           const isCurrent = h.row.TransactionID === current.row.TransactionID;
