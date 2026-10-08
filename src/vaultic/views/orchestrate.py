@@ -100,15 +100,21 @@ class SupervisedView:
 
 
 class AnomalyScoreView:
-    """Phase 6 anomaly view as a probability: the label-free scores (views/anomaly.py, fitted
-    on legit training rows) mapped to a fraud probability by a logistic regression fitted on
-    the fold's training rows. The per-uid score enters with a missing indicator, so rows
-    without enough history still get a score from the global models."""
+    """Phase 6 anomaly view as a probability (D57). The fold's training rows (time-ordered) are
+    split by time: the anomaly models (views/anomaly.py, legit rows only) are fitted on the
+    earlier `1 - link_fraction`, and the logistic link from their scores to a fraud probability
+    is fitted on the later `link_fraction`, where those scores are out-of-sample. The per-uid
+    score enters with a missing indicator, so rows without enough history still get a score
+    from the global models."""
 
     def __init__(self, columns: list[str], uid_col: str = "uid", n_past_col: str = "hist_n_past",
-                 encoder: CategoryEncoder | None = None, seed: int = 0, **ae_kwargs):  # fmt: skip
+                 encoder: CategoryEncoder | None = None, seed: int = 0, link_fraction: float = 0.2,
+                 **ae_kwargs):  # fmt: skip
+        if not 0 < link_fraction < 1:
+            raise ValueError("link_fraction must be in (0, 1)")
         self.columns, self.uid_col, self.n_past_col = list(columns), uid_col, n_past_col
         self.encoder, self.seed, self.ae_kwargs = encoder, seed, ae_kwargs
+        self.link_fraction = link_fraction
 
     def _scores(self, frame: pd.DataFrame) -> np.ndarray:
         s = self.view_.transform(frame[self.columns], frame[self.uid_col].to_numpy(),
@@ -120,9 +126,19 @@ class AnomalyScoreView:
     def fit(self, frame: pd.DataFrame, y: np.ndarray) -> AnomalyScoreView:
         from vaultic.views.anomaly import AnomalyView
 
+        if "TransactionDT" in frame and np.any(np.diff(frame["TransactionDT"].to_numpy()) < 0):
+            raise ValueError("training rows must be in time order")
+        y = np.asarray(y)
+        cut = int(round(len(frame) * (1 - self.link_fraction)))
+        early, tail = frame.iloc[:cut], frame.iloc[cut:]
+        if len(np.unique(y[cut:])) < 2:
+            raise ValueError(
+                "the link tail needs both classes: use a longer fold or a larger link_fraction"
+            )
         self.view_ = AnomalyView(seed=self.seed, encoder=self.encoder, **self.ae_kwargs)
-        self.view_.fit(frame[self.columns], y, frame[self.uid_col].to_numpy())
-        self.link_ = LogisticRegression(class_weight="balanced").fit(self._scores(frame), y)
+        self.view_.fit(early[self.columns], y[:cut], early[self.uid_col].to_numpy())
+        self.link_ = LogisticRegression(class_weight="balanced").fit(self._scores(tail), y[cut:])
+        self.n_anomaly_rows_, self.n_link_rows_ = len(early), len(tail)
         return self
 
     def predict(self, frame: pd.DataFrame) -> np.ndarray:

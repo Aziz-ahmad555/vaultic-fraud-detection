@@ -292,4 +292,27 @@ def test_anomaly_view_scores_every_row_and_stays_label_free_inside():
     assert table["raw_anomaly"].between(0, 1).all()  # global scores exist for every row
     train = SPLITS.train.contains(df["day"].to_numpy())
     y = df["isFraud"].to_numpy()[train]
-    assert view.view_.global_if.n_fit_ == int((y == 0).sum())  # anomaly models: legit rows only
+    cut = int(round(train.sum() * 0.8))
+    assert view.view_.global_if.n_fit_ == int((y[:cut] == 0).sum())  # legit rows of the early part
+
+
+def test_anomaly_models_and_link_use_disjoint_time_ordered_rows():
+    """D57: anomaly models on the earlier 80% of the fold's training rows; the link LR only on
+    the later 20%, where the anomaly scores are out-of-sample."""
+    from vaultic.views.orchestrate import AnomalyScoreView
+
+    df, features, _ = _synthetic(n=3000, n_uids=60)
+    features = features.assign(TransactionDT=df["TransactionDT"].to_numpy())
+    train = features.iloc[:2000]
+    y = df["isFraud"].to_numpy()[:2000]
+    view = AnomalyScoreView(["amt", "V1"], max_iter=30).fit(train, y)
+    assert (view.n_anomaly_rows_, view.n_link_rows_) == (1600, 400)
+    legit_early = int((y[:1600] == 0).sum())
+    assert view.view_.global_if.n_fit_ == legit_early  # nothing from the link tail
+    # the link sees only the tail: changing labels in the early part does not move it
+    flipped = y.copy()
+    flipped[:1600] = 1 - flipped[:1600]
+    again = AnomalyScoreView(["amt", "V1"], max_iter=30).fit(train, flipped)
+    assert again.view_.global_if.n_fit_ == int((flipped[:1600] == 0).sum())
+    with pytest.raises(ValueError, match="time order"):
+        AnomalyScoreView(["amt", "V1"]).fit(train.iloc[::-1], y[::-1])
