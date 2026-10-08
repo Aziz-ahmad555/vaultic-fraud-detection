@@ -1,0 +1,121 @@
+/* Design tokens: docs/DESIGN.md section 1. Every colour here was contrast-checked. */
+
+:root {
+  /* core palette */
+  --ledger: #e6ebf0;
+  --sheet: #f4f6f9;
+  --ink: #17212b;
+  --graphite: #4b5866;
+  --rule: #b9c3cd;
+  --sheet-hover: #eaeef3;
+  --sheet-selected: #dde4ec;
+
+  /* one colour per evidence view */
+  --view-tabular: #1f5fa8;
+  --view-behavioral: #9a5b00;
+  --view-temporal: #00735c;
+  --view-relational: #8b3d83;
+  --view-anomaly: #566400;
+
+  /* single-hue risk scale (vermilion), low to high */
+  --risk-1: #fbeae3;
+  --risk-2: #f2bca5;
+  --risk-3: #e2875f;
+  --risk-4: #c4501d;
+  --risk-5: #8a3210;
+
+  /* decisions: blue-grey ramp, light to dark with severity */
+  --dec-allow-bg: #e3e8ed;
+  --dec-allow-fg: #17212b;
+  --dec-monitor-bg: #cbd4dd;
+  --dec-monitor-fg: #17212b;
+  --dec-step_up-bg: #a3b2c1;
+  --dec-step_up-fg: #17212b;
+  --dec-hold-bg: #5d7187;
+  --dec-hold-fg: #ffffff;
+  --dec-block-bg: #1e2c3a;
+  --dec-block-fg: #ffffff;
+
+  /* label-delay curtain hatching */
+  --curtain: rgba(75, 88, 102, 0.12);
+
+  /* type */
+  --font-ui: "Public Sans", system-ui, sans-serif;
+  --font-narrative: "Newsreader", Georgia, serif;
+  --fs-xs: 12px;
+  --lh-xs: 16px;
+  --fs-sm: 13px;
+  --lh-sm: 18px;
+  --fs-base: 14px;
+  --lh-base: 20px;
+  --fs-md: 16px;
+  --lh-md: 24px;
+  --fs-lg: 20px;
+  --lh-lg: 28px;
+  --fs-xl: 28px;
+  --lh-xl: 34px;
+  --fs-narrative: 18px;
+  --lh-narrative: 29px;
+
+  /* space (4 px base) */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+
+  --radius: 2px;
+  --t-fast: 120ms;
+
+  /* floating layers only */
+  --shadow-popover: 0 6px 18px rgba(23, 33, 43, 0.16);
+  --shadow-toast: 0 2px 8px rgba(23, 33, 43, 0.2);
+  --shadow-palette: 0 18px 48px rgba(23, 33, 43, 0.28);
+}
+
+:root[data-theme="dark"] {
+  --ledger: #2b3643;
+  --sheet: #34414f;
+  --ink: #e9eef3;
+  --graphite: #b3c0cc;
+  --rule: #55657a;
+  --sheet-hover: #3b4958;
+  --sheet-selected: #445465;
+
+  --view-tabular: #86b6ee;
+  --view-behavioral: #e8a852;
+  --view-temporal: #5acbae;
+  --view-relational: #dda0d6;
+  --view-anomaly: #b9c657;
+
+  --risk-1: #4a3b37;
+  --risk-2: #7a4a36;
+  --risk-3: #b5603a;
+  --risk-4: #e07f52;
+  --risk-5: #f6b595;
+
+  --dec-allow-bg: #3b4959;
+  --dec-allow-fg: #e9eef3;
+  --dec-monitor-bg: #4d5d6f;
+  --dec-monitor-fg: #e9eef3;
+  --dec-step_up-bg: #5e7186;
+  --dec-step_up-fg: #ffffff;
+  --dec-hold-bg: #a9b9c9;
+  --dec-hold-fg: #17212b;
+  --dec-block-bg: #e3eaf1;
+  --dec-block-fg: #17212b;
+
+  --curtain: rgba(179, 192, 204, 0.12);
+
+  --shadow-popover: 0 6px 18px rgba(0, 0, 0, 0.35);
+  --shadow-toast: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-palette: 0 18px 48px rgba(0, 0, 0, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-fast: 0ms;
+  }
+}
