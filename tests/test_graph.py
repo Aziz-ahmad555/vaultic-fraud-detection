@@ -117,10 +117,12 @@ def test_components_use_the_30_day_window_before_the_day(c):
     # r6 / r7 (day 8): r0-r4 connected through c1 and D1; r5 (U4, c3) is separate
     assert (c.loc[6, "g_comp_tx"], c.loc[6, "g_comp_uids"]) == (5, 3)
     assert c.loc[6, "g_comp_fraud_rate"] == pytest.approx(2 / 5)
-    # r5 (day 6): its uid and card have no history; r8 (day 40): window is empty
-    assert c.loc[5, "g_comp_tx"] == 0 and np.isnan(c.loc[5, "g_comp_fraud_rate"])
-    assert c.loc[8, "g_comp_tx"] == 0
-    assert (c["g_comm_tx"] <= c["g_comp_tx"]).all()  # communities split components
+    # r5 (day 6): its uid and card have no history; r8 (day 40): window is empty.
+    # No group means missing (NaN), not an empty group (D51)
+    structure = ["g_comp_tx", "g_comp_uids", "g_comp_fraud_rate", "g_comm_tx", "g_comm_fraud_rate"]
+    assert c.loc[5, structure].isna().all() and c.loc[8, structure].isna().all()
+    both = c[["g_comm_tx", "g_comp_tx"]].dropna()
+    assert (both["g_comm_tx"] <= both["g_comp_tx"]).all()  # communities split components
 
 
 def test_communities_match_components_on_separate_cliques():
@@ -262,3 +264,17 @@ def test_setting_c_l30_truncation_with_long_label_history(q):
     flipped.loc[recent, "isFraud"] = 1 - flipped.loc[recent, "isFraud"]
     again = build_graph_features(flipped, uid, "C", label_delay_days=30, window_days=30)
     pd.testing.assert_frame_equal(full[keep], again[keep], check_exact=True)
+
+
+def test_setting_c_rows_without_a_group_are_missing_not_zero():
+    """D51: in setting C a row none of whose entities is in the window graph gets NaN for every
+    structure feature; rows in a group never get NaN counts."""
+    df, uid = _synthetic(n=600)
+    f = build_graph_features(df, uid, "C", label_delay_days=3, window_days=30)
+    first_day = (df["TransactionDT"] // D == (df["TransactionDT"] // D).min()).to_numpy()
+    assert f.loc[first_day, ["g_comp_tx", "g_comp_uids", "g_comm_tx"]].isna().all().all()
+    grouped = f["g_comp_tx"].notna()
+    assert grouped.any() and (f.loc[grouped, "g_comp_tx"] >= 1).all()
+    assert (f.loc[grouped, "g_comp_uids"] >= 1).all() and f.loc[grouped, "g_comm_tx"].notna().all()
+    a = build_graph_features(df, uid, "A", label_delay_days=3)
+    assert a["g_comp_tx"].notna().all()  # A and B: every row is in the static graph

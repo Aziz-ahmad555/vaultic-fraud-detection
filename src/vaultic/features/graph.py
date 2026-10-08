@@ -288,8 +288,10 @@ def _known_by_day_start(d: int, delay_days: int):
 def _structure_features(edges, n_rows, setting, delay_days, window_days, seed):
     """Component and community features for every transaction row."""
     struct = edges[edges["type"].isin(COMPONENT_TYPES)]
+    # NaN = no group for this row (setting C: none of its entities is in the window graph);
+    # never 0, which would claim an empty group (rule 11, D51)
     out = pd.DataFrame(
-        0.0,
+        np.nan,
         index=np.arange(n_rows),
         columns=["comp_tx", "comp_uids", "comp_known", "comp_fraud", "comm_tx", "comm_known",
                  "comm_fraud"],  # fmt: skip
