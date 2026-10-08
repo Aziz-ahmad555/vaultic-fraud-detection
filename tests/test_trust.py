@@ -171,27 +171,59 @@ def _three_batches():
 
 def test_aci_update_rule_by_hand():
     batch, y, p = _three_batches()
-    aci = AdaptiveConformal(alpha=0.1, gamma=0.1).fit(np.zeros(100, int), np.full(100, 0.1))
+    aci = AdaptiveConformal(alpha=0.1, gamma=0.1, label_delay_days=0).fit(
+        np.zeros(100, int), np.full(100, 0.1)
+    )
     _, trace = aci.run(batch, y, p)
+    # L = 0: a day's error is used from the next day.
     # 0.1 -> 0.1 + 0.1 * (0.1 - 1) = 0.01 -> 0.01 + 0.1 * (0.1 - 0) = 0.02
     assert [t["alpha_fraud"] for t in trace] == pytest.approx([0.1, 0.01, 0.02])
     assert [t["coverage"] for t in trace] == [0.0, 1.0, 1.0]
 
 
 def test_aci_label_delay_postpones_the_update():
+    """D55: day 1's error is known at day d only if 1 + L < d. L = 1: from day 3."""
     batch, y, p = _three_batches()
-    aci = AdaptiveConformal(alpha=0.1, gamma=0.1, delay=1).fit(
+    aci = AdaptiveConformal(alpha=0.1, gamma=0.1, label_delay_days=1).fit(
         np.zeros(100, int), np.full(100, 0.1)
     )
     _, trace = aci.run(batch, y, p)
     assert [t["alpha_fraud"] for t in trace] == pytest.approx([0.1, 0.1, 0.01])
 
 
+def test_aci_label_delay_is_in_days_not_batches():
+    """Days 1, 2 and 40 with L = 30: both earlier days are known by day 40 (1 + 30 < 40 and
+    2 + 30 < 40), however many batches lie between. Gaps in the stream do not shift arrival."""
+    y, p = np.array([1, 1, 0]), np.array([0.0, 0.0, 0.05])
+    aci = AdaptiveConformal(alpha=0.1, gamma=0.1, label_delay_days=30).fit(
+        np.zeros(100, int), np.full(100, 0.1)
+    )
+    _, trace = aci.run(np.array([1, 2, 40]), y, p)
+    # day 40 uses both misses: 0.1 -> 0.01 -> 0.01 + 0.1 * (0.1 - 1) = -0.08
+    assert [t["alpha_fraud"] for t in trace] == pytest.approx([0.1, 0.1, -0.08])
+    _, trace = aci.run(np.array([1, 2, 31]), y, p)  # 1 + 30 < 31 is false: nothing known yet
+    assert trace[-1]["alpha_fraud"] == pytest.approx(0.1)
+
+
+def test_aci_requires_the_label_delay():
+    with pytest.raises(TypeError):
+        AdaptiveConformal(alpha=0.1, gamma=0.1)
+    with pytest.raises(ValueError, match="non-negative"):
+        AdaptiveConformal(alpha=0.1, label_delay_days=-1)
+    aci = AdaptiveConformal(alpha=0.1, label_delay_days=0).fit(np.zeros(10, int), np.full(10, 0.1))
+    with pytest.raises(ValueError, match="time order"):
+        aci.run(np.array([2, 1]), np.array([0, 0]), np.array([0.1, 0.1]))
+
+
 def test_mondrian_aci_updates_only_the_class_that_erred():
     batch, y, p = _three_batches()
     cal_y = np.r_[np.zeros(100, int), np.ones(100, int)]
     cal_p = np.r_[np.full(100, 0.1), np.full(100, 0.9)]
-    _, trace = AdaptiveConformal(0.1, gamma=0.1, mondrian=True).fit(cal_y, cal_p).run(batch, y, p)
+    _, trace = (
+        AdaptiveConformal(0.1, gamma=0.1, mondrian=True, label_delay_days=0)
+        .fit(cal_y, cal_p)
+        .run(batch, y, p)
+    )
     assert trace[1]["alpha_fraud"] == pytest.approx(0.01)  # batch 1 missed its only fraud
     assert trace[1]["alpha_legit"] == pytest.approx(0.1)  # no legit rows in batch 1
 
@@ -210,7 +242,9 @@ def test_aci_recovers_coverage_after_a_shift_where_split_does_not():
     day, p, y = _shifted_stream(0)
     _, cal_p, cal_y = _shifted_stream(1, days=30)
     static = coverage_by_block(day, y, SplitConformal(0.1).fit(cal_y, cal_p).predict_sets(p))
-    sets, _ = AdaptiveConformal(0.1, gamma=0.05).fit(cal_y, cal_p).run(day, y, p)
+    sets, _ = (
+        AdaptiveConformal(0.1, gamma=0.05, label_delay_days=0).fit(cal_y, cal_p).run(day, y, p)
+    )
     adaptive = coverage_by_block(day, y, sets)
     assert len(static) == 5 and static["first_day"].tolist() == [1, 31, 61, 91, 121]
     assert (static["coverage"].iloc[:2] > 0.88).all()  # fine before the shift
