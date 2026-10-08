@@ -40,7 +40,7 @@ export function NetworkGraph({ network, until, focus, onSelect, mini = false, la
       ...nodes.map((n) => ({
         data: {
           id: n.id,
-          label: mini ? "" : n.type === "uid" ? n.label : `${n.type}: ${n.label}`,
+          label: mini ? "" : n.type === "email" ? `email ${n.label}` : n.label,
           type: n.type,
           fraud: n.knownFraud,
           ring: n.ring ?? 0,

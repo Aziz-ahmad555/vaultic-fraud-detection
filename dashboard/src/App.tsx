@@ -5,7 +5,7 @@ import { Empty, Loading } from "./components/States";
 import { Overview } from "./pages/Overview";
 import { AppProvider } from "./state/app";
 
-const pages: Record<string, () => Promise<{ default: () => ReactNode }>> = import.meta.glob("./pages/*.tsx") as never;
+const pages: Record<string, () => Promise<{ default: () => ReactNode }>> = import.meta.glob(["./pages/*.tsx", "!./pages/Overview.tsx"]) as never;
 const page = (name: string) =>
   pages[`./pages/${name}.tsx`]
     ? lazy(async () => {

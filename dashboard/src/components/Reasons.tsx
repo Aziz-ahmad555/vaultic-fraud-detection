@@ -6,7 +6,7 @@ import { fmtPoints } from "../lib/format";
 /** Reason codes with signed points (PDO 20: +20 doubles the fraud odds) and the view colour. */
 export function ReasonList({ reasons, limit = 5 }: { reasons: Reason[]; limit?: number }) {
   if (!reasons.length) return <p className="muted small">No feature-level reasons are available for this transaction.</p>;
-  const shown = reasons.slice(0, limit);
+  const shown = reasons.filter((r) => Math.round(r.points) !== 0).slice(0, limit);
   const max = Math.max(...shown.map((r) => Math.abs(r.points)), 1);
   return (
     <ol className="reasons">

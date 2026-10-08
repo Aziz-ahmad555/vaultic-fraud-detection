@@ -239,3 +239,58 @@
     border: 0;
   }
 }
+
+/* ---- network, simulator, lab, settings grids -------------------------------------------- */
+
+.grid-network {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--s-4);
+}
+.grid-sim {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  gap: var(--s-4);
+}
+@media (max-width: 1100px) {
+  .grid-network,
+  .grid-sim {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.sim-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.sim-inputs .cf-row {
+  grid-template-columns: 110px minmax(0, 1fr) 80px;
+}
+.views-fieldset {
+  border: 1px solid var(--rule);
+  padding: var(--s-3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+}
+.run-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+}
+.threshold-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--s-3) var(--s-4);
+}
+.heat {
+  max-width: 520px;
+}
+.grid-network table.data td {
+  white-space: nowrap;
+}
+
+.span-2 {
+  grid-column: 2 / 4;
+  justify-self: start;
+}

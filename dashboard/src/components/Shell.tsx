@@ -34,6 +34,7 @@ function AsOfControl() {
           step={3600}
           value={asOf.time}
           onChange={(e) => setAsOfTime(Number(e.target.value))}
+          aria-label="As-of time"
           aria-valuetext={fmtClock(asOf.time)}
         />
       </label>

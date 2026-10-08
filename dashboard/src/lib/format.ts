@@ -10,7 +10,10 @@ export const fmtInt = (x: number) => int.format(x);
 export const fmtPct = (x: number, digits = 0) => `${(100 * x).toFixed(digits)}%`;
 /** Fraud probability as an integer risk score 0-100 (no false precision). */
 export const risk = (p: number) => Math.round(100 * p);
-export const fmtPoints = (pts: number) => `${pts > 0 ? "+" : pts < 0 ? "−" : ""}${Math.abs(Math.round(pts))}`;
+export const fmtPoints = (pts: number) => {
+  const r = Math.round(pts);
+  return `${r > 0 ? "+" : r < 0 ? "−" : ""}${Math.abs(r)}`;
+};
 
 /** Dataset clock (relative seconds) as "day 141 · 14:05". */
 export function fmtClock(t: number, withDay = true) {

@@ -4,7 +4,9 @@
  */
 import { scaleBand, scaleLinear } from "d3-scale";
 import { line } from "d3-shape";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
+
+const FIT: CSSProperties = { maxWidth: "100%", height: "auto" };
 
 export interface Bar {
   label: string;
@@ -23,10 +25,11 @@ export function HBars({ bars, max, width = 420, rowHeight = 24, labelWidth = 150
   rule?: { value: number; label: string };
 }) {
   const top = Math.max(max ?? 0, ...bars.map((b) => b.value), rule?.value ?? 0, 1e-9);
-  const x = scaleLinear().domain([0, top]).range([0, width - labelWidth - 64]);
+  const reserve = Math.max(64, ...bars.map((b) => String(b.text ?? b.value).length * 7 + 12));
+  const x = scaleLinear().domain([0, top]).range([0, Math.max(width - labelWidth - reserve, 40)]);
   const height = bars.length * rowHeight + 8;
   return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={bars.map((b) => `${b.label} ${b.text ?? b.value}`).join(", ")} className="chart">
+    <svg width={width} height={height} style={FIT} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={bars.map((b) => `${b.label} ${b.text ?? b.value}`).join(", ")} className="chart">
       {bars.map((b, i) => (
         <g key={b.label} transform={`translate(0, ${i * rowHeight + 4})`}>
           <text x={labelWidth - 8} y={rowHeight / 2 + 4} textAnchor="end" className="chart-label">
@@ -41,7 +44,7 @@ export function HBars({ bars, max, width = 420, rowHeight = 24, labelWidth = 150
       {rule && (
         <g>
           <line x1={labelWidth + x(rule.value)} x2={labelWidth + x(rule.value)} y1={0} y2={height} stroke="var(--graphite)" strokeDasharray="3 3" />
-          <text x={labelWidth + x(rule.value) + 4} y={10} className="chart-tick">
+          <text x={labelWidth + x(rule.value) + 4} y={height - 2} className="chart-tick">
             {rule.label}
           </text>
         </g>
@@ -56,7 +59,7 @@ export function StackedBar({ parts, width = 520 }: { parts: { label: string; val
   let x0 = 0;
   return (
     <div>
-      <svg width="100%" viewBox={`0 0 ${width} 34`} role="img" aria-label={parts.map((p) => `${p.label} ${p.value}`).join(", ")} className="chart">
+      <svg width={width} height={34} style={FIT} viewBox={`0 0 ${width} 34`} role="img" aria-label={parts.map((p) => `${p.label} ${p.value}`).join(", ")} className="chart">
         {parts.map((p) => {
           const w = (p.value / total) * width;
           const g = (
@@ -97,7 +100,7 @@ export function Columns({ data, width = 520, height = 150, color = "var(--ink)",
   const top = Math.max(...data.map((d) => d.value), 1e-9);
   const y = scaleLinear().domain([0, top]).nice().range([height - pad.b, pad.t]);
   return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={data.map((d) => `${d.key}: ${format(d.value)}`).join(", ")} className="chart">
+    <svg width={width} height={height} style={FIT} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={data.map((d) => `${d.key}: ${format(d.value)}`).join(", ")} className="chart">
       {y.ticks(3).map((t) => (
         <g key={t}>
           <line x1={pad.l} x2={width - pad.r} y1={y(t)} y2={y(t)} stroke="var(--rule)" />
@@ -152,7 +155,7 @@ export function Lines({ series, width = 560, height = 200, xDomain, yDomain, xLa
     .x((p) => x(p.x))
     .y((p) => y(p.y));
   return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${yLabel ?? "value"} by ${xLabel ?? "x"}: ${series.map((s) => s.name).join(", ")}`} className="chart">
+    <svg width={width} height={height} style={FIT} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${yLabel ?? "value"} by ${xLabel ?? "x"}: ${series.map((s) => s.name).join(", ")}`} className="chart">
       {y.ticks(4).map((t) => (
         <g key={`y${t}`}>
           <line x1={pad.l} x2={width - pad.r} y1={y(t)} y2={y(t)} stroke="var(--rule)" />
