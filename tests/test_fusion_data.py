@@ -1,0 +1,82 @@
+"""D53: calibrate tail, inner time split and identical fusion rows for every method."""
+
+import numpy as np
+import pytest
+
+from vaultic.data.splits import load_splits
+from vaultic.fusion.baselines import make_fusion
+from vaultic.fusion.data import fit_all, fusion_split
+from vaultic.views.orchestrate import view_table
+from vaultic.views.plan import fixed_plan, plan_from_json, plan_to_json, rolling_plan
+
+SPLITS = load_splits()
+
+
+def test_splits_define_the_calibrate_tail():
+    assert (SPLITS.calibrate.first, SPLITS.calibrate.last) == (144, 150)
+    assert SPLITS.calibrate.last == SPLITS.validation.last
+
+
+def test_plans_mark_the_calibrate_tail_by_row():
+    fixed = fixed_plan(SPLITS)[0]
+    days = np.arange(128, 151)
+    roles = fixed.row_roles(days)
+    assert set(days[roles == "calibrate"]) == set(range(144, 151))
+    assert set(days[roles == "gate_train"]) == set(range(128, 144))
+    roll = rolling_plan(SPLITS, final=True)
+    assert roll[0].row_roles(np.arange(91, 121)).tolist() == ["gate_train"] * 30  # before the tail
+    assert (roll[1].row_roles(np.arange(144, 151)) == "calibrate").all()
+    assert (roll[2].row_roles(np.arange(151, 183)) == "test").all()  # test folds never calibrate
+    assert plan_from_json(plan_to_json(roll)) == roll
+
+
+@pytest.fixture(scope="module")
+def table():
+    from test_view_orchestration import _encoder, _synthetic, _views
+
+    df, features, _ = _synthetic()
+    return view_table(df, features, _views(), rolling_plan(SPLITS), _encoder(df), SPLITS)
+
+
+def test_view_table_roles_and_fusion_split(table):
+    assert set(table.loc[table["role"] == "calibrate", "day"]) == set(range(144, 151))
+    split = fusion_split(table, tune_fraction=0.2)
+    fit, tune, cal = set(split.fit.ids), set(split.tune.ids), set(split.calibrate.ids)
+    assert not (fit & tune) and not (fit & cal) and not (tune & cal)  # disjoint
+    assert split.fit.day.max() < split.tune.day.min()  # inner split is by time
+    assert split.tune.day.max() < split.calibrate.day.min() == 144
+    gate_days = sorted(set(split.fit.day) | set(split.tune.day))
+    assert gate_days[0] == 91 and gate_days[-1] == 143  # rolling folds + validation 128-143
+    assert len(split.test) == 0  # development plan
+
+
+def test_every_fusion_method_gets_exactly_the_same_rows(table):
+    split = fusion_split(table)
+    seen = {}
+
+    class Spy:
+        def __init__(self, name):
+            self.name = name
+
+        def fit(self, views, y, context=None, sample_weight=None):
+            seen[self.name] = (views.copy(), y.copy(), context.copy())
+            return self
+
+    names = ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "MVAF"]
+    fit_all(split, {n: (lambda n=n: Spy(n)) for n in names})
+    ref = seen["MVAF"]
+    for n in names:
+        assert all(
+            np.array_equal(a, b, equal_nan=True) for a, b in zip(seen[n], ref, strict=True)
+        ), n
+    # and the real methods train on it
+    fitted = fit_all(split, {"F1": lambda: make_fusion("F1"), "F3": lambda: make_fusion("F3")})
+    assert np.isfinite(
+        fitted["F3"].predict_proba(split.calibrate.views, split.calibrate.context)
+    ).all()
+
+
+def test_inner_split_needs_two_days(table):
+    one_day = table[table["day"] == table["day"].min()]
+    with pytest.raises(ValueError, match="two days"):
+        fusion_split(one_day)

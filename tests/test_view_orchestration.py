@@ -137,7 +137,11 @@ def test_table_layout_and_missing_views(dev_table):
                 *[f"p_{v}" for v in VIEWS], *CONTEXT,
                 *[c for v in VIEWS for c in (f"m_{v}", f"c_{v}")], "disagreement"]  # fmt: skip
     assert sorted(table.columns) == sorted(expected)
-    assert set(table["split"]) == {"validation"} and set(table["role"]) == {"gate_train"}
+    assert set(table["split"]) == {"validation"} and set(table["role"]) == {
+        "gate_train",
+        "calibrate",
+    }
+    assert set(table.loc[table["role"] == "calibrate", "day"]) <= set(range(144, 151))  # D53
     assert table["day"].between(128, 150).all()  # development: no test-period rows at all
     rows = features.loc[SPLITS.validation.contains(df["day"].to_numpy())].reset_index(drop=True)
     assert np.array_equal(np.isnan(table["p_behavioral"]), ~has_history(rows))
@@ -154,7 +158,8 @@ def test_table_layout_and_missing_views(dev_table):
 def test_table_feeds_mvaf(dev_table):
     _, _, table = dev_table
     views, ctx, y = mvaf_inputs(table, role="gate_train")
-    assert views.shape == (len(table), 5) and ctx.shape == (len(table), len(CONTEXT))
+    n_gate = int((table["role"] == "gate_train").sum())
+    assert views.shape == (n_gate, 5) and ctx.shape == (n_gate, len(CONTEXT))
     p = MVAF(epochs=3).fit(views, y, ctx).predict_proba(views, ctx)
     assert np.isfinite(p).all()
 

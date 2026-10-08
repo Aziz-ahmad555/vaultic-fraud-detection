@@ -42,6 +42,7 @@ class Splits:
     validation: DayRange
     test: DayRange
     rolling: tuple[tuple[DayRange, DayRange], ...]
+    calibrate: DayRange | None = None  # validation tail reserved for calibration (D53)
 
     def assign(self, day: pd.Series | np.ndarray) -> np.ndarray:
         """Label every row 'train', 'validation', 'test' or 'unused' (gap days)."""
@@ -67,6 +68,7 @@ def load_splits(path: Path = SPLITS_PATH) -> Splits:
         validation=_range(fixed["validation"]),
         test=_range(fixed["test"]),
         rolling=tuple((_range(f["train"]), _range(f["test"])) for f in cfg.get("rolling", [])),
+        calibrate=_range(fixed["calibrate"]) if "calibrate" in fixed else None,
     )
     validate(splits)
     return splits
@@ -80,6 +82,10 @@ def validate(s: Splits) -> None:
         raise ValueError("validation must start after train ends")
     if not s.validation.last < s.test.first:
         raise ValueError("test must start after validation ends")
+    if s.calibrate is not None and not (
+        s.validation.first < s.calibrate.first and s.calibrate.last == s.validation.last
+    ):
+        raise ValueError("calibrate must be the tail of validation (ending on its last day)")
     for train, test in s.rolling:
         if not train.last < test.first:
             raise ValueError(

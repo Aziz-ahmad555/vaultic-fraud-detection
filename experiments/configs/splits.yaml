@@ -9,6 +9,9 @@ fixed:
   train: [1, 120]
   # days 121-127: 7-day gap, used by no split
   validation: [128, 150]
+  # validation tail: per-view/fused calibration, conformal calibration, decision thresholds and
+  # routing lambdas only; never fusion-gate training (D53)
+  calibrate: [144, 150]
   test: [151, 182]       # final runs only; never used for any choice
 
 # Drift work (Phase 10): grow the training window by 30-day blocks, test on the next block.

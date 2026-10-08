@@ -188,7 +188,7 @@ def view_table(
                 "TransactionDT": time[pr],
                 "day": day[pr],
                 "fold": fold.name,
-                "role": fold.role,
+                "role": fold.row_roles(day[pr]),
                 "label": y[pr],
             }
         )

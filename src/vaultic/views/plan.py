@@ -9,8 +9,15 @@ after them. Two schemes, both built from experiments/configs/splits.yaml:
            before the test period gives gate-training rows (more of them than validation
            alone); the fold that predicts the test period is used only for final runs
 
-Role "gate_train" rows train the fusion gate; role "test" rows evaluate it. A plan that
-predicts test-period days without final=True is refused (CLAUDE.md rule 6).
+Row roles (D53):
+  gate_train  rows the fusion gate is trained (and, through an inner time split, tuned) on
+  calibrate   splits.yaml's calibrate tail of validation (days 144-150): per-view and fused
+              calibration, conformal calibration, decision thresholds and routing lambdas
+              only; never gate training
+  test        rows that evaluate the gate (final runs only)
+A fold's own role is gate_train or test; inside a gate_train fold, the predicted days that fall
+in the calibrate tail get the row role "calibrate". A plan that predicts test-period days
+without final=True is refused (CLAUDE.md rule 6).
 
 Optional label maturity: with label_maturity_days = L, a fold trains only on rows whose
 label is known when its predicted block starts (its_time + L <= start of block), the same
@@ -26,7 +33,8 @@ import numpy as np
 
 from vaultic.data.load import SECONDS_PER_DAY
 
-ROLES = ("gate_train", "test")
+ROLES = ("gate_train", "test")  # fold roles
+ROW_ROLES = ("gate_train", "calibrate", "test")  # row roles in the view table
 
 
 @dataclass(frozen=True)
@@ -36,6 +44,7 @@ class Fold:
     predict: tuple[int, int]
     role: str
     label_maturity_days: int | None = None
+    calibrate: tuple[int, int] | None = None  # days of this fold's block reserved for calibration
 
     def __post_init__(self) -> None:
         if self.role not in ROLES:
@@ -54,6 +63,14 @@ class Fold:
     def predict_rows(self, day: np.ndarray) -> np.ndarray:
         day = np.asarray(day)
         return (day >= self.predict[0]) & (day <= self.predict[1])
+
+    def row_roles(self, day: np.ndarray) -> np.ndarray:
+        """Role of each predicted row: the fold's role, or "calibrate" in the calibrate tail."""
+        day = np.asarray(day)
+        roles = np.full(len(day), self.role, dtype=object)
+        if self.role == "gate_train" and self.calibrate is not None:
+            roles[(day >= self.calibrate[0]) & (day <= self.calibrate[1])] = "calibrate"
+        return roles
 
 
 def _overlaps_test(days: tuple[int, int], splits) -> bool:
@@ -77,10 +94,15 @@ def check_plan(plan: list[Fold], splits, final: bool) -> None:
             raise ValueError(f"fold {f.name} trains on test-period days")
 
 
+def _calibrate(splits) -> tuple[int, int] | None:
+    c = getattr(splits, "calibrate", None)
+    return None if c is None else (c.first, c.last)
+
+
 def fixed_plan(splits, final: bool = False, label_maturity_days: int | None = None) -> list[Fold]:
     t, v, s = splits.train, splits.validation, splits.test
     plan = [Fold("fixed_validation", (t.first, t.last), (v.first, v.last), "gate_train",
-                 label_maturity_days)]  # fmt: skip
+                 label_maturity_days, _calibrate(splits))]  # fmt: skip
     if final:
         plan.append(Fold("fixed_test", (t.first, t.last), (s.first, s.last), "test",
                          label_maturity_days))  # fmt: skip
@@ -100,7 +122,8 @@ def rolling_plan(splits, final: bool = False, label_maturity_days: int | None = 
         else:
             raise ValueError(f"rolling fold {i} straddles the start of the test period")
         plan.append(Fold(f"rolling_{i}", (train.first, train.last), (block.first, block.last),
-                         role, label_maturity_days))  # fmt: skip
+                         role, label_maturity_days,
+                         _calibrate(splits) if role == "gate_train" else None))  # fmt: skip
     check_plan(plan, splits, final)
     return plan
 
@@ -110,5 +133,6 @@ def plan_to_json(plan: list[Fold]) -> str:
 
 
 def plan_from_json(text: str) -> list[Fold]:
-    return [Fold(**{**d, "train": tuple(d["train"]), "predict": tuple(d["predict"])})
+    return [Fold(**{**d, "train": tuple(d["train"]), "predict": tuple(d["predict"]),
+                    "calibrate": None if d.get("calibrate") is None else tuple(d["calibrate"])})
             for d in json.loads(text)]  # fmt: skip
