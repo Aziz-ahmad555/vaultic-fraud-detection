@@ -255,7 +255,8 @@ def test_training_window_limits_history(drifted):
         seen.append((t.max() - t.min()) / SECONDS_PER_DAY)
         return _fit(X, y)
 
-    simulate(drifted, ["x1", "x2"], "P1", 120, 239, spy, train_window_days=45, holdout_days=14)
+    simulate(drifted, ["x1", "x2"], "P1", 120, 239, spy, train_window_days=45,
+             threshold_days=7, gate_days=7)  # fmt: skip
     assert all(span <= 45 - 14 for span in seen)
 
 
@@ -282,3 +283,38 @@ def test_accepted_challengers_have_a_significant_gain(drifted):
     accepted = [e for e in result.events if e["accepted"]]
     assert accepted and all(e["gain_ci_low"] > 0 for e in accepted)
     assert all(e["cost_challenger"] <= e["cost_champion"] for e in accepted)
+
+
+def test_challenger_threshold_is_chosen_before_its_gate_window(drifted, monkeypatch):
+    """D58: fit rows < threshold slice < gate window, in time; the cost threshold and the
+    reference scores see only the slice; the gate compares on the window alone."""
+    import vaultic.drift.policies as pol
+
+    chosen = []
+    real = pol.choose_cost_threshold
+
+    def spy(y, s, amount, *args):
+        chosen.append(len(y))
+        return real(y, s, amount, *args)
+
+    monkeypatch.setattr(pol, "choose_cost_threshold", spy)
+    models = []
+    real_model = pol.Model
+
+    def capture(*args):
+        m = real_model(*args)
+        models.append(m)
+        return m
+
+    monkeypatch.setattr(pol, "Model", capture)
+    simulate(
+        drifted, ["x1", "x2"], "P1", 120, 239, _fit, threshold_days=7, gate_days=7, gate_n_boot=50
+    )
+    time = drifted["TransactionDT"].to_numpy()
+    assert len(models) == 5  # champion + 4 scheduled challengers
+    for m in models:
+        assert time[m.train_rows].max() < time[m.threshold_rows].min()
+        assert time[m.threshold_rows].max() < time[m.gate_rows].min()
+        assert not set(m.threshold_rows) & set(m.gate_rows)
+        assert len(m.reference_scores) == len(m.threshold_rows)
+    assert chosen == [len(m.threshold_rows) for m in models]  # thresholds use the slice only
