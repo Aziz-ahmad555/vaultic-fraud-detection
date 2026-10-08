@@ -11,6 +11,8 @@ Each test runs on synthetic data (always) and on the real 50,000-row sample
 CI only has the synthetic case.
 """
 
+import functools
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -115,3 +117,93 @@ def test_the_label_feature_is_not_trivially_constant(data):
     df, uid, enc = data
     f = build_features(df, uid, enc, label_delay_days=1)
     assert f["uid_n_labels_known"].max() > 0
+
+
+# ---- real-data graph and sequence leakage (review L1, D60) -----------------------------------
+#
+# The 50k sample spans days 1-13, so with L = 30 no label matures inside it: the L = 30 runs
+# check edge and structure leakage, and an L = 1 run exercises matured labels on the same rows.
+# A slice of the full merged data (days 1-75, a fixed 1-in-15 subset of customers, whole
+# histories kept) exercises L = 30 with labels that do mature.
+
+GRAPH_COLUMNS = ["TransactionID", "TransactionDT", "day", "isFraud", "TransactionAmt", "ProductCD",
+                 "card1", "card2", "card3", "card4", "card5", "card6", "addr1", "addr2", "dist1",
+                 "P_emaildomain", "R_emaildomain", "DeviceInfo", "DeviceType", "D1", "C1", "C13"]  # fmt: skip
+
+
+MERGED_FULL = INTERIM_DIR / "merged.parquet"
+GRAPH_DATASETS = {"real_50k": SAMPLE_PATH, "real_days_1_75": MERGED_FULL}
+
+
+@functools.cache
+def _graph_data(name: str):
+    """Loaded on first use only (never at collection time)."""
+    if name == "real_50k":
+        df = pd.read_parquet(SAMPLE_PATH, columns=GRAPH_COLUMNS)
+        return df, build_uids(df)["uid2"].astype(str)
+    full = pd.read_parquet(MERGED_FULL, columns=GRAPH_COLUMNS)
+    full = full[full["day"] <= 75].reset_index(drop=True)
+    uid = build_uids(full)["uid2"]
+    keep = (uid % 15 == 0).to_numpy()  # whole customers, deterministic
+    return full[keep].reset_index(drop=True), uid[keep].reset_index(drop=True).astype(str)
+
+
+GRAPH_PARAMS = [
+    pytest.param(
+        name, marks=pytest.mark.skipif(not path.exists(), reason=f"{path.name} not available")
+    )
+    for name, path in GRAPH_DATASETS.items()
+]
+
+
+def _cut(df, q):
+    t = int(df["TransactionDT"].quantile(q))
+    return t, (df["TransactionDT"] <= t).to_numpy()
+
+
+@pytest.mark.parametrize("delay", [30, 1])
+@pytest.mark.parametrize("name", GRAPH_PARAMS)
+def test_real_graph_features_truncation_and_label_flip(name, delay):
+    from vaultic.features.graph import build_graph_features
+
+    df, uid = _graph_data(name)
+    full = build_graph_features(df, uid, "C", label_delay_days=delay, window_days=30)
+    if name == "real_days_1_75" and delay == 30:  # labels must actually mature here
+        assert full["g_fraud_rate_card"].notna().mean() > 0.05
+        assert full["g_comp_fraud_rate"].notna().mean() > 0.05
+    for q in (0.5, 0.85):
+        t, keep = _cut(df, q)
+        cut = build_graph_features(df[keep], uid[keep], "C", label_delay_days=delay, window_days=30)
+        pd.testing.assert_frame_equal(full[keep], cut, check_exact=True)
+    t, keep = _cut(df, 0.7)
+    flipped = df.copy()
+    unknown = (df["TransactionDT"] > t - delay * SECONDS_PER_DAY).to_numpy()
+    flipped.loc[unknown, "isFraud"] = 1 - flipped.loc[unknown, "isFraud"]
+    again = build_graph_features(flipped, uid, "C", label_delay_days=delay, window_days=30)
+    pd.testing.assert_frame_equal(full[keep], again[keep], check_exact=True)
+
+
+@pytest.mark.parametrize("name", GRAPH_PARAMS)
+def test_real_sequences_truncation_and_future_changes(name):
+    from vaultic.features.categories import CategoryEncoder
+    from vaultic.features.sequences import build_sequences
+
+    df, uid = _graph_data(name)
+    t0 = int(df["TransactionDT"].quantile(0.3))
+    enc = CategoryEncoder().fit(df[df["TransactionDT"] <= t0], columns=("ProductCD",))
+    extra = ("C1", "C13", "D1", "dist1")
+    full = build_sequences(df, uid, enc, n_steps=20, extra_columns=extra)
+    for q in (0.5, 0.85):
+        _, keep = _cut(df, q)
+        cut = build_sequences(df[keep].reset_index(drop=True), uid[keep].reset_index(drop=True), enc,
+                              n_steps=20, extra_columns=extra)  # fmt: skip
+        assert np.array_equal(full.values[keep], cut.values) and np.array_equal(
+            full.mask[keep], cut.mask
+        )
+    t, keep = _cut(df, 0.6)
+    changed = df.copy()
+    future = ~keep
+    changed.loc[future, "TransactionAmt"] = 1e6
+    changed.loc[future, ["C1", "C13"]] = -5.0
+    again = build_sequences(changed, uid, enc, n_steps=20, extra_columns=extra)
+    assert np.array_equal(full.values[keep], again.values[keep])
