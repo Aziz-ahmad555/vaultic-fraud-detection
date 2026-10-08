@@ -133,6 +133,8 @@ class GRUTemporalView:
         val = val.subset(self._with_history(val))
         if len(np.unique(train.y)) < 2:
             raise ValueError("training rows with history need both classes")
+        if not (val.y == 1).any():
+            raise ValueError("early-stopping rows with history need at least one fraud")
         torch.manual_seed(self.seed)
         gen = torch.Generator().manual_seed(self.seed)
         self._fit_scaler(train)
