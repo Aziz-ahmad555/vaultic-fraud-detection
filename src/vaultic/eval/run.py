@@ -45,7 +45,7 @@ from vaultic.eval.metrics import (
     precision_at_k,
 )
 from vaultic.features.pipeline import features_path
-from vaultic.features.sets import NEEDS_BASE, NEEDS_UID, design_matrix
+from vaultic.features.sets import NEEDS_BASE, NEEDS_UID, design_matrix, drop_features
 from vaultic.paths import MERGED_PATH, REPO_ROOT, RESEARCH_DIR, RUNS_DIR
 from vaultic.views.tabular import effective_device, make_model, resolve_device
 
@@ -182,7 +182,7 @@ def evaluate(
 ) -> tuple[dict[str, Any], pd.DataFrame, list[dict[str, float]]]:
     """Train per seed on train and score validation. Only with final=True are test rows
     predicted and test metrics computed. Pure: no files written."""
-    X = design_matrix(df, base, cfg["features"])
+    X = drop_features(design_matrix(df, base, cfg["features"]), cfg.get("drop_features"))
     y = df["isFraud"].to_numpy()
     amount = df["TransactionAmt"].to_numpy(dtype=float)
     part = splits.assign(df["day"])
@@ -228,6 +228,7 @@ def evaluate(
         "uid_variant": cfg.get("uid_variant", splits.uid_variant),
         "rows": {"train": int(tr.sum()), "validation": int(va.sum())},
         "n_features": int(X.shape[1]),
+        **({"dropped_features": list(cfg["drop_features"])} if cfg.get("drop_features") else {}),
         "seeds": list(cfg["seeds"]),
         "thresholds_chosen_on_validation": thresholds,
         "validation": _aggregate(val_seed, y[va], val_scores, boot, "validation"),

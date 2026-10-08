@@ -68,3 +68,12 @@ def design_matrix(df: pd.DataFrame, base: pd.DataFrame | None, name: str) -> pd.
         extra = base.drop(columns="TransactionID").set_axis(df.index)
         return pd.concat([_codes(raw), extra.astype(np.float32)], axis=1)
     raise ValueError(f"unknown feature set {name!r}")
+
+
+def drop_features(X: pd.DataFrame, names) -> pd.DataFrame:
+    """Remove features named in a config's `drop_features` (ablations); unknown names raise."""
+    names = list(names or [])
+    missing = sorted(set(names) - set(X.columns))
+    if missing:
+        raise ValueError(f"drop_features names columns that are not in the feature set: {missing}")
+    return X.drop(columns=names)

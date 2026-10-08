@@ -221,3 +221,22 @@ def test_planned_configs_are_refused_and_extends_merges(tmp_path):
     # a runnable child of a planned parent does not inherit the parent's status
     (tmp_path / "grandchild.yaml").write_text(yaml.safe_dump({"extends": "planned.yaml"}))
     assert "status" not in read_config(tmp_path / "grandchild.yaml")
+
+
+def test_drop_features_removes_a_feature_and_rejects_unknown_names(tmp_path):
+    cfg = yaml.safe_load(_config(tmp_path, features="raw_base").read_text())
+    cfg["drop_features"] = ["uid_n_past"]
+    path = tmp_path / "EXP-DROP.yaml"
+    path.write_text(yaml.safe_dump(cfg))
+    full = json.loads(
+        (
+            _run(tmp_path, cfg=_config(tmp_path, features="raw_base"), runs="full") / "metrics.json"
+        ).read_text()
+    )
+    dropped = json.loads((_run(tmp_path, cfg=path, runs="drop") / "metrics.json").read_text())
+    assert dropped["n_features"] == full["n_features"] - 1
+    assert dropped["dropped_features"] == ["uid_n_past"] and "dropped_features" not in full
+    cfg["drop_features"] = ["no_such_column"]
+    path.write_text(yaml.safe_dump(cfg))
+    with pytest.raises(ValueError, match="no_such_column"):
+        _run(tmp_path, cfg=path, runs="bad")
