@@ -4,9 +4,13 @@ Every function takes attributions from any explainer (SHAP, gate weights, ...) a
 (n_rows, n_features) array and a `predict` function mapping an (n, d) array to fraud
 probabilities.
 
-- deletion: replace each row's top-k features (by |attribution|) with baseline values
-  (training medians) for k = 0..K and record the mean risk; a faithful explanation makes the
-  risk drop fast, so a LOWER area under the deletion curve is better.
+- deletion: replace each row's top-k features with baseline values (training medians) for
+  k = 0..K and record the mean risk; a faithful explanation makes the risk drop fast, so a
+  LOWER area under the deletion curve is better. Features are ranked by POSITIVE attribution
+  by default (D59): the curves explain alerts, i.e. why the risk is high, so the most
+  risk-raising features go first and features that lower the risk come last. Ranking by
+  |attribution| (`rank_by="absolute"`) would delete risk-lowering features early, which RAISES
+  the risk and makes a faithful explanation look unfaithful.
 - insertion: start from the baseline and put the top-k real values back; HIGHER area is better.
 - baselines: the same curves with a random feature order (averaged over repeats) and with
   one global order from permutation importance.
@@ -27,15 +31,27 @@ import numpy as np
 Predict = Callable[[np.ndarray], np.ndarray]
 
 
-def _ranking(attributions: np.ndarray) -> np.ndarray:
-    """Per row, feature indices from most to least important (|attribution|, stable on ties)."""
-    return np.argsort(-np.abs(np.asarray(attributions, dtype=float)), axis=1, kind="stable")
+RANK_BY = ("positive", "absolute")
 
 
-def _curve(predict: Predict, X, attributions, baseline, max_k: int, delete: bool) -> np.ndarray:
+def _ranking(attributions: np.ndarray, rank_by: str = "positive") -> np.ndarray:
+    """Per row, feature indices from first to last to delete (stable on ties).
+
+    positive: by signed attribution, largest first (risk-raising features first, risk-lowering
+              ones last); absolute: by |attribution|."""
+    a = np.asarray(attributions, dtype=float)
+    if rank_by == "positive":
+        return np.argsort(-a, axis=1, kind="stable")
+    if rank_by == "absolute":
+        return np.argsort(-np.abs(a), axis=1, kind="stable")
+    raise ValueError(f"rank_by must be one of {RANK_BY}")
+
+
+def _curve(predict: Predict, X, attributions, baseline, max_k: int, delete: bool,
+           rank_by: str = "positive") -> np.ndarray:  # fmt: skip
     X = np.asarray(X, dtype=float)
     baseline = np.broadcast_to(np.asarray(baseline, dtype=float), X.shape)
-    order = _ranking(attributions)
+    order = _ranking(attributions, rank_by)
     rows = np.arange(len(X))[:, None]
     points = []
     for k in range(max_k + 1):
@@ -50,12 +66,14 @@ def _curve(predict: Predict, X, attributions, baseline, max_k: int, delete: bool
     return np.array(points)
 
 
-def deletion_curve(predict: Predict, X, attributions, baseline, max_k: int) -> np.ndarray:
-    return _curve(predict, X, attributions, baseline, max_k, delete=True)
+def deletion_curve(predict: Predict, X, attributions, baseline, max_k: int,
+                   rank_by: str = "positive") -> np.ndarray:  # fmt: skip
+    return _curve(predict, X, attributions, baseline, max_k, delete=True, rank_by=rank_by)
 
 
-def insertion_curve(predict: Predict, X, attributions, baseline, max_k: int) -> np.ndarray:
-    return _curve(predict, X, attributions, baseline, max_k, delete=False)
+def insertion_curve(predict: Predict, X, attributions, baseline, max_k: int,
+                    rank_by: str = "positive") -> np.ndarray:  # fmt: skip
+    return _curve(predict, X, attributions, baseline, max_k, delete=False, rank_by=rank_by)
 
 
 def curve_auc(curve: np.ndarray) -> float:
@@ -102,7 +120,8 @@ def faithfulness_report(
 
 def jaccard_top_k(attr_a, attr_b, k: int = 3) -> np.ndarray:
     """Per row, |top-k(a) & top-k(b)| / |top-k(a) | top-k(b)|."""
-    a, b = _ranking(attr_a)[:, :k], _ranking(attr_b)[:, :k]
+    # stability compares the reasons shown to analysts, which are ranked by |points|
+    a, b = _ranking(attr_a, "absolute")[:, :k], _ranking(attr_b, "absolute")[:, :k]
     out = np.empty(len(a))
     for i, (x, y) in enumerate(zip(a, b, strict=True)):
         sx, sy = set(x.tolist()), set(y.tolist())
