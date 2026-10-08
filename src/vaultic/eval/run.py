@@ -148,7 +148,11 @@ def _per_seed_metrics(
 
 
 def _aggregate(
-    per_seed: list[dict[str, float]], y: np.ndarray, scores: list[np.ndarray], boot: dict
+    per_seed: list[dict[str, float]],
+    y: np.ndarray,
+    scores: list[np.ndarray],
+    boot: dict,
+    period: str = "",
 ) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for name in per_seed[0]:
@@ -161,6 +165,7 @@ def _aggregate(
                 RANKING_METRICS[name],
                 n_boot=int(boot.get("n", 1000)),
                 seed=int(boot.get("seed", 0)),
+                label=f"{period} {name}".strip(),
             )
             entry.update({"ci_low": lo, "ci_high": hi})
         out[name] = entry
@@ -225,14 +230,14 @@ def evaluate(
         "n_features": int(X.shape[1]),
         "seeds": list(cfg["seeds"]),
         "thresholds_chosen_on_validation": thresholds,
-        "validation": _aggregate(val_seed, y[va], val_scores, boot),
+        "validation": _aggregate(val_seed, y[va], val_scores, boot, "validation"),
     }
     if maturity is not None:
         result["train_label_maturity_days"] = int(maturity)
     if final:
         result["rows"]["test"] = int(te.sum())
         result["test_fraud_rate"] = float(y[te].mean())
-        result["test"] = _aggregate(test_seed, y[te], test_scores, boot)
+        result["test"] = _aggregate(test_seed, y[te], test_scores, boot, "test")
 
     rows = va | te if final else va
     preds = pd.DataFrame(
