@@ -1,0 +1,26 @@
+id: EXP-V-anomaly
+question: 'V-anomaly tuned (Optuna, 25 trials per weighting arm, validation only;
+  winning arm: scale_pos_weight)'
+model:
+  name: xgboost
+  params:
+    max_depth: 7
+    learning_rate: 0.066849
+    min_child_weight: 2.671018
+    subsample: 0.853833
+    colsample_bytree: 0.714861
+    reg_lambda: 5.024608
+    reg_alpha: 0.452363
+    gamma: 1.528665
+    n_estimators: 25
+    scale_pos_weight: 24.020359
+features: anomaly_only
+seeds:
+- 0
+- 1
+- 2
+- 3
+- 4
+bootstrap:
+  n: 1000
+  seed: 0
