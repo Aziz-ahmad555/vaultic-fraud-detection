@@ -84,3 +84,28 @@ def test_inner_split_needs_two_days(table):
     one_day.attrs["calibrated"] = True
     with pytest.raises(ValueError, match="two days"):
         fusion_split(one_day)
+
+
+def test_dev_compare_evaluate_scores_methods_on_given_rows():
+    """D71: every method is scored on the same rows; MVAF - method is a paired difference."""
+    from types import SimpleNamespace
+
+    from vaultic.fusion.dev_compare import evaluate
+
+    rng = np.random.default_rng(0)
+    n = 600
+    y = (rng.random(n) < 0.15).astype(int)
+    rows = SimpleNamespace(y=y, views=np.column_stack([y + rng.normal(0, 0.4, n)] * 5),
+                           context=np.zeros((n, 5)))  # fmt: skip
+
+    class Fixed:
+        def __init__(self, noise):
+            self.noise = noise
+
+        def predict_proba(self, views, context=None):
+            return views[:, 0] + np.random.default_rng(1).normal(0, self.noise, len(views))
+
+    table = evaluate({"MVAF": Fixed(0.1), "F1": Fixed(3.0)}, rows).set_index("method")
+    assert table.loc["MVAF", "PR-AUC"] > table.loc["F1", "PR-AUC"]
+    assert table.loc["F1", "MVAF - method"] > 0 and table.loc["F1", "d_low"] > 0
+    assert np.isnan(table.loc["MVAF"].get("MVAF - method", np.nan))
