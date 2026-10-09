@@ -28,6 +28,7 @@ every row and says so (all NaN, mask 0).
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable, Mapping
 
 import numpy as np
@@ -36,10 +37,12 @@ from sklearn.linear_model import LogisticRegression
 
 from vaultic.features.categories import CategoryEncoder
 from vaultic.fusion.mvaf import view_inputs
-from vaultic.trust.calibration import choose_calibrator
+from vaultic.trust.calibration import PlattCalibrator, choose_calibrator
 from vaultic.views.plan import Fold
 
 VIEWS = ("tabular", "behavioral", "temporal", "graph", "anomaly")
+# below this many frauds in a (fold, view)'s calibrate_views rows, use Platt scaling (D83)
+MIN_ISOTONIC_FRAUDS = 100
 CONTEXT = ("ctx_log_amount", "ctx_hist_n_past", "ctx_has_identity", "ctx_product", "ctx_hour")
 
 
@@ -238,8 +241,11 @@ def view_table(
 def calibrate_views(table: pd.DataFrame, folds: int = 5) -> tuple[pd.DataFrame, dict]:
     """Calibrated p_<view>, then c_<view> and disagreement from them (D56).
 
-    One calibrator per view (Platt or isotonic, chosen by out-of-fold ECE as in D29) fitted ONLY
-    on calibrate_views rows (D76) where the view is available, applied to every row. A view
+    One calibrator per (fold, view) fitted ONLY on that fold's calibrate_views rows (D76, D77)
+    where the view is available, applied to that fold's rows. With at least MIN_ISOTONIC_FRAUDS
+    frauds it is Platt or isotonic, chosen by out-of-fold ECE (D29); with fewer it is Platt
+    scaling (isotonic overfits few positives), and the fallback is logged (review R1, D83). The
+    returned info has, per (fold, view): rows, frauds, method, fallback and the ECEs. A view
     missing on every row stays missing; a view with too few such rows or one class raises."""
     from vaultic.views.plan import check_calibration_scope
 
@@ -272,9 +278,21 @@ def calibrate_views(table: pd.DataFrame, folds: int = 5) -> tuple[pd.DataFrame, 
                     "calibrate_views rows"
                 )
             check_calibration_scope(fold[fit_rows], fold[avail], f"calibrator of view {name}")
-            calibrator, report = choose_calibrator(y, raw[fit_rows], folds=folds)
+            frauds = int(y.sum())
+            entry = {"rows": int(fit_rows.sum()), "frauds": frauds}
+            if frauds >= MIN_ISOTONIC_FRAUDS:
+                calibrator, ece = choose_calibrator(y, raw[fit_rows], folds=folds)
+                entry.update(method=type(calibrator).__name__, fallback=False, ece=ece)
+            else:
+                calibrator = PlattCalibrator().fit(raw[fit_rows], y)
+                entry.update(method="PlattCalibrator", fallback=True, ece=None)
+                warnings.warn(
+                    f"fold {f}, view {name}: {frauds} frauds in calibrate_views (< "
+                    f"{MIN_ISOTONIC_FRAUDS}); Platt scaling instead of an ECE choice (D83)",
+                    stacklevel=2,
+                )
             p_all[name][avail] = calibrator.predict(raw[avail])
-            info[(f, name)] = report
+            info[(f, name)] = entry
     for name in VIEWS:
         out[f"p_{name}"] = p_all[name]
     mask, _, confidence, disagreement = view_inputs(

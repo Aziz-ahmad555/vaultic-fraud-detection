@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -396,3 +397,39 @@ def test_final_fixed_plan_test_rows_share_the_calibrate_fused_model():
     other.attrs["calibrated"] = True
     with pytest.raises(ValueError, match="different model"):
         fusion_split(other)
+
+
+def test_calibration_falls_back_to_platt_below_100_frauds(dev_table):
+    """Review R1 (D83): a (fold, view) with < 100 frauds in its calibrate_views rows gets Platt
+    scaling, never an ECE choice; the report logs rows, frauds, method and the fallback."""
+    from vaultic.views.orchestrate import MIN_ISOTONIC_FRAUDS
+
+    df, features, table = dev_table
+    cal = table[(table["role"] == "calibrate_views")]
+    frauds = {v: int(cal.loc[cal[f"raw_{v}"].notna(), "label"].sum())
+              for v in ("tabular", "behavioral", "graph")}  # fmt: skip
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _, info = calibrate_views(table)
+    for (fold, view), entry in info.items():
+        assert fold == "fixed" and entry["frauds"] == frauds[view]
+        assert entry["rows"] == int(cal[f"raw_{view}"].notna().sum())
+        if entry["frauds"] < MIN_ISOTONIC_FRAUDS:
+            assert entry["fallback"] and entry["method"] == "PlattCalibrator"
+            assert entry["ece"] is None
+            assert any(
+                f"view {view}" in str(w.message) and "Platt" in str(w.message) for w in caught
+            )
+        else:
+            assert not entry["fallback"] and set(entry["ece"]) == {"platt", "isotonic"}
+    assert any(e["fallback"] for e in info.values())  # the synthetic slice is small
+
+
+def test_calibration_with_enough_frauds_chooses_by_ece(monkeypatch):
+    import vaultic.views.orchestrate as orch
+
+    df, features, _ = _synthetic()
+    table = view_table(df, features, _views(), fixed_plan(SPLITS), _encoder(df), SPLITS)
+    monkeypatch.setattr(orch, "MIN_ISOTONIC_FRAUDS", 1)
+    _, info = orch.calibrate_views(table)
+    assert not any(e["fallback"] for e in info.values())
