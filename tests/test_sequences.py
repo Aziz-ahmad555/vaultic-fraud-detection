@@ -153,3 +153,23 @@ def test_current_step_is_the_scored_transaction_itself():
     assert (s.current[:, 1] == 0).all()  # no gap for the transaction being scored
     assert s.current[:, 2].tolist() == ENC.encode(df["ProductCD"], "ProductCD").tolist()
     assert s.current[:, 3].tolist() == df["C1"].fillna(0).tolist()
+
+
+def test_temporal_dev_compare_groups_and_unfitted_fusion():
+    """D70: GRU and rank-mean fusion vs B5 per history group, only on rows with history."""
+    from vaultic.views.temporal_dev import compare
+
+    rng = np.random.default_rng(0)
+    n = 3000
+    y = (rng.random(n) < 0.1).astype(int)
+    b5 = [y + rng.normal(0, 1.0, n) for _ in range(2)]
+    gru = y + rng.normal(0, 0.5, n)
+    gru[:200] = np.nan  # no history: masked
+    n_past = rng.integers(1, 40, n).astype(float)
+    n_past[:200] = 0
+    t = compare(y, b5, gru, n_past).set_index("group")
+    assert t.loc["all with history", "rows"] == n - 200
+    assert sum(t.loc[g, "rows"] for g in ("1-4 past", "5-19 past", "20+ past")) == n - 200
+    assert t.loc["all with history", "GRU"] > t.loc["all with history", "B5"]
+    diff, lo, hi, p = t.loc["all with history", "GRU-B5"]
+    assert lo > 0 and diff > 0
