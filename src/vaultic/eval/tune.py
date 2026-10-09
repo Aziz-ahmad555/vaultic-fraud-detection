@@ -185,8 +185,9 @@ MODELS = {
 # B1 as redefined in D61: clip to training quantiles, then standardise; lbfgs gets enough
 # iterations to converge (convergence is recorded per C, never silenced)
 LR_FIXED = {"max_iter": 5000, "clip_quantiles": [0.001, 0.999]}
-# D62 flat-curve rule for every grid search: among values within FLAT_TOL validation PR-AUC of
-# the best, take the most regularised one (smallest C); a flat curve is not extended further
+# D62 flat-curve rule for every grid search: take the smallest C (most regularised) whose
+# validation PR-AUC is within FLAT_TOL of the grid's highest; extend the grid only when that
+# chosen C is the largest value in it (at_upper_edge). No comparison of neighbours.
 FLAT_TOL = 0.001
 
 
