@@ -66,3 +66,31 @@ def test_label_dependent_columns_found_by_perturbation():
     found = label_dependent_columns(df, uid, delay_days=1, longer_delay_days=3)
     assert set(found["values"]) == {"uid_fraud_known", "uid_fraud_rate_known"}
     assert found["timing"] == ["uid_n_labels_known"]
+
+
+def test_emerging_beats_random_and_slugs():
+    """D94: 'beats random' = PR-AUC CI lower bound above the base rate."""
+    from vaultic.reports.emerging import GROUPS, beats_random, slug
+
+    rng = np.random.default_rng(0)
+    y = (rng.random(2000) < 0.05).astype(int)
+    assert beats_random(y, y + rng.normal(0, 0.5, 2000))["beats_random"]
+    assert not beats_random(y, rng.random(2000))["beats_random"]
+    assert (
+        slug("ProductCD", "R") == "R"
+        and slug("card4", "american express") == "card4-american-express"
+    )
+    assert len(GROUPS) == 9
+
+
+def test_emerging_configs_drop_one_groups_frauds(tmp_path, monkeypatch):
+    import yaml
+
+    import vaultic.reports.emerging as em
+
+    monkeypatch.setattr(em, "CONFIG_DIR", tmp_path)
+    written = em.write_configs()
+    assert len(written) == 18
+    cfg = yaml.safe_load((tmp_path / "EXP-108-holdout-card4-american-express.yaml").read_text())
+    assert cfg["train_drop_fraud"] == {"card4": "american express"}
+    assert cfg["extends"] == "EXP-108-frozen.yaml"

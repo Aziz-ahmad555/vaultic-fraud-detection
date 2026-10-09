@@ -1,0 +1,6 @@
+# Emerging-fraud experiment (validation only, D69/D94): B5 + anomaly with frozen B5
+# hyperparameters, trained without the training-period frauds of card4 = american express.
+extends: EXP-108-frozen.yaml
+id: EXP-108-holdout-card4-american-express
+question: "B5 + anomaly without card4 = american express training frauds (emerging fraud, development)"
+train_drop_fraud: {card4: "american express"}
