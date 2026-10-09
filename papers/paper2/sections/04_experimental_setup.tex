@@ -1,0 +1,25 @@
+\section{Experimental Setup}
+\label{sec:setup}
+
+\subsection{Data}
+% Required wording: "anonymized e-commerce transactions released by Vesta for the IEEE-CIS
+% competition" (never "real bank data"). Training files only; the Kaggle test files have no
+% public labels. Numbers from research/data_report.md.
+
+\subsection{Customer identifier}
+% Reconstruction and choice of uid (research/uid_report.md, decisions D8/D18); a stated
+% limitation.
+
+\subsection{Time-based split}
+% experiments/configs/splits.yaml: train, gap, validation, test by day; no random splits.
+
+\subsection{Leakage rules}
+% Point-in-time features, label delay, encoders fitted on train only, and the leakage tests.
+
+\subsection{Metrics}
+% PR-AUC (primary), ROC-AUC, recall at 1% and 5% FPR, precision@K, Brier, ECE, cost model
+% (C_FP and C_rev assumptions and the sensitivity sweep).
+
+\subsection{Statistics}
+% Five seeds, 1,000-sample bootstrap 95% CIs, paired bootstrap for every comparison, Holm
+% correction, effect sizes; equal tuning budget for all compared methods.

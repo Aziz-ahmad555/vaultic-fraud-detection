@@ -1,8 +1,9 @@
-# DVC remote on a shared Google Drive folder
+# DVC remote on a Google Drive folder
 
 The raw IEEE-CIS CSVs are registered with DVC (`data/raw/*.dvc` hold their md5 and size) but are
 **not yet in any remote**: they were added with `--no-commit`, so nothing was copied or moved.
-These steps put them on a shared Google Drive folder so Hamza and Roshan can `dvc pull` them.
+These steps put them on a Google Drive folder, so the data can be restored on another machine
+with `dvc pull` (solo project, D31).
 
 Already done in the repo: `dvc init`, the `.dvc` pointer files, and the Google Drive plugin
 (`dvc-gdrive`, pinned in `requirements.txt`).
@@ -11,23 +12,22 @@ Google blocks the OAuth app that ships with DVC, so you need your own OAuth clie
 about 10 minutes, done once). Secrets go in `.dvc/config.local`, which is git-ignored, so
 they are never committed.
 
-## 1. Create the shared folder (Aziz)
+## 1. Create the folder
 
 1. In Google Drive, create a folder, e.g. `vaultic-dvc`.
-2. Share it with Hamza and Roshan as **Editor**.
-3. Open the folder and copy its ID from the address bar:
+2. Open the folder and copy its ID from the address bar:
    `https://drive.google.com/drive/folders/<FOLDER_ID>`.
 
-## 2. Create an OAuth client (Aziz, once)
+## 2. Create an OAuth client (once)
 
 1. Go to <https://console.cloud.google.com/>, create a project (e.g. `vaultic-dvc`).
 2. **APIs & Services → Library**: enable **Google Drive API**.
 3. **APIs & Services → OAuth consent screen**: user type *External*, app name `vaultic-dvc`,
-   your email as support/developer contact. Leave it in **Testing** and add the three Gmail
-   addresses (yours, Hamza's, Roshan's) as **test users**.
+   your email as support/developer contact. Leave it in **Testing** and add your own Gmail
+   address as a **test user**.
 4. **APIs & Services → Credentials → Create credentials → OAuth client ID**, type
-   **Desktop app**. Copy the **client ID** and **client secret**. Share them with the team
-   privately (not in git, not in chat logs that get committed).
+   **Desktop app**. Copy the **client ID** and **client secret** and keep them private
+   (not in git, not in chat logs that get committed).
 
 ## 3. Connect the repo (run in the repo root with `.venv` activated)
 
@@ -55,9 +55,9 @@ dvc push
 - `dvc push` opens a browser the first time: sign in with the Google account that owns the
   folder and allow access. The token is cached locally.
 
-## 5. Teammates
+## 5. Another machine
 
-After cloning the repo and creating `.venv`:
+To restore the data elsewhere (e.g. a new laptop), after cloning the repo and creating `.venv`:
 
 ```powershell
 dvc remote modify --local gdrive gdrive_client_id "<CLIENT_ID>"
@@ -65,8 +65,7 @@ dvc remote modify --local gdrive gdrive_client_secret "<CLIENT_SECRET>"
 dvc pull
 ```
 
-They sign in with their own Google account (which must be a test user from step 2.3 and have
-Editor access to the folder).
+Sign in with the same Google account (the test user from step 2.3).
 
 ## Later: CI
 

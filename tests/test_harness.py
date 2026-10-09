@@ -173,7 +173,8 @@ def test_b5_feature_set_drops_unkept_v_columns(monkeypatch):
 def test_second_final_run_needs_a_logged_reason(tmp_path):
     decisions = tmp_path / "decisions.md"
     decisions.write_text("| # |\n", encoding="utf-8")
-    kwargs = dict(runs_dir=tmp_path / "runs", experiment_log=None, decisions_log=decisions)
+    log = tmp_path / "log.md"
+    kwargs = dict(runs_dir=tmp_path / "runs", experiment_log=log, decisions_log=decisions)
     run(_config(tmp_path), data=_data(), final=True, **kwargs)
     with pytest.raises(RuntimeError, match="already has a --final run"):
         run(_config(tmp_path), data=_data(), final=True, **kwargs)
@@ -182,3 +183,95 @@ def test_second_final_run_needs_a_logged_reason(tmp_path):
     run(_config(tmp_path), data=_data(), final=True, rerun_reason="bug #1 fixed", **kwargs)
     text = decisions.read_text(encoding="utf-8")
     assert "FINAL-RERUN" in text and "bug #1 fixed" in text
+    # review N6 (D81): the experiment log marks the re-run itself, not as a plain FINAL
+    lines = [x for x in log.read_text(encoding="utf-8").splitlines() if x.startswith("| EXP-TEST")]
+    assert ["FINAL-RERUN" in x for x in lines] == [False, False, True]
+    assert "**FINAL**" in lines[0]
+
+
+def test_label_maturity_drops_training_labels_unknown_at_validation_start(tmp_path):
+    """E25: with L = 30, a training row is used only if its time + 30 days <= the start of
+    validation (day 128), i.e. TransactionDT <= day 98 00:00."""
+    cfg = yaml.safe_load(_config(tmp_path).read_text())
+    cfg["train_label_maturity_days"] = 30
+    path = tmp_path / "EXP-MAT.yaml"
+    path.write_text(yaml.safe_dump(cfg))
+    df, base = _data()
+    out = _run(tmp_path, cfg=path, data=(df, base))
+    result = json.loads((out / "metrics.json").read_text())
+    in_train = (df["day"] >= 1) & (df["day"] <= 120)
+    expected = int((in_train & (df["TransactionDT"] <= 98 * SECONDS_PER_DAY)).sum())
+    assert result["rows"]["train"] == expected < int(in_train.sum())
+    assert result["train_label_maturity_days"] == 30
+    plain = json.loads((_run(tmp_path, runs="plain") / "metrics.json").read_text())
+    assert plain["rows"]["validation"] == result["rows"]["validation"]
+    assert "train_label_maturity_days" not in plain
+
+
+def test_planned_configs_are_refused_and_extends_merges(tmp_path):
+    from vaultic.eval.run import load_config, read_config
+
+    _config(tmp_path)  # EXP-TEST.yaml
+    child = {"extends": "EXP-TEST.yaml", "id": "EXP-CHILD", "model": {"params": {"max_depth": 5}}}
+    (tmp_path / "child.yaml").write_text(yaml.safe_dump(child))
+    cfg = load_config(tmp_path / "child.yaml")
+    assert cfg["id"] == "EXP-CHILD" and cfg["model"]["name"] == "xgboost"
+    assert cfg["model"]["params"] == {"n_estimators": 20, "max_depth": 5}
+    planned = {**child, "status": "planned", "needs": ["the temporal view"]}
+    (tmp_path / "planned.yaml").write_text(yaml.safe_dump(planned))
+    with pytest.raises(ValueError, match="planned experiment.*temporal view"):
+        load_config(tmp_path / "planned.yaml")
+    with pytest.raises(ValueError, match="planned"):
+        _run(tmp_path, cfg=tmp_path / "planned.yaml")
+    # a runnable child of a planned parent does not inherit the parent's status
+    (tmp_path / "grandchild.yaml").write_text(yaml.safe_dump({"extends": "planned.yaml"}))
+    assert "status" not in read_config(tmp_path / "grandchild.yaml")
+
+
+def test_drop_features_removes_a_feature_and_rejects_unknown_names(tmp_path):
+    cfg = yaml.safe_load(_config(tmp_path, features="raw_base").read_text())
+    cfg["drop_features"] = ["uid_n_past"]
+    path = tmp_path / "EXP-DROP.yaml"
+    path.write_text(yaml.safe_dump(cfg))
+    full = json.loads(
+        (
+            _run(tmp_path, cfg=_config(tmp_path, features="raw_base"), runs="full") / "metrics.json"
+        ).read_text()
+    )
+    dropped = json.loads((_run(tmp_path, cfg=path, runs="drop") / "metrics.json").read_text())
+    assert dropped["n_features"] == full["n_features"] - 1
+    assert dropped["dropped_features"] == ["uid_n_past"] and "dropped_features" not in full
+    cfg["drop_features"] = ["no_such_column"]
+    path.write_text(yaml.safe_dump(cfg))
+    with pytest.raises(ValueError, match="no_such_column"):
+        _run(tmp_path, cfg=path, runs="bad")
+
+
+def test_quantile_clipper_uses_training_quantiles_only():
+    """D61, by hand: quantiles 0.25 / 0.75 of the training column [0, 1, 2, 3, 4] are 1 and 3."""
+    from vaultic.views.tabular import QuantileClipper, make_model
+
+    train = np.array([[0.0], [1.0], [2.0], [3.0], [4.0]])
+    clip = QuantileClipper(0.25, 0.75).fit(train)
+    assert clip.transform(np.array([[-100.0], [2.5], [1e9]])).ravel().tolist() == [1.0, 2.5, 3.0]
+    model = make_model(
+        "logistic_regression", {"C": 1.0, "max_iter": 200, "clip_quantiles": [0.01, 0.99]}, seed=0
+    )
+    assert [type(s).__name__ for s in model] == [
+        "SimpleImputer",
+        "QuantileClipper",
+        "StandardScaler",
+        "LogisticRegression",
+    ]
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(300, 2))
+    y = (X[:, 0] > 0).astype(int)
+    model.fit(X, y)
+    extreme = np.array([[1e6, 0.0]])  # far outside training: the logit stays finite
+    assert model.decision_function(extreme)[0] == pytest.approx(
+        model.decision_function(np.array([[X[:, 0].max(), 0.0]]))[0], abs=0.5
+    )
+    plain = make_model("logistic_regression", {"C": 1.0}, seed=0)
+    assert "QuantileClipper" not in [
+        type(s).__name__ for s in plain
+    ]  # unchanged without the option

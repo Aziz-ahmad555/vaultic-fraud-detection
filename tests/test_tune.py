@@ -150,3 +150,56 @@ def test_no_pruning_before_ten_finished_trials():
     for step in range(25, 401, 25):
         trial.report(0.1, step)
         assert not trial.should_prune()
+
+
+def test_b1_grid_reports_convergence_and_writes_the_redefined_model():
+    """D61: the grid records iterations and convergence for every C."""
+    from vaultic.eval.tune import LR_FIXED, grid_logistic_regression
+
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(600, 4))
+    y = (X[:, 0] + rng.normal(0, 1, 600) > 1).astype(int)
+    rows = grid_logistic_regression(X[:400], y[:400], X[400:], y[400:], [0.1, 1.0])
+    assert [r["C"] for r in rows] == [0.1, 1.0]
+    assert all(r["converged"] and 0 < r["iterations"] <= LR_FIXED["max_iter"] for r in rows)
+    assert LR_FIXED == {"max_iter": 5000, "clip_quantiles": [0.001, 0.999]}
+
+
+def test_flat_curve_rule_takes_the_smallest_c_within_tolerance():
+    """D62: C = 10 vs C = 100 differ by 0.0001 -> C = 10; a clear winner is still taken."""
+    from vaultic.eval.tune import at_upper_edge, choose_c
+
+    def grid(scores):
+        return [
+            {"C": c, "val PR-AUC": v} for c, v in zip([0.1, 1, 10, 100, 1000], scores, strict=True)
+        ]
+
+    flat = grid([0.3556, 0.3678, 0.3703, 0.3704, 0.3700])
+    assert choose_c(flat)["C"] == 10 and not at_upper_edge(flat, choose_c(flat))
+    assert choose_c(grid([0.30, 0.31, 0.32, 0.33, 0.35]))["C"] == 1000
+    assert at_upper_edge(grid([0.30, 0.31, 0.32, 0.33, 0.35]), {"C": 1000})
+    within = grid([0.3600, 0.3695, 0.3700, 0.3705, 0.3690])  # 1 is 0.001 below the best
+    assert choose_c(within)["C"] == 1
+
+
+def test_from_grid_reselects_without_refitting(tmp_path, monkeypatch):
+    import json
+    import sys
+
+    import vaultic.eval.tune as tune
+
+    monkeypatch.setattr(tune, "RESEARCH_DIR", tmp_path)
+    monkeypatch.setattr(tune, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(tune, "load_merged", lambda *a, **k: pytest.fail("data was loaded"))
+    rows = [{"C": c, "val PR-AUC": v, "seconds": 1.0, "iterations": 10, "converged": True}
+            for c, v in [(1.0, 0.3678), (10.0, 0.3703), (100.0, 0.3704)]]  # fmt: skip
+    grid = tmp_path / "g.json"
+    grid.write_text(json.dumps(rows))
+    argv = ["tune", "--name", "BX", "--features", "raw_lr", "--model", "logistic_regression",
+            "--config-id", "EXP-X", "--from-grid", str(grid)]  # fmt: skip
+    monkeypatch.setattr(sys, "argv", argv)
+    tune.main()
+    cfg = (tmp_path / "EXP-X.yaml").read_text()
+    assert "C: 10.0" in cfg and "clip_quantiles" in cfg
+    report = (tmp_path / "tuning_BX.md").read_text(encoding="utf-8")
+    assert "Chosen: **C = 10**" in report and "upper edge" not in report

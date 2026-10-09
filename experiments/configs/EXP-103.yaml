@@ -1,0 +1,20 @@
+# Roadmap E3 (RQ1, Paper 2): does the behavioral view add to the strong tabular baseline B5?
+# Planned, not run. Numbering: EXP-1NN = roadmap experiment ENN (research/decisions.md D39).
+id: EXP-103
+roadmap: E3
+status: planned
+needs:
+  - "feature set b5_behavioral in features/sets.py (B5 + features/behavioral.py columns)"
+  - "Phase 2 gate passed and B5 (EXP-009) frozen"
+question: "E3: B5 + behavioral features vs B5 (RQ1, H1)"
+model:
+  name: xgboost
+tuning: {method: optuna, trials: 50, arms: [none, balanced], like: EXP-009}  # equal budget (rule 9)
+features: b5_behavioral
+compare_to: [EXP-009]
+report:
+  overall: [pr_auc, roc_auc, recall_at_1pct_fpr]
+  subgroups: {cold_start: "hist_n_past == 0", established: "hist_n_past >= 5"}
+  statistics: {paired_bootstrap: true, holm: true, effect_size: true}
+seeds: [0, 1, 2, 3, 4]
+bootstrap: {n: 1000, seed: 0}

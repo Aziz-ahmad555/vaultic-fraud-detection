@@ -6,6 +6,8 @@ __pycache__/
 
 # Virtual environment (recreate with: py -3.11 -m venv .venv)
 .venv/
+.venv-torch/
+.venv-dice/
 
 # Secrets
 .env

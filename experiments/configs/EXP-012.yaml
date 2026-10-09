@@ -1,10 +1,14 @@
 id: EXP-012
-question: B1 logistic regression, C chosen on validation from a grid of 5 values
+question: B1 logistic regression, C chosen on validation from a grid of 7 values (D62
+  flat-curve rule)
 model:
   name: logistic_regression
   params:
     C: 10.0
-    max_iter: 1000
+    max_iter: 5000
+    clip_quantiles:
+    - 0.001
+    - 0.999
 features: raw_lr
 seeds:
 - 0

@@ -19,7 +19,7 @@ import pandas as pd
 
 from vaultic.data.splits import SPLITS_PATH, load_splits
 from vaultic.eval.run import load_config, load_inputs
-from vaultic.features.sets import design_matrix
+from vaultic.features.sets import design_matrix, drop_features
 from vaultic.paths import RESEARCH_DIR
 from vaultic.views.tabular import make_model
 
@@ -65,7 +65,7 @@ def main() -> None:
     cfg = load_config(args.config)
     splits = load_splits(Path(cfg.get("splits", SPLITS_PATH)))
     df, base, _ = load_inputs(cfg, splits)
-    X = design_matrix(df, base, cfg["features"])
+    X = drop_features(design_matrix(df, base, cfg["features"]), cfg.get("drop_features"))
     y = df["isFraud"].to_numpy()
     part = splits.assign(df["day"])
     tr, va = part == "train", part == "validation"

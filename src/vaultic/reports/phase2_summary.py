@@ -1,12 +1,16 @@
 """Freeze record and results summary for Phase 2.
 
 Run:  python -m vaultic.reports.phase2_summary freeze    (before any --final run)
+      python -m vaultic.reports.phase2_summary amend --reason "..."   (before a FINAL-RERUN)
       python -m vaultic.reports.phase2_summary summary   (after the final runs)
 
 `freeze` writes research/frozen_configs.md: the SHA-256 of every Table 1 config plus the
 split and V-column files, and the git commit. `summary` assembles research/phase2_results.md
 from the generated tuning reports, Table 1, the exit gate, E2 and SHAP outputs, and re-hashes
-the frozen files to show whether anything changed after freezing.
+the frozen files to show whether anything changed after freezing. `amend` records a logged
+change to frozen files (old and new hash, reason) without rewriting the original freeze. A
+section of phase2_results.md whose heading ends "(added by hand, not generated)" is kept when
+the summary is regenerated.
 """
 
 from __future__ import annotations
@@ -15,7 +19,7 @@ import argparse
 import hashlib
 import re
 import subprocess
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import yaml
@@ -25,11 +29,13 @@ from vaultic.reports.table1 import SPEC_PATH
 
 FROZEN_PATH = RESEARCH_DIR / "frozen_configs.md"
 SUMMARY_PATH = RESEARCH_DIR / "phase2_results.md"
+HASH_ROW = re.compile(r"\| `([^`]+)` \| `([0-9a-f]{64})` \|")
+HAND_MARK = "(added by hand, not generated)"
 
 
 def frozen_files(spec_path: Path = SPEC_PATH) -> list[Path]:
     spec = yaml.safe_load(spec_path.read_text("utf-8"))
-    files = [CONFIG_DIR / f"{r['experiment']}.yaml" for r in spec["rows"]]
+    files = list(dict.fromkeys(CONFIG_DIR / f"{r['experiment']}.yaml" for r in spec["rows"]))
     return files + [CONFIG_DIR / "splits.yaml", CONFIG_DIR / "v_columns.yaml", spec_path]
 
 
@@ -60,13 +66,45 @@ def write_freeze(files: list[Path], out: Path = FROZEN_PATH) -> None:
 def check_freeze(frozen: Path = FROZEN_PATH) -> list[str]:
     """Files whose current hash differs from the freeze record."""
     changed = []
-    for name, digest in re.findall(
-        r"\| `([^`]+)` \| `([0-9a-f]{64})` \|", frozen.read_text("utf-8")
-    ):
+    for name, digest in HASH_ROW.findall(frozen.read_text("utf-8")):
         path = REPO_ROOT / name
         if not path.exists() or sha256(path) != digest:
             changed.append(name)
     return changed
+
+
+def amend_freeze(reason: str, frozen: Path = FROZEN_PATH) -> list[str]:
+    """Update the hashes of changed frozen files and log each change with its reason.
+
+    The table always holds the current accepted hashes; the original ones stay readable in the
+    amendment log (short hashes there, so check_freeze only sees the table)."""
+    text = frozen.read_text("utf-8")
+    changed = check_freeze(frozen)
+    if not changed:
+        return []
+    log = []
+    for name in changed:
+        old = dict(HASH_ROW.findall(text))[name]
+        new = sha256(REPO_ROOT / name)
+        text = text.replace(f"| `{name}` | `{old}` |", f"| `{name}` | `{new}` |")
+        log.append(
+            f"- {date.today().isoformat()} `{name}`: `{old[:12]}…` → `{new[:12]}…`. {reason}"
+        )
+    if "## Amendments" not in text:
+        text = text.rstrip("\n") + "\n\n## Amendments\n"
+    frozen.write_text(text.rstrip("\n") + "\n" + "\n".join(log) + "\n", encoding="utf-8")
+    return changed
+
+
+def _hand_sections(path: Path) -> list[str]:
+    """Hand-written sections (heading ends with HAND_MARK) through the end of the file."""
+    if not path.exists():
+        return []
+    lines = path.read_text("utf-8").splitlines()
+    start = next(
+        (i for i, x in enumerate(lines) if x.startswith("## ") and x.endswith(HAND_MARK)), None
+    )
+    return [] if start is None else lines[start:] + [""]
 
 
 def _section(title: str, path: Path) -> list[str]:
@@ -90,7 +128,13 @@ def write_summary(out: Path = SUMMARY_PATH) -> None:
     elif changed:
         freeze_line = f"**Changed after freezing:** {', '.join(changed)}."
     else:
-        freeze_line = "All frozen configs are unchanged since the freeze."
+        record = FROZEN_PATH.read_text("utf-8")
+        amended = record.split("## Amendments")[1].count("\n- ") if "## Amendments" in record else 0
+        freeze_line = "All frozen configs are unchanged since the freeze" + (
+            f" record, which logs {amended} amendments (see research/frozen_configs.md)."
+            if amended
+            else "."
+        )
     lines = [
         "# Phase 2 results",
         "",
@@ -109,6 +153,7 @@ def write_summary(out: Path = SUMMARY_PATH) -> None:
         *_section("B5 SHAP top 20", RESEARCH_DIR / "tables" / "b5_shap_top20.md"),
         "Figure: `research/figures/b5_shap_summary.png`.",
         "",
+        *_hand_sections(out),
     ]
     flat = []
     for item in lines:
@@ -118,9 +163,14 @@ def write_summary(out: Path = SUMMARY_PATH) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("command", choices=["freeze", "summary"])
+    parser.add_argument("command", choices=["freeze", "amend", "summary"])
+    parser.add_argument("--reason", help="amend: why the frozen files changed (logged)")
     args = parser.parse_args()
-    if args.command == "freeze":
+    if args.command == "amend":
+        if not args.reason:
+            parser.error("amend needs --reason")
+        print("amended:", amend_freeze(args.reason) or "nothing changed")
+    elif args.command == "freeze":
         write_freeze(frozen_files())
         print(f"wrote {FROZEN_PATH}")
     else:

@@ -1,0 +1,26 @@
+# Roadmap E10 (RQ2, Paper 2): fusion F1-F7 vs MVAF on the same out-of-sample view scores.
+# Gates trained on validation-period view predictions only; evaluated on test (D28).
+id: EXP-110
+roadmap: E10
+status: planned
+needs:
+  - "out-of-sample scores of all five views for validation and test"
+  - "calibrated view probabilities (Phase 8 calibration per view)"
+question: "E10: MVAF vs F1-F7 (RQ2, H2)"
+views: [tabular, behavioral, temporal, graph, anomaly]
+context: [log_amount, hist_n_past, has_identity, ProductCD, hour]
+fusion:
+  methods: [F1, F2, F3, F4, F5, F6, F7, MVAF, MVAF_cost]
+  mvaf: {hidden: [32, 32], dropout: 0.25, epochs: 30}
+  f7: {dropout: 0.25, mofe_lambda: 1.0}
+  tuning: {method: optuna, trials: 50, period: validation}   # equal budget for trainable ones
+compare: ["MVAF vs F3", "MVAF vs F4", "MVAF vs F7"]
+report:
+  overall: [pr_auc, roc_auc, recall_at_1pct_fpr, cost]
+  statistics: {paired_bootstrap: true, holm: true, effect_size: true}
+seeds: [0, 1, 2, 3, 4]
+# Review N2 (D77): every view's validation AND test predictions come from the one fixed-plan
+# model set; calibration, conformal sets, thresholds and routing lambdas are fitted and applied
+# only on that same fold (plan.check_calibration_scope). Rolling folds add earlier gate rows.
+plan: {name: gate, calibration_scope: same_fold}
+bootstrap: {n: 1000, seed: 0}

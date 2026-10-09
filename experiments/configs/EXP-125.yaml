@@ -1,0 +1,20 @@
+# E25 (new, MUST): label-maturity ablation. Retrain B5 with its frozen hyperparameters, but use
+# only training labels already known when validation starts: its_time + L <= start of the
+# validation period, L = 30 days. Measures how much label delay costs at training time.
+# Features are unchanged (point-in-time as before); only training rows are dropped
+# (harness option train_label_maturity_days). Same parameters as B5 on purpose: the comparison
+# isolates the label set, so there is no retuning (research/decisions.md D39).
+id: EXP-125
+roadmap: E25
+status: planned
+needs:
+  - "Phase 2 chain finished and EXP-009 (B5 tuned) frozen; merge phase7-prep first"
+  - "Aziz's go-ahead"
+extends: EXP-009.yaml
+question: "E25: B5 trained without labels from the last 30 days before validation starts"
+train_label_maturity_days: 30
+compare_to: [EXP-009]
+report:
+  overall: [pr_auc, roc_auc, recall_at_1pct_fpr]
+  statistics: {paired_bootstrap: true, effect_size: true}
+follow_up: {label_maturity_sweep_days: [0, 7, 30, 60]}

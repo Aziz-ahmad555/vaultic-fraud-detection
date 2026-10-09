@@ -1,0 +1,113 @@
+"""D53: calibrate tail, inner time split and identical fusion rows for every method."""
+
+import numpy as np
+import pytest
+
+from vaultic.data.splits import load_splits
+from vaultic.fusion.baselines import make_fusion
+from vaultic.fusion.data import fit_all, fusion_split
+from vaultic.views.orchestrate import calibrate_views, view_table
+from vaultic.views.plan import fixed_plan, gate_plan, plan_from_json, plan_to_json, rolling_plan
+
+SPLITS = load_splits()
+
+
+def test_splits_define_the_calibrate_tail():
+    assert (SPLITS.calibrate.first, SPLITS.calibrate.last) == (144, 150)
+    assert SPLITS.calibrate.last == SPLITS.validation.last
+    # D76: per-view calibrators on the earlier slice, everything fused on the later one
+    assert (SPLITS.calibrate_views.first, SPLITS.calibrate_views.last) == (144, 146)
+    assert (SPLITS.calibrate_fused.first, SPLITS.calibrate_fused.last) == (147, 150)
+
+
+def test_calibrate_slices_must_be_consecutive_and_end_validation():
+    from dataclasses import replace
+
+    from vaultic.data.splits import DayRange, validate
+
+    with pytest.raises(ValueError, match="consecutive"):
+        validate(replace(SPLITS, calibrate_fused=DayRange(148, 150)))  # gap at 147
+    with pytest.raises(ValueError, match="consecutive"):
+        validate(replace(SPLITS, calibrate_fused=DayRange(147, 149)))  # not the tail
+    with pytest.raises(ValueError, match="together"):
+        validate(replace(SPLITS, calibrate_fused=None))
+
+
+def test_plans_mark_the_calibrate_tail_by_row():
+    fixed = fixed_plan(SPLITS)[0]
+    days = np.arange(128, 151)
+    roles = fixed.row_roles(days)
+    assert set(days[roles == "calibrate_views"]) == set(range(144, 147))
+    assert set(days[roles == "calibrate_fused"]) == set(range(147, 151))
+    assert set(days[roles == "gate_train"]) == set(range(128, 144))
+    roll = rolling_plan(SPLITS, final=True)
+    assert roll[0].row_roles(np.arange(91, 121)).tolist() == ["gate_train"] * 30  # before the tail
+    assert (roll[1].row_roles(np.arange(144, 147)) == "calibrate_views").all()
+    assert (roll[1].row_roles(np.arange(147, 151)) == "calibrate_fused").all()
+    assert (roll[2].row_roles(np.arange(151, 183)) == "test").all()  # test folds never calibrate
+    assert plan_from_json(plan_to_json(roll)) == roll
+
+
+@pytest.fixture(scope="module")
+def table():
+    from test_view_orchestration import _encoder, _synthetic, _views
+
+    df, features, _ = _synthetic()
+    raw = view_table(df, features, _views(), gate_plan(SPLITS), _encoder(df), SPLITS)
+    with pytest.raises(ValueError, match="not calibrated"):
+        fusion_split(raw)
+    return calibrate_views(raw)[0]
+
+
+def test_view_table_roles_and_fusion_split(table):
+    fixed = table["fold"] == "fixed"
+    assert set(table.loc[fixed & (table["role"] == "calibrate_views"), "day"]) == set(
+        range(144, 147)
+    )
+    assert set(table.loc[~fixed & (table["role"] == "calibrate_views"), "day"]) == {118, 119, 120}
+    assert set(table.loc[table["role"] == "calibrate_fused", "day"]) == set(range(147, 151))
+    split = fusion_split(table, tune_fraction=0.2)
+    fit, tune, cal = set(split.fit.ids), set(split.tune.ids), set(split.calibrate.ids)
+    assert not (fit & tune) and not (fit & cal) and not (tune & cal)  # disjoint
+    assert split.fit.day.max() < split.tune.day.min()  # inner split is by time
+    # the fused-calibration rows are the later slice only; the per-view slice is in no part
+    assert split.tune.day.max() < 144 and split.calibrate.day.min() == 147
+    views_slice = set(table.loc[table["role"] == "calibrate_views", "TransactionID"])
+    assert not views_slice & (fit | tune | cal)
+    gate_days = sorted(set(split.fit.day) | set(split.tune.day))
+    # rolling_0's block minus its own calibration slice (118-120) + validation 128-143 (D77)
+    assert gate_days[0] == 91 and gate_days[-1] == 143 and not {118, 119, 120} & set(gate_days)
+    assert len(split.test) == 0  # development plan
+
+
+def test_every_fusion_method_gets_exactly_the_same_rows(table):
+    split = fusion_split(table)
+    seen = {}
+
+    class Spy:
+        def __init__(self, name):
+            self.name = name
+
+        def fit(self, views, y, context=None, sample_weight=None):
+            seen[self.name] = (views.copy(), y.copy(), context.copy())
+            return self
+
+    names = ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "MVAF"]
+    fit_all(split, {n: (lambda n=n: Spy(n)) for n in names})
+    ref = seen["MVAF"]
+    for n in names:
+        assert all(
+            np.array_equal(a, b, equal_nan=True) for a, b in zip(seen[n], ref, strict=True)
+        ), n
+    # and the real methods train on it
+    fitted = fit_all(split, {"F1": lambda: make_fusion("F1"), "F3": lambda: make_fusion("F3")})
+    assert np.isfinite(
+        fitted["F3"].predict_proba(split.calibrate.views, split.calibrate.context)
+    ).all()
+
+
+def test_inner_split_needs_two_days(table):
+    one_day = table[table["day"] == table["day"].min()]
+    one_day.attrs["calibrated"] = True
+    with pytest.raises(ValueError, match="two days"):
+        fusion_split(one_day)

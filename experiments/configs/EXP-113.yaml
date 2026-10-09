@@ -1,0 +1,24 @@
+# Roadmap E13 (RQ4, Paper 3): drift detectors x label delays x injected drifts.
+# SHOULD scope (D31: Phase 10 as a thesis chapter).
+id: EXP-113
+roadmap: E13
+scope: SHOULD
+status: planned
+needs:
+  - "drift module (src/vaultic/drift): PSI, KS + Holm, ADWIN, Page-Hinkley, label-delay simulator"
+  - "drift injection with a known start date"
+question: "E13: do label-free detectors flag drift earlier than label-based ones under delay? (H4)"
+detectors:
+  label_free: [feature_psi, feature_ks_holm, score_psi, disagreement]
+  label_based: [adwin_errors, page_hinkley_errors]
+  thresholds: {psi_alert: 0.2}
+label_delay_days: [0, 7, 30, 60]
+drifts:
+  real: {split: rolling}
+  injected:
+    a: "shift fraud amounts in one ProductCD"
+    b: "move fraud to a new email domain"
+    c: "make fraud mimic legitimate velocity"
+report: [detection_delay_days, false_alarms_per_6_months, missed_drifts]
+seeds: [0, 1, 2, 3, 4]
+bootstrap: {n: 1000, seed: 0}

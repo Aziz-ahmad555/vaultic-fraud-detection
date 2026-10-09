@@ -1,12 +1,12 @@
 # Phase 2 results
 
-Assembled 2026-10-08T21:32:46 by `python -m vaultic.reports.phase2_summary summary`. All frozen configs are unchanged since the freeze.
+Assembled 2026-10-09T12:26:41 by `python -m vaultic.reports.phase2_summary summary`. All frozen configs are unchanged since the freeze record, which logs 6 amendments (see research/frozen_configs.md).
 
 ## Phase 2 exit gate
 
 From `research/phase2_exit_gate.md`:
 
-Generated 2026-10-08 by `python -m vaultic.reports.phase2_gate` from --final harness runs (test period).
+Generated 2026-10-09 by `python -m vaultic.reports.phase2_gate` from --final harness runs (test period).
 
 Gate: B5 beats B3 with non-overlapping 95% CIs on test PR-AUC.
 
@@ -23,11 +23,12 @@ Paired bootstrap B5 − B3 (same test resamples): +0.0924 (95% CI +0.0828 to +0.
 
 From `research/tables/table1_final.md`:
 
-Generated 2026-10-08 by `python -m vaultic.reports.table1 --mode final` from harness runs. Metrics on the **test period (FINAL runs)**: mean ± std over seeds; PR-AUC also shows the 95% bootstrap CI (1,000 resamples). Do not edit by hand.
+Generated 2026-10-09 by `python -m vaultic.reports.table1 --mode final` from harness runs. Metrics on the **test period (FINAL runs)**: mean ± std over seeds; PR-AUC also shows the 95% bootstrap CI (1,000 resamples). Recall@1%FPR, Recall@5%FPR and Precision@500 are recomputed from each run's saved predictions with the D49 metric fixes. Do not edit by hand.
 
 | Baseline | Model | Features | Tuning | Experiment | PR-AUC | ROC-AUC | Recall@1%FPR | Recall@5%FPR | Precision@500 | Brier | ECE | F1 (val threshold) | Cost ($) | Seeds | Training s/seed | Inference ms/1k | Run |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| B1 | Logistic regression | raw numeric + one-hot ProductCD | grid over C (5 values), validation | EXP-012 | 0.1827 ± 0.0000 [0.1731, 0.1926] | 0.8188 ± 0.0000 | 0.0000 ± 0.0000 | 0.4382 ± 0.0000 | 0.0060 ± 0.0000 | 0.0388 ± 0.0000 | 0.0167 ± 0.0000 | 0.3236 ± 0.0000 | 381126.4010 ± 0.0000 | 5 | 512 | 25.1 | 20261008-185520-644386 |
+| B1 | Logistic regression, clipped to training quantiles, lbfgs converged (D61) | raw numeric + one-hot ProductCD | grid over C (7 values), validation, D62 flat-curve rule | EXP-012 | 0.3936 ± 0.0000 [0.3766, 0.4103] | 0.8338 ± 0.0000 | 0.3171 ± 0.0000 | 0.4992 ± 0.0000 | 0.8960 ± 0.0000 | 0.0263 ± 0.0000 | 0.0042 ± 0.0000 | 0.3892 ± 0.0000 | 348666.0820 ± 0.0000 | 5 | 708 | 24.8 | 20261009-091004-464760 |
+| B1 (original) | Logistic regression, unclipped, lbfgs not converged (1000 iterations) | raw numeric + one-hot ProductCD | grid over C (5 values), validation; superseded by the D61 re-run | EXP-012 | 0.1827 ± 0.0000 [0.1731, 0.1926] | 0.8188 ± 0.0000 | 0.0000 ± 0.0000 | 0.4382 ± 0.0000 | 0.0166 ± 0.0000 | 0.0388 ± 0.0000 | 0.0167 ± 0.0000 | 0.3236 ± 0.0000 | 381126.4010 ± 0.0000 | 5 | 512 | 25.1 | 20261008-185520-644386 |
 | B2 | Random forest | raw | untuned reference (defaults) | EXP-002 | 0.4579 ± 0.0034 [0.4412, 0.4751] | 0.8837 ± 0.0010 | 0.3508 ± 0.0114 | 0.5486 ± 0.0035 | 0.9584 ± 0.0050 | 0.0250 ± 0.0002 | 0.0102 ± 0.0003 | 0.3891 ± 0.0009 | 317433.0424 ± 2207.7601 | 5 | 110 | 17.9 | 20261008-191428-988293 |
 | B3 | XGBoost | raw, no engineering | Optuna, 50 trials (2 weighting arms x 25), median pruning | EXP-011 | 0.5570 ± 0.0016 [0.5403, 0.5739] | 0.9034 ± 0.0009 | 0.4789 ± 0.0032 | 0.6599 ± 0.0046 | 0.9416 ± 0.0034 | 0.0216 ± 0.0001 | 0.0106 ± 0.0001 | 0.5320 ± 0.0078 | 251834.9994 ± 3443.7903 | 5 | 391 | 40.6 | 20261008-195820-697730 |
 | B4 | LightGBM | raw | Optuna, 50 trials (2 weighting arms x 25), median pruning | EXP-013 | 0.5611 ± 0.0019 [0.5443, 0.5775] | 0.9011 ± 0.0024 | 0.4808 ± 0.0049 | 0.6678 ± 0.0032 | 0.9428 ± 0.0092 | 0.0225 ± 0.0001 | 0.0189 ± 0.0001 | 0.5438 ± 0.0052 | 255279.1554 ± 2451.1867 | 5 | 210 | 107.2 | 20261008-204121-543487 |
@@ -118,17 +119,23 @@ Best parameters per arm:
 
 From `research/tuning_B1.md`:
 
-Generated 2026-10-08 by `python -m vaultic.eval.tune`. Grid over the inverse regularisation strength C, one fit per value (lbfgs is deterministic), scored on the validation period only.
+Generated 2026-10-09 by `python -m vaultic.eval.tune`. Grid over the inverse regularisation strength C, one fit per value (lbfgs is deterministic), scored on the validation period only. Model as redefined in D61: median imputation, clipping to the training 0.1%/99.9% quantiles, standardisation, lbfgs with up to 5000 iterations.
 
-| C | val PR-AUC | seconds |
-|---|---|---|
-| 0.001 | 0.3078 | 105 |
-| 0.01 | 0.3163 | 163 |
-| 0.1 | 0.3275 | 338 |
-| 1 | 0.3396 | 504 |
-| 10 | 0.3425 | 512 |
+| C | val PR-AUC | seconds | iterations | converged |
+|---|---|---|---|---|
+| 0.001 | 0.3298 | 89 | 106 | yes |
+| 0.01 | 0.3413 | 134 | 271 | yes |
+| 0.1 | 0.3556 | 252 | 654 | yes |
+| 1 | 0.3678 | 391 | 1422 | yes |
+| 10 | 0.3703 | 383 | 1667 | yes |
+| 100 | 0.3704 | 17829 | 1659 | yes |
+| 1000 | 0.3706 | 527 | 1691 | yes |
 
-Chosen: **C = 10**. Config: `experiments/configs/EXP-012.yaml`.
+Highest val PR-AUC: C = 1000 (0.3706). Selection rule (D62): the smallest C within 0.001 of the highest.
+
+Chosen: **C = 10** (0.3703). Config: `experiments/configs/EXP-012.yaml`.
+
+Grid rows: `research/tuning_B1_grid.json`.
 
 ## B5 SHAP top 20
 
@@ -183,6 +190,7 @@ processes averaged at least 0.25 core, or peaked above 1 core.
 | EXP-013 | B4 | 8 | 42 / 43 | 0.08 | 0.10 | Claude desktop app (2 min) | OK |
 | EXP-009 | B5 | 8 | 29 / 29 | 0.06 | 0.06 | Claude desktop app (1 min) | OK |
 | EXP-010 | B6 | 8 | 19 / 19 | 0.00 | 0.00 | none | OK |
+| EXP-012 re-run (D61) | B1 | 1 (lbfgs) | not logged | — | — | this Claude session only (a 4-minute `tasklist` heartbeat); no tests, builds or installs | OK, not logger-verified |
 
 Notes:
 - **EXP-012 (B1) coverage gap.** The logger missed one stretch, 17:54–18:48. That falls after
@@ -197,6 +205,8 @@ Notes:
   to 2026-10-08 16:30), CPU-heavy work ran alongside: test suites, venv and npm installs,
   front-end builds and a colour-palette search. The "total minutes" columns in the tuning
   sections are therefore not idle-machine numbers. Table 1 does not use them.
+
+- **B1 re-run (2026-10-09 08:06–09:10).** After the PR #1 review B1 was redefined and re-run once with --final (D61). No CPU logger ran, but the machine was otherwise idle: the only other activity was this Claude session's text editing and a heartbeat that ran `tasklist` every 4 minutes. The original B1 run stays in Table 1 as "B1 (original)" with its own timing.
 
 **To re-measure later on an idle machine:** EXP-002 (B2) training time. Model results do not
 change; only the timing columns would.

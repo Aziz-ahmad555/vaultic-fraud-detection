@@ -2,6 +2,8 @@
 
 Roadmap phase tracker (see `docs/ROADMAP.pdf`). Details per session in `research/session_report.md`,
 decisions in `research/decisions.md`, every experiment in `research/experiment_log.md`.
+Scope (solo project: MUST / SHOULD / COULD / DROPPED) is in `CLAUDE.md` and decision D31; the
+milestone table with scope tags is in `README.md`.
 
 ## Phase 0: setup
 
@@ -10,7 +12,7 @@ decisions in `research/decisions.md`, every experiment in `research/experiment_l
 - [x] DVC tracks `data/raw` (hashes only; Google Drive remote: see `docs/DVC_SETUP.md`)
 - [x] MLflow (local SQLite store), Docker Compose Postgres (port 55432)
 - [x] CI workflow written (not yet run on GitHub)
-- [ ] Private GitHub repo shared with Hamza and Roshan; CONTRIBUTING.md
+- [ ] Private GitHub repo (solo project, D31); CONTRIBUTING.md
 - [ ] Literature review, gap summaries, supervisor approval
 
 ## Phase 1: data foundation

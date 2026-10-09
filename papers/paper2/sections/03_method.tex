@@ -1,0 +1,19 @@
+\section{Method}
+\label{sec:method}
+
+\subsection{Evidence views}
+% The five views and how each produces a calibrated probability or is masked when missing.
+
+\subsection{Missing-View-Aware Adaptive Fusion}
+% Gate inputs, masked softmax, logit-space fusion with context bias (roadmap 7.1-7.2):
+% w_v = m_v exp(g_v(x)) / sum_u m_u exp(g_u(x)),  p = sigma(sum_v w_v logit(p_v) + b(x)).
+
+\subsection{Training}
+% Out-of-sample view predictions, view dropout, weighted BCE, cost-weighted variant (7.3).
+
+\subsection{Trust layer}
+% Calibration, split / Mondrian / adaptive conformal prediction, cost-based decisions,
+% budget-aware routing R1-R4 (Phase 8).
+
+\subsection{Explanations}
+% View-level weights, feature-level attributions, faithfulness tests (Phase 9).

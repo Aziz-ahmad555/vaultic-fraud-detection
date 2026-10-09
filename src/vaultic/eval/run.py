@@ -30,8 +30,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from vaultic.data.load import load_merged
-from vaultic.data.splits import SPLITS_PATH, load_splits
+from vaultic.data.load import SECONDS_PER_DAY, load_merged
+from vaultic.data.splits import SPLITS_PATH, label_matured, load_splits
 from vaultic.data.uid import UID_PATH
 from vaultic.eval.bootstrap import seed_mean_ci
 from vaultic.eval.metrics import (
@@ -45,7 +45,7 @@ from vaultic.eval.metrics import (
     precision_at_k,
 )
 from vaultic.features.pipeline import features_path
-from vaultic.features.sets import NEEDS_BASE, NEEDS_UID, design_matrix
+from vaultic.features.sets import NEEDS_BASE, NEEDS_UID, design_matrix, drop_features
 from vaultic.paths import MERGED_PATH, REPO_ROOT, RESEARCH_DIR, RUNS_DIR
 from vaultic.views.tabular import effective_device, make_model, resolve_device
 
@@ -53,8 +53,36 @@ PRECISION_K = 500
 MLFLOW_DIR = REPO_ROOT / "experiments" / "mlflow"  # git-ignored: mlflow.db + mlartifacts/
 
 
+def _merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
+    out = dict(base)
+    for key, value in over.items():
+        out[key] = _merge(out[key], value) if isinstance(value, dict) and isinstance(
+            out.get(key), dict
+        ) else value  # fmt: skip
+    return out
+
+
+def read_config(path: Path) -> dict[str, Any]:
+    """The YAML, with `extends: OTHER.yaml` (same folder) merged under it, recursively. The
+    parent's status / needs are not inherited."""
+    path = Path(path)
+    own = yaml.safe_load(path.read_text(encoding="utf-8"))
+    parent = own.pop("extends", None)
+    if not parent:
+        return own
+    base = read_config(path.parent / parent)
+    base.pop("status", None)
+    base.pop("needs", None)
+    return _merge(base, own)
+
+
 def load_config(path: Path) -> dict[str, Any]:
-    cfg = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    cfg = read_config(path)
+    if cfg.get("status") == "planned":
+        needs = "; ".join(cfg.get("needs", [])) or "see the config"
+        raise ValueError(
+            f"{cfg.get('id', path)} is a planned experiment, not runnable yet: {needs}"
+        )
     for key in ("id", "question", "model", "features", "seeds"):
         if key not in cfg:
             raise ValueError(f"config is missing '{key}'")
@@ -120,7 +148,11 @@ def _per_seed_metrics(
 
 
 def _aggregate(
-    per_seed: list[dict[str, float]], y: np.ndarray, scores: list[np.ndarray], boot: dict
+    per_seed: list[dict[str, float]],
+    y: np.ndarray,
+    scores: list[np.ndarray],
+    boot: dict,
+    period: str = "",
 ) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for name in per_seed[0]:
@@ -133,6 +165,7 @@ def _aggregate(
                 RANKING_METRICS[name],
                 n_boot=int(boot.get("n", 1000)),
                 seed=int(boot.get("seed", 0)),
+                label=f"{period} {name}".strip(),
             )
             entry.update({"ci_low": lo, "ci_high": hi})
         out[name] = entry
@@ -149,11 +182,15 @@ def evaluate(
 ) -> tuple[dict[str, Any], pd.DataFrame, list[dict[str, float]]]:
     """Train per seed on train and score validation. Only with final=True are test rows
     predicted and test metrics computed. Pure: no files written."""
-    X = design_matrix(df, base, cfg["features"])
+    X = drop_features(design_matrix(df, base, cfg["features"]), cfg.get("drop_features"))
     y = df["isFraud"].to_numpy()
     amount = df["TransactionAmt"].to_numpy(dtype=float)
     part = splits.assign(df["day"])
     tr, va, te = (part == p for p in ("train", "validation", "test"))
+    maturity = cfg.get("train_label_maturity_days")
+    if maturity is not None:  # E25: only training labels already known when validation starts
+        start = splits.validation.first * SECONDS_PER_DAY
+        tr = tr & label_matured(df["TransactionDT"].to_numpy(), start, int(maturity))
     if not (tr.any() and va.any()):
         raise ValueError("train and validation must both be non-empty")
     if final and not te.any():
@@ -191,14 +228,17 @@ def evaluate(
         "uid_variant": cfg.get("uid_variant", splits.uid_variant),
         "rows": {"train": int(tr.sum()), "validation": int(va.sum())},
         "n_features": int(X.shape[1]),
+        **({"dropped_features": list(cfg["drop_features"])} if cfg.get("drop_features") else {}),
         "seeds": list(cfg["seeds"]),
         "thresholds_chosen_on_validation": thresholds,
-        "validation": _aggregate(val_seed, y[va], val_scores, boot),
+        "validation": _aggregate(val_seed, y[va], val_scores, boot, "validation"),
     }
+    if maturity is not None:
+        result["train_label_maturity_days"] = int(maturity)
     if final:
         result["rows"]["test"] = int(te.sum())
         result["test_fraud_rate"] = float(y[te].mean())
-        result["test"] = _aggregate(test_seed, y[te], test_scores, boot)
+        result["test"] = _aggregate(test_seed, y[te], test_scores, boot, "test")
 
     rows = va | te if final else va
     preds = pd.DataFrame(
@@ -315,6 +355,7 @@ def run(
     # the device the model really trains on is part of the run's saved config
     device = effective_device(cfg["model"]["name"], resolve_device(device, cfg.get("device")))
     cfg = {**cfg, "device": device}
+    rerun = final and bool(previous_final_runs(cfg["id"], runs_dir))
     if final:
         _guard_final_rerun(cfg["id"], runs_dir, rerun_reason, decisions_log)
     splits = load_splits(Path(cfg.get("splits", SPLITS_PATH)))
@@ -346,7 +387,7 @@ def run(
 
     if experiment_log is not None:
         with open(experiment_log, "a", encoding="utf-8") as f:
-            f.write(log_line(cfg, result, out_dir))
+            f.write(log_line(cfg, result, out_dir, rerun=rerun))
     return out_dir
 
 
@@ -357,11 +398,14 @@ def _fmt(entry: dict[str, float]) -> str:
     )
 
 
-def log_line(cfg: dict[str, Any], result: dict[str, Any], out_dir: Path) -> str:
+def log_line(
+    cfg: dict[str, Any], result: dict[str, Any], out_dir: Path, rerun: bool = False
+) -> str:
     shown = out_dir.relative_to(REPO_ROOT) if out_dir.is_relative_to(REPO_ROOT) else out_dir
     val = f"val PR-AUC {_fmt(result['validation']['pr_auc'])}"
     if result["mode"] == "final":
-        summary = f"**FINAL** test PR-AUC {_fmt(result['test']['pr_auc'])}; {val}"
+        mark = "**FINAL-RERUN** (see decisions.md)" if rerun else "**FINAL**"
+        summary = f"{mark} test PR-AUC {_fmt(result['test']['pr_auc'])}; {val}"
     else:
         summary = f"{val} (development run)"
     return (

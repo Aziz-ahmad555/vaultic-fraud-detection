@@ -7,7 +7,16 @@ tabular, behavioral, temporal (sequence), relational (graph/GNN), anomaly.
 
 The full plan is in `docs/ROADMAP.pdf` (Vaultic Research Roadmap, 17 phases). Read the relevant phase section before starting any task.
 
-Team: Aziz (Phases 1, 2, 3, 7, 8; Paper 2), Hamza (Phases 4, 5, 6, 10; Papers 1 and 3), Roshan (Phases 9 integration, 11, 12).
+## Scope (solo project, decision D31)
+
+Aziz works on this alone. Scope, in priority order:
+
+- **MUST:** Phases 1–3; Phase 4 (graph features + XGBoost first; GNN only if time); Phase 5 (GRU only); Phase 6 (IsolationForest + autoencoder); Phase 7 (MVAF + F1–F6 + a SimMLM-style F7 baseline with MoFe ranking loss); Phase 8; Phase 9 (research side); Phase 13. **Paper 2 is the main paper.**
+- **SHOULD:** Paper 1 (graph leakage on the IEEE-CIS heterogeneous entity graph, separating edge leakage vs label leakage and label delay; Elliptic only as a replication of arXiv 2604.19514); Phase 10 as a thesis chapter; a simplified platform (FastAPI + Postgres + replay script, no Kafka); a 4-page dashboard.
+- **COULD:** GraphSAGE/TGN, LLM copilot, Paper 3.
+- **DROPPED:** Phases 16–17, Papers 4–5, TabPFN, the large load test, the multi-person usability study.
+
+Do MUST work before SHOULD, and SHOULD before COULD. Don't start DROPPED items.
 
 ## Non-negotiable research rules
 
@@ -63,7 +72,15 @@ Each run saves `config.yaml`, `metrics.json` (mean, std, 95% CI per metric), `pr
 - Use float32 / category dtypes; IEEE-CIS is ~590k rows × ~430 columns, so watch memory.
 - Graph work: PyTorch Geometric `HeteroData` + `NeighborLoader`; sample, don't load full graphs.
 - Windows machine: run Kafka, Redis, PostgreSQL via Docker Desktop + WSL2. Use `pathlib`, not hard-coded backslash paths.
-- Branch per feature, PR + one review before merging to `main`.
+- Branch per feature. Before merging to `main`, open a PR and (decision D32):
+  1. Run the full test suite incl. leakage tests; all must pass.
+  2. Fill the PR checklist (`.github/pull_request_template.md`): leakage rules respected,
+     no test-period use outside `--final`, configs/decisions logged, no data/secrets committed,
+     results reproducible from configs.
+  3. Independent review: start a NEW Claude Code session (not the one that wrote the code)
+     and ask it to review the PR diff against CLAUDE.md and the roadmap. Fix or answer every
+     finding before merging.
+  Supervisor reviews milestone results (M2, M6, M13 etc.), not individual PRs.
 - Unit-test every feature function on a small hand-made example (e.g. 10 rows) with known correct answers.
 
 ## How to work in this repo
