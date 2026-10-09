@@ -8,7 +8,10 @@ are chosen on validation. Test rows are not predicted at all unless --final is g
 runs add test metrics and are logged as FINAL. Writes to experiments/runs/<id>/<timestamp>/:
   config.yaml        the exact config used
   metrics.json       validation (and, if final, test) metrics: mean, std, per-seed values and
-                     95% bootstrap CI (deterministic: same config + seeds -> identical file)
+                     95% bootstrap CI (deterministic: same config + seeds -> identical file),
+                     plus the warnings raised during training and scoring (counts, flagged
+                     categories such as ConvergenceWarning)
+  warnings.log       every warning raised, grouped with counts (never silenced)
   run_info.json      code version (git), data version (file hashes), runtime
   predictions.parquet  TransactionID, TransactionDT, split, label, per-seed and mean score
 It also logs to MLflow (experiments/mlflow/mlflow.db) when mlflow is installed, and appends one line
@@ -44,6 +47,7 @@ from vaultic.eval.metrics import (
     f1_at,
     precision_at_k,
 )
+from vaultic.eval.warn_capture import capture_warnings
 from vaultic.features.pipeline import features_path
 from vaultic.features.sets import NEEDS_BASE, NEEDS_UID, design_matrix, drop_features
 from vaultic.paths import MERGED_PATH, REPO_ROOT, RESEARCH_DIR, RUNS_DIR
@@ -366,13 +370,16 @@ def run(
         df, base = data
         data_version = {"injected": True}
 
-    result, preds, timings = evaluate(cfg, df, base, splits, final=final, device=device)
+    with capture_warnings() as caught:
+        result, preds, timings = evaluate(cfg, df, base, splits, final=final, device=device)
+    result["warnings"] = caught.summary()
 
     out_dir = runs_dir / cfg["id"] / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     out_dir.mkdir(parents=True)
     (out_dir / "config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
     (out_dir / "metrics.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     preds.to_parquet(out_dir / "predictions.parquet", index=False)
+    caught.write_log(out_dir / "warnings.log")
     info = {
         "code_version": _git_version(),
         "data_version": data_version,
@@ -397,6 +404,16 @@ def _fmt(entry: dict[str, float]) -> str:
     )
 
 
+def warning_flag(result: dict[str, Any]) -> str:
+    """'WARNINGS: ConvergenceWarning x5' for a run whose warnings include a flagged category."""
+    flagged = result.get("warnings", {}).get("flagged", {})
+    return (
+        ("WARNINGS: " + ", ".join(f"{c} x{n}" for c, n in sorted(flagged.items())))
+        if flagged
+        else ""
+    )
+
+
 def log_line(cfg: dict[str, Any], result: dict[str, Any], out_dir: Path) -> str:
     shown = out_dir.relative_to(REPO_ROOT) if out_dir.is_relative_to(REPO_ROOT) else out_dir
     val = f"val PR-AUC {_fmt(result['validation']['pr_auc'])}"
@@ -404,6 +421,9 @@ def log_line(cfg: dict[str, Any], result: dict[str, Any], out_dir: Path) -> str:
         summary = f"**FINAL** test PR-AUC {_fmt(result['test']['pr_auc'])}; {val}"
     else:
         summary = f"{val} (development run)"
+    flag = warning_flag(result)
+    if flag:
+        summary = f"{summary}; **{flag}**"
     return (
         f"| {cfg['id']} | {date.today().isoformat()} | {cfg['question']} | {summary}, "
         f"{len(cfg['seeds'])} seeds, uid `{result['uid_variant']}`, run `{shown.as_posix()}` | — |\n"
@@ -435,6 +455,8 @@ def main() -> None:
     print(f"{out}\n  validation PR-AUC {_fmt(result['validation']['pr_auc'])}")
     if args.final:
         print(f"  FINAL test PR-AUC {_fmt(result['test']['pr_auc'])}")
+    flag = warning_flag(result)
+    print(f"  {flag} (see {out / 'warnings.log'})" if flag else "  no flagged warnings")
 
 
 if __name__ == "__main__":

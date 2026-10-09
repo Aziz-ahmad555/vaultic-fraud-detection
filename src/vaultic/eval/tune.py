@@ -33,6 +33,7 @@ import yaml
 from vaultic.data.load import load_merged
 from vaultic.data.splits import load_splits
 from vaultic.eval.metrics import pr_auc
+from vaultic.eval.warn_capture import capture_warnings
 from vaultic.features.pipeline import features_path
 from vaultic.features.sets import NEEDS_BASE, design_matrix
 from vaultic.paths import CONFIG_DIR, MERGED_PATH, REPO_ROOT, RESEARCH_DIR
@@ -297,10 +298,29 @@ def main() -> None:
     X_tr, y_tr, X_va, y_va = X[tr], y[tr], X[va], y[va]
     del df, base, X  # the test period is never handed to the tuner
 
-    if args.model == "logistic_regression":
-        _tune_logistic_regression(args, X_tr, y_tr, X_va, y_va)
+    with capture_warnings() as caught:
+        if args.model == "logistic_regression":
+            _tune_logistic_regression(args, X_tr, y_tr, X_va, y_va)
+        else:
+            _tune_boosting(args, X_tr, y_tr, X_va, y_va)
+    _append_warnings(RESEARCH_DIR / f"tuning_{args.name}.md", caught)
+
+
+def _append_warnings(report: Path, caught) -> None:
+    """Warnings raised while tuning go into the tuning report (flagged ones in bold)."""
+    summary = caught.summary()
+    flag = caught.flag_text()
+    lines = ["", "## Warnings during tuning", ""]
+    if not summary["groups"]:
+        lines.append(f"None (apart from {summary['n_ignored']} deprecation/future warnings).")
     else:
-        _tune_boosting(args, X_tr, y_tr, X_va, y_va)
+        if flag:
+            lines += [f"**{flag}**", ""]
+        lines += [f"- {g['count']} x {g['category']} at `{g['origin']}`: {g['message']}"
+                  for g in summary["groups"]]  # fmt: skip
+    with open(report, "a", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    print(flag or "no flagged warnings while tuning")
 
 
 def _write_config(config_id: str, question: str, model: str, params: dict, features: str) -> None:

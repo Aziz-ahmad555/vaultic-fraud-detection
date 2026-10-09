@@ -270,3 +270,17 @@ def test_quantile_clipper_uses_training_quantiles_only():
     assert "QuantileClipper" not in [
         type(s).__name__ for s in plain
     ]  # unchanged without the option
+
+
+def test_run_records_and_flags_convergence_warnings(tmp_path):
+    """No -W ignore: an lbfgs fit stopped at max_iter is flagged in metrics.json, warnings.log
+    and the experiment log line (the B1 failure of D61 would have been visible)."""
+    log = tmp_path / "log.md"
+    cfg = _config(tmp_path, "logistic_regression", {"max_iter": 2}, "raw_lr")
+    out = _run(tmp_path, cfg=cfg, log=log)
+    w = json.loads((out / "metrics.json").read_text())["warnings"]
+    assert w["flagged"].get("ConvergenceWarning", 0) >= 2  # one per seed
+    assert "ConvergenceWarning" in (out / "warnings.log").read_text(encoding="utf-8")
+    assert "**WARNINGS: ConvergenceWarning x" in log.read_text(encoding="utf-8")
+    clean = _run(tmp_path, cfg=_config(tmp_path), runs="runs_clean")
+    assert json.loads((clean / "metrics.json").read_text())["warnings"]["flagged"] == {}
