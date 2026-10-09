@@ -20,7 +20,12 @@ import pandas as pd
 import pytest
 
 from vaultic.data.load import SECONDS_PER_DAY
-from vaultic.features.graph import EventIndex, build_graph_features, fit_hub_thresholds
+from vaultic.features.graph import (
+    EventIndex,
+    _fit_hub_thresholds,
+    build_graph_features,
+    fit_hub_thresholds_on_training_period,
+)
 
 D = SECONDS_PER_DAY
 NAN = np.nan
@@ -307,10 +312,36 @@ def test_nonhub_shared_evidence_ignores_hubs_and_own_history():
     )  # fmt: skip
     uid = pd.Series([r[1] for r in rows])
     train = (df["TransactionDT"] < 2 * D).to_numpy()
-    th = fit_hub_thresholds(df[train], uid[train], quantile=0.5)
+    th = _fit_hub_thresholds(df[train], uid[train], quantile=0.5, last_day=1)
     assert th == {"card": 1.0, "device": 8.0}  # median card has 1 uid; the only device has 8
     th = {"card": 2.0, "device": 2.0}  # the threshold the docstring walks through
     f = build_graph_features(df, uid, "C", label_delay_days=30, hub_thresholds=th)
     day3 = (df["TransactionDT"] // D == 3).to_numpy()
     got = dict(zip(uid[day3], f.loc[day3, "g_shared_nonhub"], strict=True))
     assert got == {"U2": 1.0, "U9": 0.0, "U1": 0.0}
+
+
+def test_hub_thresholds_use_training_period_rows_only():
+    """Review N3 (D78): rows after the training period never reach the hub thresholds."""
+    from dataclasses import replace
+
+    from vaultic.data.splits import DayRange, load_splits
+
+    splits = replace(load_splits(), train=DayRange(1, 5))
+    rows = [(d, f"U{u}", 1.0) for d in (1, 2, 3) for u in range(3)]  # card 1: 3 uids in training
+    rows += [(9, f"V{u}", 1.0) for u in range(50)]  # 50 more uids on card 1 after training
+    df = pd.DataFrame({
+        "TransactionID": np.arange(len(rows)),
+        "TransactionDT": [d * D + i for i, (d, *_r) in enumerate(rows)],
+        "isFraud": 0, "card1": [r[2] for r in rows], "card2": 1.0, "card3": 1.0,
+        "card4": "visa", "card5": 1.0, "card6": "debit", "P_emaildomain": None,
+        "R_emaildomain": None, "addr1": np.nan, "addr2": np.nan,
+        "DeviceInfo": "dev", "DeviceType": "mobile",
+    })  # fmt: skip
+    uid = pd.Series([r[1] for r in rows])
+    th = fit_hub_thresholds_on_training_period(df, uid, splits, quantile=1.0)
+    assert th == {"card": 3.0, "device": 3.0}  # the 50 later uids are not counted
+    with pytest.raises(ValueError, match="training-period rows only"):
+        _fit_hub_thresholds(df, uid, 1.0, last_day=splits.train.last)
+    with pytest.raises(ValueError, match="no training-period rows"):
+        fit_hub_thresholds_on_training_period(df[df["TransactionDT"] > 5 * D], uid, splits)
