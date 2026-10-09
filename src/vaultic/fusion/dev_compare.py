@@ -2,23 +2,26 @@
 
 Run:  python -m vaultic.fusion.dev_compare [--smoke]
 
-1. View-prediction table on the FIXED plan (views trained on training days 1-120, predicting
-   validation 128-150; roles gate_train 128-143 and calibrate 144-150, D53):
+1. View-prediction table on the FIXED plan: ONE set of view models trained on days 1-120,
+   predicting validation 128-150 (D77); roles gate_train 128-143, calibrate_views 144-146 and
+   calibrate_fused 147-150 (D53, D76):
      tabular     XGBoost on the B5 features (frozen B5 hyperparameters, seed 0)
      behavioral  XGBoost on the behavioral features, only for uids with history
      graph       XGBoost on the graph features (setting C), only with non-hub evidence (D52)
      anomaly     logistic link on the forward-chained anomaly scores (D68), only where scored;
                  the scores of training rows are out-of-sample, so the link is fitted where
                  they mean what they mean at prediction time (as in D57)
-     temporal    the GRU development predictions (views/temporal_dev.py), joined as external
-2. calibrate_views: one calibrator per view on the calibrate rows only (D56).
+     temporal    XGBoost on the sequence inputs (views/temporal_diag.py, D88: the GRU was not
+                 kept), joined as external; NaN for uids without history
+2. calibrate_views: one calibrator per view on the calibrate_views rows (144-146) only (D56, D76;
+   Platt below 100 frauds, D83).
 3. fusion_split + fit_all: MVAF and F1-F7 with default settings fitted on the SAME gate rows
    (the tune rows are not used: no hyperparameter search in this first look).
-4. Each method scored on the calibrate tail: PR-AUC with a 1,000-resample bootstrap CI, and a
-   paired bootstrap of MVAF minus each baseline. The per-view calibrators were fitted on these
-   same rows (monotone per view, shared by every method), which is stated in the report.
+4. Each method scored on the calibrate_fused rows (147-150, which no per-view calibrator saw):
+   PR-AUC with a 1,000-resample bootstrap CI, and a paired bootstrap of MVAF minus each
+   baseline.
 
-Writes research/tables/fusion_dev_calibrate.md (+ .json) and the view table to
+Writes research/tables/fusion_dev.md (+ .json) and the view table to
 data/interim/view_table_fixed.parquet. --smoke: a fixed 1 in 10 subset of uids.
 """
 
@@ -69,6 +72,7 @@ def build_table(smoke: bool):
     from vaultic.features.pipeline import features_path
     from vaultic.features.sets import design_matrix
     from vaultic.paths import CONFIG_DIR, FEATURES_DIR, MERGED_PATH
+    from vaultic.paths import INTERIM_DIR as _INTERIM
     from vaultic.views.orchestrate import (
         SupervisedView,
         has_graph_evidence,
@@ -76,7 +80,6 @@ def build_table(smoke: bool):
         view_table,
     )
     from vaultic.views.plan import fixed_plan
-    from vaultic.views.temporal_dev import work_dir
 
     splits = load_splits()
     variant = splits.uid_variant
@@ -105,7 +108,8 @@ def build_table(smoke: bool):
         "anomaly": SupervisedView(cols["anomaly"], "logistic_regression", {"max_iter": 2000},
                                   available=lambda f: f["anomaly_if"].notna().to_numpy()),  # fmt: skip
     }
-    temporal = pd.read_parquet(work_dir(False) / "p_temporal.parquet")
+    # D88: the temporal view is XGBoost on the sequence inputs of the fixed plan
+    temporal = pd.read_parquet(_INTERIM / "temporal_dev_v4" / "p_temporal_xgb.parquet")
     encoder = fit_on_training_period(df, splits, columns=("ProductCD",))
     table = view_table(df, features, views, fixed_plan(splits), encoder, splits,
                        external={"temporal": temporal})  # fmt: skip
@@ -131,7 +135,7 @@ def main() -> None:
     fitted = fit_all(split, {m: (lambda m=m: make_fusion(m, seed=0)) for m in METHODS})
     result = evaluate(fitted, split.calibrate)
 
-    cal = table[table["role"] == "calibrate"]
+    cal = table[table["role"] == "calibrate_fused"]
     view_rows = []
     for v in VIEWS:
         m = cal[f"m_{v}"].to_numpy() == 1
@@ -148,19 +152,19 @@ def main() -> None:
         f"Generated {date.today().isoformat()} by `python -m vaultic.fusion.dev_compare`. "
         "**Validation period only; no test rows.** Fixed plan: views trained on days 1-120; fusion "
         f"fitted on gate rows (days 128-143 minus the inner tune days; {len(split.fit)} rows), "
-        f"evaluated on the calibrate tail (days 144-150; {len(split.calibrate)} rows, "
-        f"{int(split.calibrate.y.sum())} frauds). Default settings, no hyperparameter search, one "
-        "seed. Caveat: the per-view calibrators were fitted on the same calibrate rows (one "
-        "monotone map per view, shared by all methods). Bootstrap 1,000 resamples.",
+        f"evaluated on the calibrate_fused slice (days 147-150; {len(split.calibrate)} rows, "
+        f"{int(split.calibrate.y.sum())} frauds), which the per-view calibrators (days 144-146) "
+        "never saw. Default settings, no hyperparameter search, one seed; temporal view = "
+        "XGBoost on the sequence inputs (D88). Bootstrap 1,000 resamples.",
         "",
-        "## Views on the calibrate tail",
+        "## Views on the evaluation rows (calibrate_fused, days 147-150)",
         "",
         "| view | available | rows | PR-AUC (available rows) |",
         "|---|---|---|---|",
         *[f"| {r['view']} | {r['available']:.1%} | {r['rows']} | {r['PR-AUC (available rows)']:.4f} |"
           for r in view_rows],  # fmt: skip
         "",
-        "## Fused scores on the calibrate tail",
+        "## Fused scores on the evaluation rows (calibrate_fused, days 147-150)",
         "",
         "| method | PR-AUC | 95% CI | MVAF − method | 95% CI | p |",
         "|---|---|---|---|---|---|",
@@ -178,10 +182,10 @@ def main() -> None:
         lines.append(f"| {r['method']} | {r['PR-AUC']:.4f} | [{r['ci_low']:.4f}, {r['ci_high']:.4f}] | "
                      f"{d[0]} | {d[1]} | {d[2]} |")  # fmt: skip
     lines += ["", f"Runtime {time.perf_counter() - started:.0f} s.", ""]
-    out = RESEARCH_DIR / "tables" / f"fusion_dev_calibrate{suffix}.md"
+    out = RESEARCH_DIR / "tables" / f"fusion_dev{suffix}.md"
     out.write_text("\n".join(lines), encoding="utf-8")
     out.with_suffix(".json").write_text(json.dumps({"fusion": result.to_dict("records"),
-        "views": view_rows, "calibrators": {k: str(v) for k, v in cal_info.items()}},
+        "views": view_rows, "calibrators": {f"{f}/{v}": e for (f, v), e in cal_info.items()}},
         indent=1, default=float), encoding="utf-8")  # fmt: skip
     print(f"wrote {out}")
     print(result.to_string(index=False))
