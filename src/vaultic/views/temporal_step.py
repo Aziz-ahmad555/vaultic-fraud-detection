@@ -70,13 +70,16 @@ def run(in_dir: Path, out_path: Path) -> pd.DataFrame:
     data = TemporalData.from_sequences(seq, df["isFraud"].to_numpy())
     day, time = df["day"].to_numpy(), df["TransactionDT"].to_numpy()
 
-    parts = []
+    parts, histories = [], {}
     for fold in plan:
         train = np.flatnonzero(fold.train_rows(day, time))
         cut = np.quantile(time[train], 1 - settings["early_stop_fraction"])
         fit_rows, stop_rows = train[time[train] < cut], train[time[train] >= cut]
         view = GRUTemporalView(encoder.n_codes("ProductCD"), **settings["gru"])
         view.fit(data.subset(fit_rows), data.subset(stop_rows))
+        histories[fold.name] = {"best_epoch": view.best_epoch_, "best_stop_pr_auc": view.best_val_pr_auc_,
+                                "fit_rows": int(len(fit_rows)), "stop_rows": int(len(stop_rows)),
+                                "pos_weight": view.pos_weight_, "epochs": view.history_}  # fmt: skip
         pred = np.flatnonzero(fold.predict_rows(day))
         parts.append(pd.DataFrame({"TransactionID": df["TransactionID"].to_numpy()[pred],
                                    "fold": fold.name,
@@ -84,6 +87,9 @@ def run(in_dir: Path, out_path: Path) -> pd.DataFrame:
     out = pd.concat(parts, ignore_index=True)
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     out.to_parquet(out_path, index=False)
+    # training curve per fold (early-stopping PR-AUC per epoch), for diagnosis
+    Path(out_path).with_suffix(".history.json").write_text(json.dumps(histories, indent=1),
+                                                           encoding="utf-8")  # fmt: skip
     return out
 
 
