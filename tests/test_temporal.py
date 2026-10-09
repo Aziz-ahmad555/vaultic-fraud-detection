@@ -129,3 +129,23 @@ def test_scores_do_not_depend_on_future_rows(trained):
     after = view.predict_proba(_data(changed, enc))
     keep = (~future).to_numpy()
     assert np.array_equal(before[keep], after[keep], equal_nan=True)
+
+
+def test_training_options_and_small_batch_overfit():
+    """D74: sqrt class weight, lr decay and gradient clipping train; the model can overfit a
+    small batch (sanity check for the GRU diagnosis)."""
+    rng = np.random.default_rng(0)
+    n, steps, feats = 600, 5, 3
+    values = rng.normal(size=(n, steps, feats)).astype(np.float32)
+    values[..., 2] = rng.integers(1, 4, size=(n, steps))
+    mask = np.ones((n, steps), bool)
+    current = rng.normal(size=(n, feats)).astype(np.float32)
+    current[:, 2] = 1
+    y = (values[:, -1, 0] > 1.0).astype(int)
+    data = TemporalData(values, mask, current, y)
+    view = GRUTemporalView(n_products=5, pos_weight="sqrt", lr_decay=0.9, grad_clip=1.0,
+                           max_epochs=3, seed=0)  # fmt: skip
+    view.fit(data.subset(np.arange(400)), data.subset(np.arange(400, 600)))
+    assert view.pos_weight_ == pytest.approx(np.sqrt((y[:400] == 0).sum() / y[:400].sum()))
+    check = view.overfit_check(data, n=64, epochs=150)
+    assert check["train_pr_auc"] > 0.95

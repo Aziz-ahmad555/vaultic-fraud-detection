@@ -58,6 +58,7 @@ from vaultic.features.sets import (
     EXTRA_FEATURES,
     NEEDS_BASE,
     NEEDS_UID,
+    VIEW_ONLY,
     attach_features,
     design_matrix,
     drop_features,
@@ -361,6 +362,12 @@ def load_inputs(cfg: dict[str, Any], splits) -> tuple[pd.DataFrame, pd.DataFrame
                 raise FileNotFoundError(f"{extra_path} missing; build the {kind} features first")
             base = attach_features(base, pd.read_parquet(extra_path), kind)
             inputs.append(extra_path)
+    elif cfg["features"] in VIEW_ONLY:
+        path = FEATURES_DIR / f"{VIEW_ONLY[cfg['features']]}_{variant}.parquet"
+        if not path.exists():
+            raise FileNotFoundError(f"{path} missing; build those features first")
+        base = pd.read_parquet(path)
+        inputs.append(path)
     elif cfg["features"] in NEEDS_UID:
         base = pd.read_parquet(UID_PATH, columns=["TransactionID", variant])
         base = base.rename(columns={variant: "uid"})

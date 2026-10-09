@@ -333,3 +333,16 @@ def test_train_drop_fraud_removes_only_that_products_training_frauds(tmp_path):
     assert plain["rows"]["train"] - held["rows"]["train"] == n_removed
     assert held["rows"]["validation"] == plain["rows"]["validation"]
     assert held["train_drop_fraud"] == {"ProductCD": "C"}
+
+
+def test_view_only_feature_set_uses_only_that_file():
+    """D75: behavioral_only = the behavioral file's columns and nothing else."""
+    from vaultic.features import sets
+
+    df, base = _data(40)
+    beh = pd.DataFrame({"TransactionID": base["TransactionID"], "amt_z": np.arange(40.0),
+                        "vel_n_1h": np.ones(40)})  # fmt: skip
+    X = sets.design_matrix(df, beh, "behavioral_only")
+    assert list(X.columns) == ["amt_z", "vel_n_1h"]
+    with pytest.raises(ValueError, match="aligned"):
+        sets.design_matrix(df, beh.iloc[::-1], "behavioral_only")

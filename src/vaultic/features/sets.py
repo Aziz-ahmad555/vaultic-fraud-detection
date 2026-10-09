@@ -14,6 +14,9 @@ EXTRA_FEATURES = {
     "b5_graph": ("graph",),
     "b5_anomaly": ("anomaly",),
 }
+# One view's precomputed features ALONE (a standalone view model for MVAF, D75): the harness
+# passes data/features/<kind>_<uid>.parquet as `base` and nothing else is used.
+VIEW_ONLY = {"behavioral_only": "behavioral", "graph_only": "graph", "anomaly_only": "anomaly"}
 # Feature sets that include the point-in-time base features.
 NEEDS_BASE = {"raw_base", "b5", *EXTRA_FEATURES}
 # Feature sets that need the customer id (passed as `base` with a `uid` column).
@@ -48,6 +51,7 @@ def design_matrix(df: pd.DataFrame, base: pd.DataFrame | None, name: str) -> pd.
     b5          raw with V columns reduced (experiments/configs/v_columns.yaml) + base features
     fyp1        FYP-1's global columns + point-in-time behavioural features + uid (B6)
     b5_<kind>   b5 + the precomputed <kind> features (EXTRA_FEATURES), already attached to base
+    <kind>_only only the precomputed <kind> features (VIEW_ONLY), passed as base
     """
     raw = df[raw_columns(df)]
     if name == "fyp1":
@@ -58,6 +62,12 @@ def design_matrix(df: pd.DataFrame, base: pd.DataFrame | None, name: str) -> pd.
         return build_fyp1_frame(df, base["uid"].set_axis(df.index))
     if name in EXTRA_FEATURES:
         return design_matrix(df, base, "b5")
+    if name in VIEW_ONLY:
+        if base is None or not np.array_equal(
+            base["TransactionID"].to_numpy(), df["TransactionID"].to_numpy()
+        ):
+            raise ValueError(f"feature set {name} needs its feature file aligned with the data")
+        return base.drop(columns="TransactionID").set_axis(df.index).astype(np.float32)
     if name == "b5":
         from vaultic.features.vreduce import load_kept, v_columns
 

@@ -1,0 +1,7 @@
+# Phase 3, behavioral as its own view (validation only, D75): XGBoost on the 28 behavioral
+# features ALONE, so it can serve MVAF as a separate view. Same frozen hyperparameters as B5
+# (EXP-009) for comparability; untuned for this feature set.
+extends: EXP-009.yaml
+id: EXP-103-view
+question: "Behavioral view alone: XGBoost on behavioral features only (development, Phase 3)"
+features: behavioral_only

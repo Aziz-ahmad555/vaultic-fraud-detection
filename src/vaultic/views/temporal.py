@@ -8,8 +8,10 @@ missing as padding. Continuous channels are standardised with statistics of the 
 period's real steps.
 
 Training: weighted binary cross-entropy (positive class weight = negatives / positives on the
-training rows, "balanced", or a given number), Adam, early stopping on validation PR-AUC
-(patience in epochs; the best epoch's weights are kept).
+training rows, "balanced"; its square root, "sqrt"; or a given number), Adam with optional
+per-epoch learning-rate decay (`lr_decay`) and gradient-norm clipping (`grad_clip`), early
+stopping on the early-stopping rows' PR-AUC (patience in epochs; the best epoch's weights are
+kept). `overfit_check` trains on one small batch as a sanity check that the model can learn.
 
 Missing view (rule 11): a transaction whose uid has no history gets NaN, never a score; such
 rows are also left out of training and of the validation metric.
@@ -83,6 +85,8 @@ class GRUTemporalView:
         patience: int = 5,
         pos_weight: float | str = "balanced",
         seed: int = 0,
+        lr_decay: float | None = None,
+        grad_clip: float | None = None,
     ):
         self.n_products = n_products
         self.product_channel = product_channel
@@ -94,6 +98,8 @@ class GRUTemporalView:
         self.patience = patience
         self.pos_weight = pos_weight
         self.seed = seed
+        self.lr_decay = lr_decay
+        self.grad_clip = grad_clip
 
     # ---- inputs -------------------------------------------------------------------------
     def _fit_scaler(self, data: TemporalData) -> None:
@@ -142,10 +148,18 @@ class GRUTemporalView:
                                 self.emb_dim, self.hidden)  # fmt: skip
         y = torch.as_tensor(train.y, dtype=torch.float32)
         pos = float(y.sum())
-        weight = (len(y) - pos) / pos if self.pos_weight == "balanced" else float(self.pos_weight)
+        ratio = (len(y) - pos) / pos
+        if self.pos_weight == "balanced":
+            weight = ratio
+        elif self.pos_weight == "sqrt":
+            weight = float(np.sqrt(ratio))
+        else:
+            weight = float(self.pos_weight)
         self.pos_weight_ = float(weight)
         loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(weight))
         opt = torch.optim.Adam(self.model_.parameters(), lr=self.learning_rate)
+        sched = (torch.optim.lr_scheduler.ExponentialLR(opt, gamma=self.lr_decay)
+                 if self.lr_decay is not None else None)  # fmt: skip
         values, mask, current = self._tensors(train)
 
         best, best_state, waited = -np.inf, None, 0
@@ -158,7 +172,11 @@ class GRUTemporalView:
                 opt.zero_grad()
                 loss = loss_fn(self.model_(values[idx], mask[idx], current[idx]), y[idx])
                 loss.backward()
+                if self.grad_clip is not None:
+                    nn.utils.clip_grad_norm_(self.model_.parameters(), self.grad_clip)
                 opt.step()
+            if sched is not None:
+                sched.step()
             score = pr_auc(val.y, self._predict(val))
             self.history_.append({"epoch": epoch, "val_pr_auc": float(score)})
             if score > best:
@@ -190,6 +208,26 @@ class GRUTemporalView:
         if len(rows):
             out[rows] = self._predict(data.subset(rows))
         return out
+
+    def overfit_check(self, data: TemporalData, n: int = 256, epochs: int = 300) -> dict:
+        """Sanity check: train on n rows with history (both classes) and report how well the
+        model fits THOSE rows. A model that cannot overfit a small batch has a bug or an input
+        problem. Uses this view's settings; does not change the fitted model."""
+        rows = self._with_history(data)
+        rng = np.random.default_rng(self.seed)
+        pos = rows[data.y[rows] == 1]
+        neg = rows[data.y[rows] == 0]
+        k = min(len(pos), n // 2)
+        pick = np.concatenate([rng.choice(pos, k, replace=False),
+                               rng.choice(neg, n - k, replace=False)])  # fmt: skip
+        small = data.subset(pick)
+        probe = copy.copy(self)
+        probe.max_epochs, probe.patience, probe.batch_size = epochs, epochs, n
+        probe.lr_decay = None  # a decayed learning rate would stop it before it can fit
+        probe.fit(small, small)
+        p = probe._predict(small)
+        return {"rows": int(n), "frauds": int(k), "train_pr_auc": pr_auc(small.y, p),
+                "epochs": len(probe.history_)}  # fmt: skip
 
     def n_parameters(self) -> int:
         return int(sum(p.numel() for p in self.model_.parameters()))

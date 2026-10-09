@@ -41,11 +41,13 @@ GROUPS = [
 N_BOOT = 1000
 
 
-def work_dir(smoke: bool) -> Path:
-    return INTERIM_DIR / ("temporal_dev-smoke" if smoke else "temporal_dev")
+def work_dir(smoke: bool, name: str = "temporal_dev") -> Path:
+    return INTERIM_DIR / (f"{name}-smoke" if smoke else name)
 
 
-def prepare(smoke: bool) -> Path:
+def prepare(
+    smoke: bool, extra: tuple[str, ...] = EXTRA, name: str = "temporal_dev", gru: dict | None = None
+) -> Path:
     from vaultic.data.load import load_merged
     from vaultic.data.splits import load_splits
     from vaultic.data.uid import UID_PATH
@@ -55,7 +57,7 @@ def prepare(smoke: bool) -> Path:
     from vaultic.views.temporal_step import BASE_COLUMNS, write_inputs
 
     splits = load_splits()
-    df = load_merged(MERGED_PATH, columns=[*BASE_COLUMNS, *EXTRA])
+    df = load_merged(MERGED_PATH, columns=[*BASE_COLUMNS, *extra])
     uid = pd.read_parquet(UID_PATH, columns=["TransactionID", splits.uid_variant])
     if not (uid["TransactionID"].to_numpy() == df["TransactionID"].to_numpy()).all():
         raise ValueError("uids.parquet is out of date")
@@ -64,8 +66,8 @@ def prepare(smoke: bool) -> Path:
         keep = (pd.util.hash_pandas_object(uid.astype(str), index=False) % 10 == 0).to_numpy()
         df, uid = df[keep].reset_index(drop=True), uid[keep].reset_index(drop=True)
     encoder = fit_on_training_period(df, splits, columns=("ProductCD",))
-    return write_inputs(work_dir(smoke), df, uid, fixed_plan(splits), encoder,
-                        extra_columns=EXTRA, n_steps=N_STEPS)  # fmt: skip
+    return write_inputs(work_dir(smoke, name), df, uid, fixed_plan(splits), encoder,
+                        extra_columns=tuple(extra), n_steps=N_STEPS, gru=gru)  # fmt: skip
 
 
 def _rank(s: np.ndarray) -> np.ndarray:
@@ -96,11 +98,11 @@ def compare(y, b5_seeds: list[np.ndarray], gru: np.ndarray, n_past: np.ndarray) 
     return pd.DataFrame(rows)
 
 
-def report(b5_run: Path, smoke: bool) -> Path:
+def report(b5_run: Path, smoke: bool, name: str = "temporal_dev") -> Path:
     from vaultic.data.splits import load_splits
     from vaultic.features.pipeline import features_path
 
-    temporal = pd.read_parquet(work_dir(smoke) / "p_temporal.parquet")
+    temporal = pd.read_parquet(work_dir(smoke, name) / "p_temporal.parquet")
     preds = pd.read_parquet(b5_run / "predictions.parquet")
     preds = preds[preds["split"] == "validation"]
     merged = preds.merge(temporal[["TransactionID", "p_temporal"]], on="TransactionID", how="inner")
@@ -143,7 +145,7 @@ def report(b5_run: Path, smoke: bool) -> Path:
         f = lambda k, r=r: num(r, k)  # noqa: E731
         lines.append(f"| {r['group']} | {r['rows']} | {r['frauds']} | {f('B5')} | {f('GRU')} | "
                      f"{f('fusion')} | {gain(r.get('GRU-B5'))} | {gain(r.get('fusion-B5'))} |")  # fmt: skip
-    out = RESEARCH_DIR / "tables" / ("temporal_dev-smoke.md" if smoke else "temporal_dev.md")
+    out = RESEARCH_DIR / "tables" / (f"{name}-smoke.md" if smoke else f"{name}.md")
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
     out.with_suffix(".json").write_text(
         json.dumps(table.to_dict("records"), indent=1, default=str), encoding="utf-8"
@@ -156,13 +158,17 @@ def main() -> None:
     parser.add_argument("step", choices=["prepare", "report"])
     parser.add_argument("b5_run", nargs="?", type=Path)
     parser.add_argument("--smoke", action="store_true")
+    parser.add_argument("--name", default="temporal_dev", help="input folder / report name")
+    parser.add_argument("--extra", nargs="*", default=list(EXTRA), help="extra step columns")
+    parser.add_argument("--gru", default="{}", help="GRU settings as JSON (GRUTemporalView)")
     args = parser.parse_args()
     if args.step == "prepare":
-        print(f"wrote inputs to {prepare(args.smoke)}")
+        out = prepare(args.smoke, tuple(args.extra), args.name, json.loads(args.gru))
+        print(f"wrote inputs to {out}")
     else:
         if args.b5_run is None:
             parser.error("report needs the B5 run directory")
-        print(f"wrote {report(args.b5_run, args.smoke)}")
+        print(f"wrote {report(args.b5_run, args.smoke, args.name)}")
 
 
 if __name__ == "__main__":

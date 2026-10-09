@@ -80,6 +80,8 @@ def run(in_dir: Path, out_path: Path) -> pd.DataFrame:
         histories[fold.name] = {"best_epoch": view.best_epoch_, "best_stop_pr_auc": view.best_val_pr_auc_,
                                 "fit_rows": int(len(fit_rows)), "stop_rows": int(len(stop_rows)),
                                 "pos_weight": view.pos_weight_, "epochs": view.history_}  # fmt: skip
+        if settings.get("overfit_check"):  # GRU diagnosis (D74): can it fit a small batch?
+            histories[fold.name]["overfit_check"] = view.overfit_check(data.subset(fit_rows))
         pred = np.flatnonzero(fold.predict_rows(day))
         parts.append(pd.DataFrame({"TransactionID": df["TransactionID"].to_numpy()[pred],
                                    "fold": fold.name,
