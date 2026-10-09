@@ -20,9 +20,11 @@ experiments/configs/<config-id>.yaml.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import time
 from datetime import date
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -183,6 +185,20 @@ MODELS = {
 # B1 as redefined in D61: clip to training quantiles, then standardise; lbfgs gets enough
 # iterations to converge (convergence is recorded per C, never silenced)
 LR_FIXED = {"max_iter": 5000, "clip_quantiles": [0.001, 0.999]}
+# D62 flat-curve rule for every grid search: among values within FLAT_TOL validation PR-AUC of
+# the best, take the most regularised one (smallest C); a flat curve is not extended further
+FLAT_TOL = 0.001
+
+
+def choose_c(rows: list[dict], tol: float = FLAT_TOL) -> dict:
+    """The smallest C whose validation PR-AUC is within `tol` of the best (D62)."""
+    best = max(r["val PR-AUC"] for r in rows)
+    return min((r for r in rows if r["val PR-AUC"] >= best - tol), key=lambda r: r["C"])
+
+
+def at_upper_edge(rows: list[dict], chosen: dict) -> bool:
+    """True when the chosen C is the largest in the grid: the grid should be extended."""
+    return chosen["C"] == max(r["C"] for r in rows)
 
 
 def grid_logistic_regression(X_tr, y_tr, X_va, y_va, grid_c) -> list[dict]:
@@ -257,7 +273,17 @@ def main() -> None:
     parser.add_argument("--device", choices=["cpu", "cuda"], default=None)
     parser.add_argument("--grid-c", type=float, nargs="+", default=[0.001, 0.01, 0.1, 1.0, 10.0])
     parser.add_argument("--config-id", required=True, help="id of the tuned config to write")
+    parser.add_argument(
+        "--from-grid",
+        type=Path,
+        help="logistic regression: re-apply the selection rule to a saved grid (JSON written by "
+        "an earlier run) instead of refitting",
+    )
     args = parser.parse_args()
+    if args.from_grid:
+        rows = json.loads(args.from_grid.read_text(encoding="utf-8"))
+        _write_lr_results(args.name, args.features, args.config_id, rows)
+        return
 
     splits = load_splits()
     df = load_merged(MERGED_PATH)
@@ -293,17 +319,26 @@ def _write_config(config_id: str, question: str, model: str, params: dict, featu
 
 def _tune_logistic_regression(args, X_tr, y_tr, X_va, y_va) -> None:
     rows = grid_logistic_regression(X_tr, y_tr, X_va, y_va, args.grid_c)
-    best = max(rows, key=lambda r: r["val PR-AUC"])
+    _write_lr_results(args.name, args.features, args.config_id, rows)
+
+
+def _write_lr_results(name: str, features: str, config_id: str, rows: list[dict]) -> None:
+    (RESEARCH_DIR / f"tuning_{name}_grid.json").write_text(
+        json.dumps(rows, indent=1), encoding="utf-8"
+    )
+    best = choose_c(rows)
+    top = max(rows, key=lambda r: r["val PR-AUC"])
+    edge = at_upper_edge(rows, best)
     _write_config(
-        args.config_id,
-        f"{args.name} logistic regression, C chosen on validation from a grid of "
-        f"{len(rows)} values",
+        config_id,
+        f"{name} logistic regression, C chosen on validation from a grid of "
+        f"{len(rows)} values (D62 flat-curve rule)",
         "logistic_regression",
         {"C": best["C"], **LR_FIXED},
-        args.features,
+        features,
     )
     lines = [
-        f"# Tuning {args.name} (feature set `{args.features}`)",
+        f"# Tuning {name} (feature set `{features}`)",
         "",
         f"Generated {date.today().isoformat()} by `python -m vaultic.eval.tune`. Grid over the "
         "inverse regularisation strength C, one fit per value (lbfgs is deterministic), scored "
@@ -315,11 +350,24 @@ def _tune_logistic_regression(args, X_tr, y_tr, X_va, y_va) -> None:
         *[f"| {r['C']:g} | {r['val PR-AUC']:.4f} | {r['seconds']:.0f} | {r['iterations']} | "
           f"{'yes' if r['converged'] else '**no**'} |" for r in rows],  # fmt: skip
         "",
-        f"Chosen: **C = {best['C']:g}**. Config: `experiments/configs/{args.config_id}.yaml`.",
+        f"Highest val PR-AUC: C = {top['C']:g} ({top['val PR-AUC']:.4f}). Selection rule (D62): "
+        f"the smallest C within {FLAT_TOL} of the highest.",
+        "",
+        f"Chosen: **C = {best['C']:g}** ({best['val PR-AUC']:.4f}). "
+        f"Config: `experiments/configs/{config_id}.yaml`.",
+        *(
+            ["", "**The chosen C is at the upper edge of the grid: extend the grid.**"]
+            if edge
+            else []
+        ),
+        "",
+        f"Grid rows: `research/tuning_{name}_grid.json`.",
         "",
     ]
-    (RESEARCH_DIR / f"tuning_{args.name}.md").write_text("\n".join(lines), encoding="utf-8")
-    print(f"chose C={best['C']:g} ({best['val PR-AUC']:.4f}); wrote {args.config_id}.yaml")
+    (RESEARCH_DIR / f"tuning_{name}.md").write_text("\n".join(lines), encoding="utf-8")
+    print(
+        f"chose C={best['C']:g} ({best['val PR-AUC']:.4f}); upper edge: {edge}; wrote {config_id}.yaml"
+    )
 
 
 def _tune_boosting(args, X_tr, y_tr, X_va, y_va) -> None:

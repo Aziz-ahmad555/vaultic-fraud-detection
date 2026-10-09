@@ -4,7 +4,7 @@ Frozen 2026-10-08T16:57:37 at git commit `efa0ec8b467580b1d0abbc0e157f40011a16e9
 
 | file | sha256 |
 |---|---|
-| `experiments/configs/EXP-012.yaml` | `0518b38085f2ae5f9ab2e22a4faa8aa7f9159f9d42cb634eb337497faa657fdc` |
+| `experiments/configs/EXP-012.yaml` | `c6659e73d06bfa8c343d65da1e64540b779d75db2852e4914514e2b3935e09ee` |
 | `experiments/configs/EXP-002.yaml` | `08feaa7479d10cbbdb7f677716add60a65161d184b36de29de7539495342b416` |
 | `experiments/configs/EXP-011.yaml` | `4fdc55c85369a96617ca2a574033e2107646897178e56744466b96394fc80c54` |
 | `experiments/configs/EXP-013.yaml` | `3a21ccdb6559678b76b4d8d30be2f22d981a3edb39cdeacb5e987fd7f056dbe7` |
@@ -18,3 +18,4 @@ Frozen 2026-10-08T16:57:37 at git commit `efa0ec8b467580b1d0abbc0e157f40011a16e9
 - 2026-10-09 `experiments/configs/EXP-012.yaml`: `e9355d054186…` → `0518b38085f2…`. B1 redefined after the PR #1 review (M6, D61): clipped to training quantiles, lbfgs converged; FINAL-RERUN of EXP-012. table1.yaml pins the original B1 run.
 - 2026-10-09 `experiments/configs/splits.yaml`: `0ad9bcd34aeb…` → `7e580ad5b747…`. Review M1 (D53) added `fixed.calibrate: [144, 150]`, a sub-range of the existing validation period used by the Phase 7 fusion work; the train, validation and test ranges are unchanged, so no Phase 2 run is affected.
 - 2026-10-09 `experiments/configs/table1.yaml`: `96bee2580c64…` → `2b2cc587e9e6…`. B1 redefined after the PR #1 review (M6, D61): clipped to training quantiles, lbfgs converged; FINAL-RERUN of EXP-012. table1.yaml pins the original B1 run.
+- 2026-10-09 `experiments/configs/EXP-012.yaml`: `0518b38085f2…` → `c6659e73d06b…`. B1 grid extended on validation to C = 1000 (D61) and C chosen by the D62 flat-curve rule: still C = 10; only the config's question text changed.
