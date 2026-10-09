@@ -1,6 +1,6 @@
 # Phase 2 results
 
-Assembled 2026-10-09T09:14:06 by `python -m vaultic.reports.phase2_summary summary`. All frozen configs are unchanged since the freeze record, which logs 5 amendments (see research/frozen_configs.md).
+Assembled 2026-10-09T12:26:41 by `python -m vaultic.reports.phase2_summary summary`. All frozen configs are unchanged since the freeze record, which logs 6 amendments (see research/frozen_configs.md).
 
 ## Phase 2 exit gate
 

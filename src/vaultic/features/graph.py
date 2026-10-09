@@ -179,12 +179,33 @@ def _edge_features(edges: pd.DataFrame, setting: str, delay_days: int) -> pd.Dat
 # ---- non-hub relational evidence (graph-view availability, D52) -----------------------------
 
 
-def fit_hub_thresholds(
-    df: pd.DataFrame, uid: pd.Series, quantile: float = HUB_QUANTILE
+def fit_hub_thresholds_on_training_period(
+    df: pd.DataFrame, uid: pd.Series, splits, quantile: float = HUB_QUANTILE
 ) -> dict[str, float]:
-    """Hub threshold per entity type, fitted on TRAINING-period rows only: the `quantile` of
-    the number of distinct uids per card / device. An entity whose distinct uids before t
-    exceed it is a hub (a shared terminal, a default device string) and is not evidence."""
+    """Hub threshold per entity type from the TRAINING-period rows of df only (D52, review N3).
+
+    The rows are selected here from splits.train, never by the caller; `_fit_hub_thresholds`
+    then refuses any row after the training period's last day as a second guard."""
+    day = df["TransactionDT"].to_numpy(dtype=np.int64) // SECONDS_PER_DAY
+    train = splits.train.contains(day)
+    if not train.any():
+        raise ValueError("no training-period rows to fit hub thresholds on")
+    uid = pd.Series(np.asarray(uid))
+    return _fit_hub_thresholds(df[train], uid[train], quantile, last_day=splits.train.last)
+
+
+def _fit_hub_thresholds(
+    df: pd.DataFrame, uid: pd.Series, quantile: float, last_day: int
+) -> dict[str, float]:
+    """The `quantile` of the number of distinct uids per card / device. An entity whose distinct
+    uids before t exceed it is a hub (a shared terminal, a default device string) and is not
+    evidence. Raises if any row lies after `last_day` (the training period's last day)."""
+    days = df["TransactionDT"].to_numpy(dtype=np.int64) // SECONDS_PER_DAY
+    if len(days) and days.max() > last_day:
+        raise ValueError(
+            f"hub thresholds must be fitted on training-period rows only (day <= {last_day}); "
+            f"got rows up to day {int(days.max())}"
+        )
     edges = build_edges(df.reset_index(drop=True), uid.reset_index(drop=True))
     out = {}
     for etype in NONHUB_TYPES:
@@ -370,11 +391,17 @@ def build_graph_features(
 ) -> pd.DataFrame:
     """Graph features for every row of df (rows sorted by TransactionDT).
 
-    With `hub_thresholds` (fit_hub_thresholds on the training period) the output also has
+    With `hub_thresholds` (fit_hub_thresholds_on_training_period) the output also has
     g_shared_nonhub: other uids sharing a non-hub card or device before t; the graph view is
-    available only where it is > 0 (D52)."""
+    available only where it is > 0 (D52). Only in setting C: A and B raise (D79)."""
     if setting not in SETTINGS:
         raise ValueError(f"setting must be one of {SETTINGS}")
+    if hub_thresholds is not None and setting != "C":
+        # availability decides whether the graph view exists for a row; settings A and B see
+        # later edges, so their g_shared_nonhub would let the future decide that (N4, D79)
+        raise ValueError(
+            "graph-view availability (g_shared_nonhub) comes from setting C edge features only"
+        )
     time = df["TransactionDT"].to_numpy(dtype=np.int64)
     if np.any(np.diff(time) < 0):
         raise ValueError("rows must be sorted by TransactionDT")
@@ -464,8 +491,7 @@ def main() -> None:
     if args.max_day is not None:
         keep = (day <= args.max_day).to_numpy()
         df, uid, day = df[keep], uid[keep], day[keep]
-    train = splits.train.contains(day)
-    thresholds = fit_hub_thresholds(df[train], uid[train])
+    thresholds = fit_hub_thresholds_on_training_period(df, uid, splits)  # training rows only (D78)
     started = clock.perf_counter()
     feats = build_graph_features(df, uid, "C", splits.label_delay_days, args.window_days,
                                  hub_thresholds=thresholds)  # fmt: skip

@@ -173,7 +173,8 @@ def test_b5_feature_set_drops_unkept_v_columns(monkeypatch):
 def test_second_final_run_needs_a_logged_reason(tmp_path):
     decisions = tmp_path / "decisions.md"
     decisions.write_text("| # |\n", encoding="utf-8")
-    kwargs = dict(runs_dir=tmp_path / "runs", experiment_log=None, decisions_log=decisions)
+    log = tmp_path / "log.md"
+    kwargs = dict(runs_dir=tmp_path / "runs", experiment_log=log, decisions_log=decisions)
     run(_config(tmp_path), data=_data(), final=True, **kwargs)
     with pytest.raises(RuntimeError, match="already has a --final run"):
         run(_config(tmp_path), data=_data(), final=True, **kwargs)
@@ -182,6 +183,10 @@ def test_second_final_run_needs_a_logged_reason(tmp_path):
     run(_config(tmp_path), data=_data(), final=True, rerun_reason="bug #1 fixed", **kwargs)
     text = decisions.read_text(encoding="utf-8")
     assert "FINAL-RERUN" in text and "bug #1 fixed" in text
+    # review N6 (D81): the experiment log marks the re-run itself, not as a plain FINAL
+    lines = [x for x in log.read_text(encoding="utf-8").splitlines() if x.startswith("| EXP-TEST")]
+    assert ["FINAL-RERUN" in x for x in lines] == [False, False, True]
+    assert "**FINAL**" in lines[0]
 
 
 def test_label_maturity_drops_training_labels_unknown_at_validation_start(tmp_path):

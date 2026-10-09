@@ -4,8 +4,10 @@ From the view-prediction table (views/orchestrate.py):
   fit        gate-training rows before the inner time split: every gate is fitted on these
   tune       the latest `tune_fraction` of gate-training DAYS (inner time split): epochs,
              hidden size, dropout, F2's fixed weights, ... are chosen here, never on calibrate
-  calibrate  the calibrate tail of validation (days 144-150): per-view and fused calibration,
-             conformal calibration, decision thresholds and routing lambdas only
+  calibrate  the later slice of the calibrate tail (calibrate_fused, days 147-150, D76): fused
+             calibration, conformal calibration, decision thresholds and routing lambdas only.
+             The earlier slice (calibrate_views, 144-146) fitted the per-view calibrators and is
+             in no FusionSplit part
   test       evaluation (final runs only)
 
 Every fusion method F1-F7 and MVAF gets exactly these rows (`fit_all`), so differences between
@@ -66,10 +68,18 @@ def fusion_split(table: pd.DataFrame, tune_fraction: float = 0.2) -> FusionSplit
     n_tune = max(1, int(round(len(days) * tune_fraction)))
     tune_days = days[-n_tune:]
     is_tune = gate["day"].isin(tune_days)
+    # fused calibration / conformal / thresholds are fitted on calibrate_fused rows and applied
+    # to test rows: both must come from the same (fixed) fold of view models (D77)
+    from vaultic.views.plan import check_calibration_scope
+
+    cal_fold = table.loc[table["role"] == "calibrate_fused", "fold"]
+    test_fold = table.loc[table["role"] == "test", "fold"]
+    if len(cal_fold):
+        check_calibration_scope(cal_fold, test_fold, "fused calibration / conformal / thresholds")
     return FusionSplit(
         fit=_rows(gate[~is_tune]),
         tune=_rows(gate[is_tune]),
-        calibrate=_rows(table[table["role"] == "calibrate"]),
+        calibrate=_rows(table[table["role"] == "calibrate_fused"]),
         test=_rows(table[table["role"] == "test"]),
     )
 

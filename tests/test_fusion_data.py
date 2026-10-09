@@ -7,7 +7,7 @@ from vaultic.data.splits import load_splits
 from vaultic.fusion.baselines import make_fusion
 from vaultic.fusion.data import fit_all, fusion_split
 from vaultic.views.orchestrate import calibrate_views, view_table
-from vaultic.views.plan import fixed_plan, plan_from_json, plan_to_json, rolling_plan
+from vaultic.views.plan import fixed_plan, gate_plan, plan_from_json, plan_to_json, rolling_plan
 
 SPLITS = load_splits()
 
@@ -15,17 +15,35 @@ SPLITS = load_splits()
 def test_splits_define_the_calibrate_tail():
     assert (SPLITS.calibrate.first, SPLITS.calibrate.last) == (144, 150)
     assert SPLITS.calibrate.last == SPLITS.validation.last
+    # D76: per-view calibrators on the earlier slice, everything fused on the later one
+    assert (SPLITS.calibrate_views.first, SPLITS.calibrate_views.last) == (144, 146)
+    assert (SPLITS.calibrate_fused.first, SPLITS.calibrate_fused.last) == (147, 150)
+
+
+def test_calibrate_slices_must_be_consecutive_and_end_validation():
+    from dataclasses import replace
+
+    from vaultic.data.splits import DayRange, validate
+
+    with pytest.raises(ValueError, match="consecutive"):
+        validate(replace(SPLITS, calibrate_fused=DayRange(148, 150)))  # gap at 147
+    with pytest.raises(ValueError, match="consecutive"):
+        validate(replace(SPLITS, calibrate_fused=DayRange(147, 149)))  # not the tail
+    with pytest.raises(ValueError, match="together"):
+        validate(replace(SPLITS, calibrate_fused=None))
 
 
 def test_plans_mark_the_calibrate_tail_by_row():
     fixed = fixed_plan(SPLITS)[0]
     days = np.arange(128, 151)
     roles = fixed.row_roles(days)
-    assert set(days[roles == "calibrate"]) == set(range(144, 151))
+    assert set(days[roles == "calibrate_views"]) == set(range(144, 147))
+    assert set(days[roles == "calibrate_fused"]) == set(range(147, 151))
     assert set(days[roles == "gate_train"]) == set(range(128, 144))
     roll = rolling_plan(SPLITS, final=True)
     assert roll[0].row_roles(np.arange(91, 121)).tolist() == ["gate_train"] * 30  # before the tail
-    assert (roll[1].row_roles(np.arange(144, 151)) == "calibrate").all()
+    assert (roll[1].row_roles(np.arange(144, 147)) == "calibrate_views").all()
+    assert (roll[1].row_roles(np.arange(147, 151)) == "calibrate_fused").all()
     assert (roll[2].row_roles(np.arange(151, 183)) == "test").all()  # test folds never calibrate
     assert plan_from_json(plan_to_json(roll)) == roll
 
@@ -35,21 +53,30 @@ def table():
     from test_view_orchestration import _encoder, _synthetic, _views
 
     df, features, _ = _synthetic()
-    raw = view_table(df, features, _views(), rolling_plan(SPLITS), _encoder(df), SPLITS)
+    raw = view_table(df, features, _views(), gate_plan(SPLITS), _encoder(df), SPLITS)
     with pytest.raises(ValueError, match="not calibrated"):
         fusion_split(raw)
     return calibrate_views(raw)[0]
 
 
 def test_view_table_roles_and_fusion_split(table):
-    assert set(table.loc[table["role"] == "calibrate", "day"]) == set(range(144, 151))
+    fixed = table["fold"] == "fixed"
+    assert set(table.loc[fixed & (table["role"] == "calibrate_views"), "day"]) == set(
+        range(144, 147)
+    )
+    assert set(table.loc[~fixed & (table["role"] == "calibrate_views"), "day"]) == {118, 119, 120}
+    assert set(table.loc[table["role"] == "calibrate_fused", "day"]) == set(range(147, 151))
     split = fusion_split(table, tune_fraction=0.2)
     fit, tune, cal = set(split.fit.ids), set(split.tune.ids), set(split.calibrate.ids)
     assert not (fit & tune) and not (fit & cal) and not (tune & cal)  # disjoint
     assert split.fit.day.max() < split.tune.day.min()  # inner split is by time
-    assert split.tune.day.max() < split.calibrate.day.min() == 144
+    # the fused-calibration rows are the later slice only; the per-view slice is in no part
+    assert split.tune.day.max() < 144 and split.calibrate.day.min() == 147
+    views_slice = set(table.loc[table["role"] == "calibrate_views", "TransactionID"])
+    assert not views_slice & (fit | tune | cal)
     gate_days = sorted(set(split.fit.day) | set(split.tune.day))
-    assert gate_days[0] == 91 and gate_days[-1] == 143  # rolling folds + validation 128-143
+    # rolling_0's block minus its own calibration slice (118-120) + validation 128-143 (D77)
+    assert gate_days[0] == 91 and gate_days[-1] == 143 and not {118, 119, 120} & set(gate_days)
     assert len(split.test) == 0  # development plan
 
 

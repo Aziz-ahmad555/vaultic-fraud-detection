@@ -15,9 +15,15 @@ def _entry(mean, ci=True):
     return e
 
 
-def _write_run(root, exp, name, mode, pr):
+def _write_run(root, exp, name, mode, pr, preds=True):
     run = root / exp / name
     run.mkdir(parents=True)
+    if preds:  # Table 1 recomputes three metrics from these (D61) and needs them (D80)
+        y = np.array([1, 1, 0, 0, 0, 0, 0, 0, 0, 0] * 60)
+        score = y + np.linspace(0, 0.5, len(y))  # frauds always ranked first
+        frames = [pd.DataFrame({"split": split, "label": y, "score_seed0": score,
+                                "score_seed1": score}) for split in ("validation", "test")]  # fmt: skip
+        pd.concat(frames).to_parquet(run / "predictions.parquet")
     period = {k: _entry(pr if k == "pr_auc" else 0.5) for k in [
         "pr_auc", "roc_auc", "recall_at_1pct_fpr", "recall_at_5pct_fpr",
         "precision_at_500", "brier", "ece",
@@ -84,7 +90,7 @@ def test_pinned_run_row_and_d49_metrics_recomputed_from_predictions(tmp_path):
     table = build_table(spec, "final", tmp_path)
     latest, pinned = table.iloc[0], table.iloc[1]
     assert latest["PR-AUC"].startswith("0.7000") and pinned["PR-AUC"].startswith("0.6000")
-    assert latest["Recall@1%FPR"] == "0.5000 ± 0.0100"  # no predictions saved: stored value kept
+    assert latest["Recall@1%FPR"] == "1.0000 ± 0.0000"  # recomputed, not the stored 0.5
     # tie-aware: the tied block (FPR 9/597 > 1%) cannot be taken partly, so recall@1%FPR is 0;
     # at 5% FPR the block and both 0.9/0.8 frauds count; precision@500 = 3 frauds / 500
     assert pinned["Recall@1%FPR"] == "0.0000 ± 0.0000"
@@ -189,3 +195,10 @@ def test_summary_keeps_hand_written_sections(tmp_path, monkeypatch):
     ps.write_summary(out)
     text = out.read_text("utf-8")
     assert text.count("keep me") == 1 and "old" not in text.split("## Notes")[0]
+
+
+def test_table_refuses_runs_without_predictions(tmp_path):
+    """Review N5 (D80): no silent fallback to stored values computed by older metric code."""
+    _write_run(tmp_path, "EXP-A", "20260101-000000-000001", "final", 0.6, preds=False)
+    with pytest.raises(FileNotFoundError, match="predictions.parquet"):
+        build_table(SPEC, "final", tmp_path)

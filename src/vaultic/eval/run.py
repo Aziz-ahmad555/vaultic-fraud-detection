@@ -397,6 +397,7 @@ def run(
     # the device the model really trains on is part of the run's saved config
     device = effective_device(cfg["model"]["name"], resolve_device(device, cfg.get("device")))
     cfg = {**cfg, "device": device}
+    rerun = final and bool(previous_final_runs(cfg["id"], runs_dir))
     if final:
         _guard_final_rerun(cfg["id"], runs_dir, rerun_reason, decisions_log)
     splits = load_splits(Path(cfg.get("splits", SPLITS_PATH)))
@@ -434,7 +435,7 @@ def run(
 
     if experiment_log is not None:
         with open(experiment_log, "a", encoding="utf-8") as f:
-            f.write(log_line(cfg, result, out_dir))
+            f.write(log_line(cfg, result, out_dir, rerun=rerun))
     return out_dir
 
 
@@ -467,11 +468,14 @@ def warning_flag(result: dict[str, Any]) -> str:
     )
 
 
-def log_line(cfg: dict[str, Any], result: dict[str, Any], out_dir: Path) -> str:
+def log_line(
+    cfg: dict[str, Any], result: dict[str, Any], out_dir: Path, rerun: bool = False
+) -> str:
     shown = out_dir.relative_to(REPO_ROOT) if out_dir.is_relative_to(REPO_ROOT) else out_dir
     val = f"val PR-AUC {_fmt(result['validation']['pr_auc'])}"
     if result["mode"] == "final":
-        summary = f"**FINAL** test PR-AUC {_fmt(result['test']['pr_auc'])}; {val}"
+        mark = "**FINAL-RERUN** (see decisions.md)" if rerun else "**FINAL**"
+        summary = f"{mark} test PR-AUC {_fmt(result['test']['pr_auc'])}; {val}"
     else:
         summary = f"{val} (development run)"
     flag = warning_flag(result)

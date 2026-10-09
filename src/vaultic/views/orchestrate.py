@@ -10,7 +10,9 @@ predicts the fold's later block; the result is one table, one row per predicted 
                (shared training-period encoder, D37), relative hour
 
 for the five views tabular, behavioral, temporal, graph, anomaly. `calibrate_views` then fits
-one calibrator per view on the calibrate-tail rows only (D53) and adds, for every row,
+one calibrator per view on the calibrate_views rows only (the earlier slice of the calibrate
+tail, D53/D76; the later calibrate_fused slice is kept for fused-score calibration, conformal,
+thresholds and routing lambdas) and adds, for every row,
   p_<view>     calibrated probability (NaN where missing)
   c_<view>     confidence |2p - 1| from the CALIBRATED p (0 where missing)
   disagreement std of the available CALIBRATED probabilities (0 with fewer than two)
@@ -26,6 +28,7 @@ every row and says so (all NaN, mask 0).
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable, Mapping
 
 import numpy as np
@@ -34,10 +37,12 @@ from sklearn.linear_model import LogisticRegression
 
 from vaultic.features.categories import CategoryEncoder
 from vaultic.fusion.mvaf import view_inputs
-from vaultic.trust.calibration import choose_calibrator
+from vaultic.trust.calibration import PlattCalibrator, choose_calibrator
 from vaultic.views.plan import Fold
 
 VIEWS = ("tabular", "behavioral", "temporal", "graph", "anomaly")
+# below this many frauds in a (fold, view)'s calibrate_views rows, use Platt scaling (D83)
+MIN_ISOTONIC_FRAUDS = 100
 CONTEXT = ("ctx_log_amount", "ctx_hist_n_past", "ctx_has_identity", "ctx_product", "ctx_hour")
 
 
@@ -236,29 +241,60 @@ def view_table(
 def calibrate_views(table: pd.DataFrame, folds: int = 5) -> tuple[pd.DataFrame, dict]:
     """Calibrated p_<view>, then c_<view> and disagreement from them (D56).
 
-    One calibrator per view (Platt or isotonic, chosen by out-of-fold ECE as in D29) fitted ONLY
-    on calibrate-role rows where the view is available, applied to every row. A view missing on
-    every row stays missing; a view with too few calibrate rows or one class there raises."""
+    One calibrator per (fold, view) fitted ONLY on that fold's calibrate_views rows (D76, D77)
+    where the view is available, applied to that fold's rows. With at least MIN_ISOTONIC_FRAUDS
+    frauds it is Platt or isotonic, chosen by out-of-fold ECE (D29); with fewer it is Platt
+    scaling (isotonic overfits few positives), and the fallback is logged (review R1, D83). The
+    returned info has, per (fold, view): rows, frauds, method, fallback and the ECEs. A view
+    missing on every row stays missing; a view with too few such rows or one class raises."""
+    from vaultic.views.plan import check_calibration_scope
+
     out = table.copy()
-    cal = out["role"] == "calibrate"
+    cal = (out["role"] == "calibrate_views").to_numpy()
     if not cal.any():
-        raise ValueError("no calibrate rows: the plan needs splits.yaml's calibrate tail (D53)")
+        raise ValueError(
+            "no calibrate_views rows: the plan needs splits.yaml's calibrate slices (D53, D76)"
+        )
+    fold = out["fold"].to_numpy()
     info = {}
-    for name in VIEWS:
-        raw = out[f"raw_{name}"].to_numpy(dtype=float)
-        p = np.full(len(out), np.nan)
-        avail = ~np.isnan(raw)
-        if avail.any():
-            fit_rows = cal.to_numpy() & avail
-            y = out.loc[fit_rows, "label"].to_numpy()
+    p_all = {name: np.full(len(out), np.nan) for name in VIEWS}
+    # one calibrator per (fold, view): a fold is one set of view models (D77)
+    for f in pd.unique(fold):
+        mine = fold == f
+        if not (cal & mine).any():
+            raise ValueError(
+                f"fold {f} has no calibrate_views rows: its views cannot be calibrated"
+            )
+        for name in VIEWS:
+            raw = out[f"raw_{name}"].to_numpy(dtype=float)
+            avail = ~np.isnan(raw) & mine
+            if not avail.any():
+                continue
+            fit_rows = cal & avail
+            y = out["label"].to_numpy()[fit_rows]
             if fit_rows.sum() < 2 * folds or len(np.unique(y)) < 2:
                 raise ValueError(
-                    f"cannot calibrate view {name}: needs both classes among enough calibrate rows"
+                    f"cannot calibrate view {name} of fold {f}: needs both classes among enough "
+                    "calibrate_views rows"
                 )
-            calibrator, report = choose_calibrator(y, raw[fit_rows], folds=folds)
-            p[avail] = calibrator.predict(raw[avail])
-            info[name] = report
-        out[f"p_{name}"] = p
+            check_calibration_scope(fold[fit_rows], fold[avail], f"calibrator of view {name}")
+            frauds = int(y.sum())
+            entry = {"rows": int(fit_rows.sum()), "frauds": frauds}
+            if frauds >= MIN_ISOTONIC_FRAUDS:
+                calibrator, ece = choose_calibrator(y, raw[fit_rows], folds=folds)
+                entry.update(method=type(calibrator).__name__, fallback=False, ece=ece)
+            else:
+                calibrator = PlattCalibrator().fit(raw[fit_rows], y)
+                entry.update(method="PlattCalibrator", fallback=True, ece=None)
+                warnings.warn(
+                    f"fold {f}, view {name}: {frauds} frauds in calibrate_views (< "
+                    f"{MIN_ISOTONIC_FRAUDS}); Platt scaling instead of an ECE choice (D83)",
+                    stacklevel=2,
+                )
+            p_all[name][avail] = calibrator.predict(raw[avail])
+            info[(f, name)] = entry
+    for name in VIEWS:
+        out[f"p_{name}"] = p_all[name]
     mask, _, confidence, disagreement = view_inputs(
         out[[f"p_{v}" for v in VIEWS]].to_numpy(dtype=float)
     )

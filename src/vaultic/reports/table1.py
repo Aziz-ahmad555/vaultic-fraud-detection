@@ -9,7 +9,7 @@ next to its re-run); rows without such a run are shown as "not run".
 
 Recall@1%FPR, Recall@5%FPR and Precision@500 are recomputed per seed from each run's saved
 predictions with the current metric code (D49 fixed their tie handling); every other metric
-comes from the run's metrics.json (D61).
+comes from the run's metrics.json (D61). A run without predictions.parquet raises (D80).
 """
 
 from __future__ import annotations
@@ -50,8 +50,11 @@ def recompute_from_predictions(run_dir: Path, period: str) -> dict[str, dict]:
         "precision_at_500": lambda y, s: precision_at_k(y, s, 500),
     }
     path = run_dir / "predictions.parquet"
-    if not path.exists():  # nothing saved to recompute from: keep the stored values
-        return {}
+    if not path.exists():  # never fall back to values computed by older metric code (N5, D80)
+        raise FileNotFoundError(
+            f"{path} missing: Table 1 recomputes Recall@FPR and Precision@500 from saved "
+            "predictions and will not keep stored values silently"
+        )
     preds = pd.read_parquet(path)
     part = preds[preds["split"] == period]
     y = part["label"].to_numpy()

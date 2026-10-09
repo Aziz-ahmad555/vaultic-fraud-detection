@@ -18,6 +18,7 @@ import pandas as pd
 import pytest
 
 from vaultic.data.load import SECONDS_PER_DAY
+from vaultic.data.splits import load_splits
 from vaultic.data.uid import build_uids
 from vaultic.features.pipeline import INPUT_COLUMNS, build_features, fit_encoders
 from vaultic.paths import INTERIM_DIR
@@ -45,9 +46,13 @@ def _synthetic(n=5_000, seed=0):
     ), pd.Series(customers, name="uid")
 
 
+# the uid variant chosen in D18 (splits.yaml uid_variant), as every pipeline uses (review N7)
+UID_VARIANT = load_splits().uid_variant
+
+
 def _real_sample():
     df = pd.read_parquet(SAMPLE_PATH, columns=INPUT_COLUMNS)
-    uid = build_uids(df)["uid2"]
+    uid = build_uids(df)[UID_VARIANT]
     return df, uid
 
 
@@ -140,10 +145,10 @@ def _graph_data(name: str):
     """Loaded on first use only (never at collection time)."""
     if name == "real_50k":
         df = pd.read_parquet(SAMPLE_PATH, columns=GRAPH_COLUMNS)
-        return df, build_uids(df)["uid2"].astype(str)
+        return df, build_uids(df)[UID_VARIANT].astype(str)
     full = pd.read_parquet(MERGED_FULL, columns=GRAPH_COLUMNS)
     full = full[full["day"] <= 75].reset_index(drop=True)
-    uid = build_uids(full)["uid2"]
+    uid = build_uids(full)[UID_VARIANT]
     keep = (uid % 15 == 0).to_numpy()  # whole customers, deterministic
     return full[keep].reset_index(drop=True), uid[keep].reset_index(drop=True).astype(str)
 
@@ -164,22 +169,27 @@ def _cut(df, q):
 @pytest.mark.parametrize("delay", [30, 1])
 @pytest.mark.parametrize("name", GRAPH_PARAMS)
 def test_real_graph_features_truncation_and_label_flip(name, delay):
-    from vaultic.features.graph import build_graph_features
+    from vaultic.features.graph import build_graph_features, fit_hub_thresholds_on_training_period
 
     df, uid = _graph_data(name)
-    full = build_graph_features(df, uid, "C", label_delay_days=delay, window_days=30)
+    # review N7: with hub thresholds passed in (fitted once on the training period), so the
+    # availability feature g_shared_nonhub is covered by truncation and label flips too
+    kw = dict(label_delay_days=delay, window_days=30,
+              hub_thresholds=fit_hub_thresholds_on_training_period(df, uid, load_splits()))  # fmt: skip
+    full = build_graph_features(df, uid, "C", **kw)
+    assert (full["g_shared_nonhub"].fillna(0) > 0).mean() > 0.05  # availability is non-trivial
     if name == "real_days_1_75" and delay == 30:  # labels must actually mature here
         assert full["g_fraud_rate_card"].notna().mean() > 0.05
         assert full["g_comp_fraud_rate"].notna().mean() > 0.05
     for q in (0.5, 0.85):
         t, keep = _cut(df, q)
-        cut = build_graph_features(df[keep], uid[keep], "C", label_delay_days=delay, window_days=30)
+        cut = build_graph_features(df[keep], uid[keep], "C", **kw)
         pd.testing.assert_frame_equal(full[keep], cut, check_exact=True)
     t, keep = _cut(df, 0.7)
     flipped = df.copy()
     unknown = (df["TransactionDT"] > t - delay * SECONDS_PER_DAY).to_numpy()
     flipped.loc[unknown, "isFraud"] = 1 - flipped.loc[unknown, "isFraud"]
-    again = build_graph_features(flipped, uid, "C", label_delay_days=delay, window_days=30)
+    again = build_graph_features(flipped, uid, "C", **kw)
     pd.testing.assert_frame_equal(full[keep], again[keep], check_exact=True)
 
 
