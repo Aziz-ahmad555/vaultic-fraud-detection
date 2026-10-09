@@ -284,3 +284,34 @@ def test_run_records_and_flags_convergence_warnings(tmp_path):
     assert "**WARNINGS: ConvergenceWarning x" in log.read_text(encoding="utf-8")
     clean = _run(tmp_path, cfg=_config(tmp_path), runs="runs_clean")
     assert json.loads((clean / "metrics.json").read_text())["warnings"]["flagged"] == {}
+
+
+def test_smoke_run_is_small_separate_and_unlogged(tmp_path):
+    log = tmp_path / "log.md"
+    out = run(_config(tmp_path), runs_dir=tmp_path / "runs", experiment_log=log, data=_data(),
+              decisions_log=tmp_path / "d.md", smoke=True)  # fmt: skip
+    assert out.parent.name == "EXP-TEST-smoke" and not log.exists()
+    m = json.loads((out / "metrics.json").read_text())
+    assert m["seeds"] == [0] and m["mode"] == "development" and "test" not in m
+    preds = pd.read_parquet(out / "predictions.parquet")
+    assert (preds["TransactionID"] % 10 == 0).all()
+    with pytest.raises(ValueError, match="smoke"):
+        run(_config(tmp_path), runs_dir=tmp_path / "runs", data=_data(), final=True,
+            decisions_log=tmp_path / "d.md", smoke=True)  # fmt: skip
+
+
+def test_b5_extra_feature_sets_attach_precomputed_columns(monkeypatch):
+    """b5_behavioral = b5 + the behavioral file's columns, row-aligned (D66)."""
+    from vaultic.features import sets
+
+    monkeypatch.setattr("vaultic.features.vreduce.load_kept", lambda: [])
+    df, base = _data(60)
+    extra = pd.DataFrame({"TransactionID": base["TransactionID"], "amt_z": np.arange(60.0)})
+    both = sets.attach_features(base, extra, "behavioral")
+    X = sets.design_matrix(df, both, "b5_behavioral")
+    assert "amt_z" in X and "uid_n_past" in X and "TransactionID" not in X
+    assert X.shape[1] == sets.design_matrix(df, base, "b5").shape[1] + 1
+    with pytest.raises(ValueError, match="aligned"):
+        sets.attach_features(base, extra.iloc[::-1], "behavioral")
+    with pytest.raises(ValueError, match="repeat"):
+        sets.attach_features(base, base, "behavioral")

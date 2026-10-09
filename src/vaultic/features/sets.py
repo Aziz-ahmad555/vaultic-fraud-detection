@@ -7,8 +7,14 @@ import pandas as pd
 
 # Never model inputs: identifiers, the label, and raw time (time trends would leak the split).
 NON_FEATURES = {"TransactionID", "isFraud", "TransactionDT", "day"}
+# B5 plus point-in-time view features precomputed in data/features/<kind>_<uid variant>.parquet
+# (Phase 3 behavioral, Phase 4 graph); the harness attaches them to the base features (D66).
+EXTRA_FEATURES = {
+    "b5_behavioral": ("behavioral",),
+    "b5_graph": ("graph",),
+}
 # Feature sets that include the point-in-time base features.
-NEEDS_BASE = {"raw_base", "b5"}
+NEEDS_BASE = {"raw_base", "b5", *EXTRA_FEATURES}
 # Feature sets that need the customer id (passed as `base` with a `uid` column).
 NEEDS_UID = {"fyp1"}
 
@@ -40,6 +46,7 @@ def design_matrix(df: pd.DataFrame, base: pd.DataFrame | None, name: str) -> pd.
     raw_base    raw + point-in-time base features (B5 without V-reduction)
     b5          raw with V columns reduced (experiments/configs/v_columns.yaml) + base features
     fyp1        FYP-1's global columns + point-in-time behavioural features + uid (B6)
+    b5_<kind>   b5 + the precomputed <kind> features (EXTRA_FEATURES), already attached to base
     """
     raw = df[raw_columns(df)]
     if name == "fyp1":
@@ -48,6 +55,8 @@ def design_matrix(df: pd.DataFrame, base: pd.DataFrame | None, name: str) -> pd.
         if base is None or "uid" not in base:
             raise ValueError("feature set fyp1 needs a uid column")
         return build_fyp1_frame(df, base["uid"].set_axis(df.index))
+    if name in EXTRA_FEATURES:
+        return design_matrix(df, base, "b5")
     if name == "b5":
         from vaultic.features.vreduce import load_kept, v_columns
 
@@ -68,6 +77,16 @@ def design_matrix(df: pd.DataFrame, base: pd.DataFrame | None, name: str) -> pd.
         extra = base.drop(columns="TransactionID").set_axis(df.index)
         return pd.concat([_codes(raw), extra.astype(np.float32)], axis=1)
     raise ValueError(f"unknown feature set {name!r}")
+
+
+def attach_features(base: pd.DataFrame, extra: pd.DataFrame, kind: str) -> pd.DataFrame:
+    """Base features plus the columns of a precomputed feature file, row-aligned by id."""
+    if not np.array_equal(base["TransactionID"].to_numpy(), extra["TransactionID"].to_numpy()):
+        raise ValueError(f"{kind} features are not aligned with the base features")
+    clash = sorted(set(base.columns) & set(extra.columns) - {"TransactionID"})
+    if clash:
+        raise ValueError(f"{kind} features repeat base feature names: {clash}")
+    return pd.concat([base, extra.drop(columns="TransactionID").set_axis(base.index)], axis=1)
 
 
 def drop_features(X: pd.DataFrame, names) -> pd.DataFrame:

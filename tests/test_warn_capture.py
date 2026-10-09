@@ -7,7 +7,7 @@ from vaultic.eval.warn_capture import capture_warnings
 
 
 # categories are matched by name; importing sklearn.exceptions here, before LightGBM is loaded,
-# triggers an access violation in later LightGBM tests on this Windows setup (load order)
+# breaks later LightGBM tests: scikit-learn must not load before LightGBM (D22)
 class ConvergenceWarning(UserWarning):
     pass
 

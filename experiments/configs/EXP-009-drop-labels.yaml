@@ -1,0 +1,8 @@
+# Ablation (development run, validation only): tuned B5 (EXP-009, frozen hyperparameters)
+# without its label-derived group, the known fraud count and known fraud rate of the uid.
+# uid_n_labels_known (how many past labels are known, not their values) is kept. Item 2 of
+# the overnight list (D65).
+extends: EXP-009.yaml
+id: EXP-009-drop-labels
+question: "B5 tuned, without uid_fraud_known and uid_fraud_rate_known (same frozen hyperparameters)"
+drop_features: [uid_fraud_known, uid_fraud_rate_known]

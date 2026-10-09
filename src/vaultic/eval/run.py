@@ -2,6 +2,11 @@
 
 Run:  python -m vaultic.eval.run experiments/configs/EXP-001.yaml           (development)
       python -m vaultic.eval.run experiments/configs/EXP-001.yaml --final   (final run)
+      python -m vaultic.eval.run experiments/configs/EXP-001.yaml --smoke   (pipeline check)
+
+--smoke checks a config end to end before a long run: one seed, 50 bootstrap resamples, 10% of
+the rows (TransactionID % 10 == 0), written to experiments/runs/<id>-smoke/ and never to the
+experiment log. Its numbers are not results. It cannot be combined with --final.
 
 Trains on the train period (one model per seed) and scores the VALIDATION period; thresholds
 are chosen on validation. Test rows are not predicted at all unless --final is given; final
@@ -49,8 +54,15 @@ from vaultic.eval.metrics import (
 )
 from vaultic.eval.warn_capture import capture_warnings
 from vaultic.features.pipeline import features_path
-from vaultic.features.sets import NEEDS_BASE, NEEDS_UID, design_matrix, drop_features
-from vaultic.paths import MERGED_PATH, REPO_ROOT, RESEARCH_DIR, RUNS_DIR
+from vaultic.features.sets import (
+    EXTRA_FEATURES,
+    NEEDS_BASE,
+    NEEDS_UID,
+    attach_features,
+    design_matrix,
+    drop_features,
+)
+from vaultic.paths import FEATURES_DIR, MERGED_PATH, REPO_ROOT, RESEARCH_DIR, RUNS_DIR
 from vaultic.views.tabular import effective_device, make_model, resolve_device
 
 PRECISION_K = 500
@@ -337,6 +349,12 @@ def load_inputs(cfg: dict[str, Any], splits) -> tuple[pd.DataFrame, pd.DataFrame
             )
         base = pd.read_parquet(path)
         inputs.append(path)
+        for kind in EXTRA_FEATURES.get(cfg["features"], ()):
+            extra_path = FEATURES_DIR / f"{kind}_{variant}.parquet"
+            if not extra_path.exists():
+                raise FileNotFoundError(f"{extra_path} missing; build the {kind} features first")
+            base = attach_features(base, pd.read_parquet(extra_path), kind)
+            inputs.append(extra_path)
     elif cfg["features"] in NEEDS_UID:
         base = pd.read_parquet(UID_PATH, columns=["TransactionID", variant])
         base = base.rename(columns={variant: "uid"})
@@ -353,9 +371,16 @@ def run(
     rerun_reason: str | None = None,
     decisions_log: Path = RESEARCH_DIR / "decisions.md",
     device: str | None = None,
+    smoke: bool = False,
 ) -> Path:
     started = time.perf_counter()
     cfg = load_config(config_path)
+    if smoke:
+        if final:
+            raise ValueError("--smoke cannot be combined with --final")
+        cfg = {**cfg, "id": f"{cfg['id']}-smoke", "seeds": cfg["seeds"][:1],
+               "bootstrap": {**cfg.get("bootstrap", {}), "n": SMOKE_BOOTSTRAP}}  # fmt: skip
+        experiment_log = None
     # the device the model really trains on is part of the run's saved config
     device = effective_device(cfg["model"]["name"], resolve_device(device, cfg.get("device")))
     cfg = {**cfg, "device": device}
@@ -369,6 +394,9 @@ def run(
     else:
         df, base = data
         data_version = {"injected": True}
+    if smoke:
+        df, base = smoke_rows(df, base)
+        data_version["smoke"] = f"TransactionID % {SMOKE_EVERY} == 0"
 
     with capture_warnings() as caught:
         result, preds, timings = evaluate(cfg, df, base, splits, final=final, device=device)
@@ -395,6 +423,18 @@ def run(
         with open(experiment_log, "a", encoding="utf-8") as f:
             f.write(log_line(cfg, result, out_dir))
     return out_dir
+
+
+SMOKE_EVERY = 10
+SMOKE_BOOTSTRAP = 50
+
+
+def smoke_rows(df: pd.DataFrame, base: pd.DataFrame | None):
+    """Every SMOKE_EVERY-th transaction (by id), keeping df and base aligned."""
+    df = df[df["TransactionID"].to_numpy() % SMOKE_EVERY == 0].reset_index(drop=True)
+    if base is not None:
+        base = base[base["TransactionID"].to_numpy() % SMOKE_EVERY == 0].reset_index(drop=True)
+    return df, base
 
 
 def _fmt(entry: dict[str, float]) -> str:
@@ -449,8 +489,19 @@ def main() -> None:
         default=None,
         help="override the config / VAULTIC_DEVICE (cuda: XGBoost and LightGBM on the GPU)",
     )
+    parser.add_argument(
+        "--smoke",
+        action="store_true",
+        help="pipeline check on 10%% of rows with one seed (not a result; never logged)",
+    )
     args = parser.parse_args()
-    out = run(args.config, final=args.final, rerun_reason=args.rerun_reason, device=args.device)
+    out = run(
+        args.config,
+        final=args.final,
+        rerun_reason=args.rerun_reason,
+        device=args.device,
+        smoke=args.smoke,
+    )
     result = json.loads((out / "metrics.json").read_text(encoding="utf-8"))
     print(f"{out}\n  validation PR-AUC {_fmt(result['validation']['pr_auc'])}")
     if args.final:

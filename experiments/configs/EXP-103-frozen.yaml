@@ -1,0 +1,7 @@
+# Phase 3 development run (validation only): B5 + behavioral features with B5's FROZEN tuned
+# hyperparameters (EXP-009). This is a first look at RQ1, not roadmap E3 itself: E3 (EXP-103,
+# planned) retunes with the same Optuna budget as B5 (rule 9). D66.
+extends: EXP-009.yaml
+id: EXP-103-frozen
+question: "B5 + behavioral features, frozen B5 hyperparameters (development, Phase 3)"
+features: b5_behavioral

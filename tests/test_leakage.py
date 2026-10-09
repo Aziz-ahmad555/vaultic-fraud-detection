@@ -207,3 +207,29 @@ def test_real_sequences_truncation_and_future_changes(name):
     changed.loc[future, ["C1", "C13"]] = -5.0
     again = build_sequences(changed, uid, enc, n_steps=20, extra_columns=extra)
     assert np.array_equal(full.values[keep], again.values[keep])
+
+
+@pytest.mark.parametrize("name", GRAPH_PARAMS)
+def test_real_behavioral_features_truncation_and_future_changes(name):
+    """Phase 3 (D66): behavioral features on real rows depend only on strictly earlier rows of
+    the same uid (and, for entity velocity, earlier rows of the same card/email/device)."""
+    from vaultic.features.behavioral import build_behavioral
+
+    df, uid = _graph_data(name)
+    full = build_behavioral(df, uid)
+    assert (
+        full["amt_z"].notna().mean() > 0.01
+    )  # some real history exists (the 50k sample spans ~13 days)
+    for q in (0.5, 0.85):
+        _, keep = _cut(df, q)
+        cut = build_behavioral(df[keep], uid[keep])
+        pd.testing.assert_frame_equal(full[keep], cut, check_exact=True)
+    _, keep = _cut(df, 0.6)
+    changed = df.copy()
+    future = ~keep
+    changed.loc[future, "TransactionAmt"] = 1e6
+    changed["DeviceInfo"] = changed["DeviceInfo"].astype(object)
+    changed.loc[future, "DeviceInfo"] = "future-device"
+    changed.loc[future, "P_emaildomain"] = np.nan
+    again = build_behavioral(changed, uid)
+    pd.testing.assert_frame_equal(full[keep], again[keep], check_exact=True)
