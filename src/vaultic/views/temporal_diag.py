@@ -12,7 +12,9 @@ history. Its PR-AUC is reported next to the GRU's on exactly the same rows; if a
 curve exists (<dir>/p_temporal.history.json), its best epoch is shown too.
 
 If XGBoost is also weak, the inputs carry little signal (enrich them); if it is much stronger,
-the GRU's training is at fault. Writes <dir>/diag.json and prints a one-line summary.
+the GRU's training is at fault. Writes <dir>/diag.json and <dir>/p_temporal_xgb.parquet (the
+XGBoost temporal view's predictions for every predicted row, NaN without history; under D86/D88
+this is the temporal view MVAF uses) and prints a one-line summary.
 """
 
 from __future__ import annotations
@@ -97,6 +99,14 @@ def run(in_dir: Path) -> dict:
         out["gru_stop_pr_auc"] = h["best_stop_pr_auc"]
         out["gru_curve"] = [round(e["val_pr_auc"], 4) for e in h["epochs"]]
     (in_dir / "diag.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
+    # the XGBoost temporal view's predictions in the external-view format of
+    # views/orchestrate.view_table (D88): every predicted row, NaN where the uid has no history
+    rows = np.flatnonzero(fold.predict_rows(day))
+    p = np.full(len(rows), np.nan)
+    with_hist = hist[rows]
+    p[with_hist] = model.predict_proba(X[rows[with_hist]])[:, 1]
+    pd.DataFrame({"TransactionID": df["TransactionID"].to_numpy()[rows], "fold": fold.name,
+                  "p_temporal": p}).to_parquet(in_dir / "p_temporal_xgb.parquet", index=False)  # fmt: skip
     return out
 
 
