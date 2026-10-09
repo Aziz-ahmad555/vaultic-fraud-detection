@@ -1,0 +1,7 @@
+# Phase 6 development run (validation only): B5 + the three anomaly scores (forward-chained,
+# views/anomaly_build.py) with B5's FROZEN tuned hyperparameters. A first look at the anomaly
+# view as features, not roadmap E8 itself (EXP-108, planned: stacking over all views). D68.
+extends: EXP-009.yaml
+id: EXP-108-frozen
+question: "B5 + anomaly scores, frozen B5 hyperparameters (development, Phase 6)"
+features: b5_anomaly

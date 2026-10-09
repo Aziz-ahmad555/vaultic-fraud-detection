@@ -1,0 +1,7 @@
+# Emerging-fraud experiment (validation only, D69): B5 + anomaly scores trained without the
+# training-period frauds of ProductCD R. The anomaly models are fitted on legit rows only,
+# so they are unchanged by the hold-out. Compared with EXP-009-holdout-R on ProductCD R rows.
+extends: EXP-108-frozen.yaml
+id: EXP-108-holdout-R
+question: "B5 + anomaly without ProductCD R training frauds (emerging fraud, development)"
+train_drop_fraud: {ProductCD: R}

@@ -315,3 +315,21 @@ def test_b5_extra_feature_sets_attach_precomputed_columns(monkeypatch):
         sets.attach_features(base, extra.iloc[::-1], "behavioral")
     with pytest.raises(ValueError, match="repeat"):
         sets.attach_features(base, base, "behavioral")
+
+
+def test_train_drop_fraud_removes_only_that_products_training_frauds(tmp_path):
+    """Emerging fraud (D69): the held-out product's training frauds are removed; its legit
+    training rows and all validation rows stay."""
+    df, base = _data()
+    cfg = _config(tmp_path)
+    plain = json.loads((_run(tmp_path, cfg=cfg, runs="a") / "metrics.json").read_text())
+    data = yaml.safe_load(cfg.read_text())
+    data["train_drop_fraud"] = {"ProductCD": "C"}
+    cfg.write_text(yaml.safe_dump(data))
+    held = json.loads((_run(tmp_path, cfg=cfg, runs="b") / "metrics.json").read_text())
+    part = (df["day"] >= 1) & (df["day"] <= 120)
+    n_removed = int(((df["ProductCD"] == "C") & (df["isFraud"] == 1) & part).sum())
+    assert n_removed > 0
+    assert plain["rows"]["train"] - held["rows"]["train"] == n_removed
+    assert held["rows"]["validation"] == plain["rows"]["validation"]
+    assert held["train_drop_fraud"] == {"ProductCD": "C"}

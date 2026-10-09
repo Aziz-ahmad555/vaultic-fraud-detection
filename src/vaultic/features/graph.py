@@ -422,3 +422,65 @@ def build_graph_features(
         )
     out.index = df.index
     return out
+
+
+GRAPH_INPUT_COLUMNS = ["TransactionID", "TransactionDT", "isFraud", *ENTITY_COLUMNS["card"],
+                       "addr1", "addr2", *EMAIL_COLUMNS, "DeviceInfo", "DeviceType"]  # fmt: skip
+
+
+def availability(features: pd.DataFrame, part: pd.Series) -> dict[str, float]:
+    """Share of rows with the graph view available (D52: g_shared_nonhub > 0), per split."""
+    avail = features["g_shared_nonhub"].to_numpy(dtype=float) > 0
+    out = {name: float(avail[(part == name).to_numpy()].mean()) for name in pd.unique(part)}
+    out["all"] = float(avail.mean())
+    return out
+
+
+def main() -> None:
+    """Write data/features/graph_<uid variant>.parquet: setting C, hub thresholds fitted on the
+    training period, and print the share of rows with the graph view available per split."""
+    import argparse
+    import json
+    import time as clock
+
+    from vaultic.data.load import load_merged
+    from vaultic.data.splits import load_splits
+    from vaultic.data.uid import UID_PATH
+    from vaultic.paths import FEATURES_DIR, MERGED_PATH
+
+    parser = argparse.ArgumentParser(description=main.__doc__.splitlines()[0])
+    parser.add_argument("--uid-variant", default=None, help="default: uid_variant in splits.yaml")
+    parser.add_argument("--max-day", type=int, default=None, help="timing check on days <= N")
+    parser.add_argument("--window-days", type=int, default=30)
+    args = parser.parse_args()
+    splits = load_splits()
+    variant = args.uid_variant or splits.uid_variant
+    df = load_merged(MERGED_PATH, columns=GRAPH_INPUT_COLUMNS)
+    uids = pd.read_parquet(UID_PATH, columns=["TransactionID", variant])
+    if not (uids["TransactionID"].to_numpy() == df["TransactionID"].to_numpy()).all():
+        raise ValueError("uids.parquet is out of date; rerun python -m vaultic.data.uid")
+    uid = uids[variant]
+    day = pd.Series(df["TransactionDT"].to_numpy() // SECONDS_PER_DAY, index=df.index)
+    if args.max_day is not None:
+        keep = (day <= args.max_day).to_numpy()
+        df, uid, day = df[keep], uid[keep], day[keep]
+    train = splits.train.contains(day)
+    thresholds = fit_hub_thresholds(df[train], uid[train])
+    started = clock.perf_counter()
+    feats = build_graph_features(df, uid, "C", splits.label_delay_days, args.window_days,
+                                 hub_thresholds=thresholds)  # fmt: skip
+    seconds = clock.perf_counter() - started
+    share = availability(feats, pd.Series(splits.assign(day)))
+    info = {"hub_thresholds": thresholds, "availability": share, "seconds": round(seconds, 1),
+            "rows": len(feats), "label_delay_days": splits.label_delay_days,
+            "window_days": args.window_days}  # fmt: skip
+    print(json.dumps(info, indent=1))
+    if args.max_day is None:
+        out = FEATURES_DIR / f"graph_{variant}.parquet"
+        feats.to_parquet(out, index=False)
+        out.with_suffix(".json").write_text(json.dumps(info, indent=1), encoding="utf-8")
+        print(f"wrote {out}: {len(feats):,} rows x {feats.shape[1] - 1} features")
+
+
+if __name__ == "__main__":
+    main()

@@ -12,6 +12,7 @@ NON_FEATURES = {"TransactionID", "isFraud", "TransactionDT", "day"}
 EXTRA_FEATURES = {
     "b5_behavioral": ("behavioral",),
     "b5_graph": ("graph",),
+    "b5_anomaly": ("anomaly",),
 }
 # Feature sets that include the point-in-time base features.
 NEEDS_BASE = {"raw_base", "b5", *EXTRA_FEATURES}

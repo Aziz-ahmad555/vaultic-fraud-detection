@@ -95,6 +95,17 @@ def n_past_for(preds: pd.DataFrame, base_features: pd.DataFrame) -> np.ndarray:
     return base_features["uid_n_past"].to_numpy()[idx]
 
 
+def subset_rows(base: pd.DataFrame, new: pd.DataFrame, column: str, value: str):
+    """Keep only rows whose merged-data `column` equals `value` (e.g. ProductCD=R)."""
+    from vaultic.data.load import load_merged
+    from vaultic.paths import MERGED_PATH
+
+    merged = load_merged(MERGED_PATH, columns=["TransactionID", column])
+    lookup = merged.set_index("TransactionID")[column].astype(str)
+    keep = lookup.reindex(base["TransactionID"]).to_numpy() == value
+    return base[keep].reset_index(drop=True), new[keep].reset_index(drop=True)
+
+
 def to_markdown(table: pd.DataFrame, title: str, base_run: Path, new_run: Path) -> str:
     def f(v, d=4):
         return "" if pd.isna(v) else f"{v:.{d}f}"
@@ -136,8 +147,12 @@ def main() -> None:
     parser.add_argument("--name", required=True)
     parser.add_argument("--groups", default="history", choices=sorted(GROUPS))
     parser.add_argument("--title", default=None)
+    parser.add_argument("--subset", default=None,
+                        help="COLUMN=VALUE: only validation rows where a merged column has VALUE")  # fmt: skip
     args = parser.parse_args()
     base, new = _validation(args.base_run), _validation(args.new_run)
+    if args.subset:
+        base, new = subset_rows(base, new, *args.subset.split("=", 1))
     feats = pd.read_parquet(
         features_path(load_splits().uid_variant), columns=["TransactionID", "uid_n_past"]
     )

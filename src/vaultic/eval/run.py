@@ -207,6 +207,10 @@ def evaluate(
     if maturity is not None:  # E25: only training labels already known when validation starts
         start = splits.validation.first * SECONDS_PER_DAY
         tr = tr & label_matured(df["TransactionDT"].to_numpy(), start, int(maturity))
+    held_out = cfg.get("train_drop_fraud")  # emerging fraud (D69): {column: value}
+    if held_out:
+        for column, value in held_out.items():
+            tr = tr & ~((df[column].astype(str) == str(value)).to_numpy() & (y == 1))
     if not (tr.any() and va.any()):
         raise ValueError("train and validation must both be non-empty")
     if final and not te.any():
@@ -251,6 +255,8 @@ def evaluate(
     }
     if maturity is not None:
         result["train_label_maturity_days"] = int(maturity)
+    if held_out:
+        result["train_drop_fraud"] = {k: str(v) for k, v in held_out.items()}
     if final:
         result["rows"]["test"] = int(te.sum())
         result["test_fraud_rate"] = float(y[te].mean())

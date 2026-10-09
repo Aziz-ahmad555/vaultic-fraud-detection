@@ -1,0 +1,7 @@
+# Emerging-fraud experiment (validation only, D69): B5 (frozen hyperparameters) trained
+# without the training-period frauds of ProductCD R; scored on all validation rows and
+# reported on the ProductCD R validation rows (fraud of a kind the model never saw).
+extends: EXP-009.yaml
+id: EXP-009-holdout-R
+question: "B5 without ProductCD R training frauds (emerging fraud, development)"
+train_drop_fraud: {ProductCD: R}
