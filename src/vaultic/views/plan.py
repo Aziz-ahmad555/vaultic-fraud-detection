@@ -156,6 +156,25 @@ def gate_plan(splits, final: bool = False, label_maturity_days: int | None = Non
     return plan
 
 
+def crossfit_plan(
+    splits, final: bool = False, label_maturity_days: int | None = None
+) -> list[Fold]:
+    """D95: splits.yaml's gate_folds (expanding windows over the training period, each predicting
+    its next block) plus the fixed fold. Every fold is its own set of view models and keeps the
+    last days of its block (as many as calibrate_views has) to calibrate its own views (D77); the
+    rest of each block are gate-training rows, together with validation 128-143."""
+    cal = _calibrate(splits)
+    width = cal["calibrate_views"][1] - cal["calibrate_views"][0] if cal else None
+    plan = []
+    for i, (train, block) in enumerate(splits.gate_folds):
+        own = {"calibrate_views": (block.last - width, block.last)} if cal else {}
+        plan.append(Fold(f"crossfit_{i}", (train.first, train.last), (block.first, block.last),
+                         "gate_train", label_maturity_days, **own))  # fmt: skip
+    plan += fixed_plan(splits, final, label_maturity_days)
+    check_plan(plan, splits, final)
+    return plan
+
+
 def check_calibration_scope(fitted_on, applied_to, what: str = "calibration") -> None:
     """Refuse a calibrator / conformal set / threshold fitted on one fold's rows and applied to
     rows of another fold (another set of view models), D77."""

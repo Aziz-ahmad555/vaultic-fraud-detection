@@ -205,3 +205,58 @@ def test_from_grid_reselects_without_refitting(tmp_path, monkeypatch):
     assert "C: 10.0" in cfg and "clip_quantiles" in cfg
     report = (tmp_path / "tuning_BX.md").read_text(encoding="utf-8")
     assert "Chosen: **C = 10**" in report and "upper edge" not in report
+
+
+def test_view_availability_rules():
+    """D95: view models are tuned on the rows where the view exists."""
+    import pandas as pd
+
+    from vaultic.views.definitions import available
+
+    X = pd.DataFrame({"hist_n_past": [0, 2, np.nan], "seq_n_steps": [np.nan, 3, 0],
+                      "g_shared_nonhub": [0, 1, np.nan], "anomaly_if": [np.nan, 0.4, 0.9]})  # fmt: skip
+    assert available("tabular", X).tolist() == [True, True, True]
+    assert available("behavioral", X).tolist() == [False, True, False]
+    assert available("temporal", X).tolist() == [False, True, False]
+    assert available("graph", X).tolist() == [False, True, False]
+    assert available("anomaly", X).tolist() == [False, True, True]
+    with pytest.raises(ValueError):
+        available("nope", X)
+
+
+def test_view_tuning_uses_available_rows_and_inner_days(tmp_path, monkeypatch):
+    """D95: --view keeps the view's rows, --val-days 128 143 never reaches the calibrate tail."""
+    import sys
+
+    import pandas as pd
+
+    import vaultic.eval.tune as tune
+
+    rng = np.random.default_rng(0)
+    n = 3000
+    day = np.sort(rng.integers(1, 151, n))
+    df = pd.DataFrame(
+        {"TransactionID": np.arange(n), "day": day, "isFraud": (rng.random(n) < 0.1).astype(int)}
+    )
+    feats = pd.DataFrame({"TransactionID": df["TransactionID"], "x": rng.normal(size=n),
+                          "g_shared_nonhub": rng.integers(0, 2, n).astype(float)})  # fmt: skip
+    feats["x"] += df["isFraud"]
+    seen = {}
+
+    def fake_boosting(args, X_tr, y_tr, X_va, y_va):
+        seen.update(train=len(X_tr), val=len(X_va), cols=list(X_tr.columns))
+
+    monkeypatch.setattr("vaultic.eval.run.load_inputs", lambda cfg, s: (df, feats, []))
+    monkeypatch.setattr(tune, "_tune_boosting", fake_boosting)
+    monkeypatch.setattr(tune, "RESEARCH_DIR", tmp_path)
+    argv = ["tune", "--name", "V-graph", "--features", "graph_only", "--view", "graph",
+            "--val-days", "128", "143", "--config-id", "EXP-V-graph"]  # fmt: skip
+    monkeypatch.setattr(sys, "argv", argv)
+    tune.main()
+    avail = feats["g_shared_nonhub"].to_numpy() > 0
+    assert seen["train"] == int(((day <= 120) & avail).sum())
+    assert seen["val"] == int(((day >= 128) & (day <= 143) & avail).sum())
+    bad = [x if x != "143" else "146" for x in argv]  # would reach the calibrate tail (144+)
+    monkeypatch.setattr(sys, "argv", bad)
+    with pytest.raises(ValueError, match="calibrate tail"):
+        tune.main()

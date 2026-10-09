@@ -15,6 +15,8 @@ D65 showed they carry almost all of B5's margin, and only for uids with history.
 
 from __future__ import annotations
 
+import numpy as np
+
 # Label-derived base features (found by perturbation, reports/label_features.py): two depend on
 # label VALUES, one on label TIMING. All respect the label delay L.
 LABEL_DERIVED = ("uid_fraud_known", "uid_fraud_rate_known", "uid_n_labels_known")
@@ -26,6 +28,24 @@ VIEW_FEATURE_SETS = {
     "anomaly": "anomaly_only",
     "temporal": "sequence_only",
 }
+
+
+def available(view: str, X) -> np.ndarray:
+    """Rows where a view exists (rule 11): tabular always; behavioral and temporal need an
+    earlier transaction of the uid; graph needs non-hub relational evidence (D52); anomaly needs
+    a forward-chained score (D68)."""
+    n = len(X)
+    if view == "tabular":
+        return np.ones(n, bool)
+    if view == "behavioral":
+        return X["hist_n_past"].fillna(0).to_numpy() > 0
+    if view == "temporal":
+        return X["seq_n_steps"].fillna(0).to_numpy() > 0
+    if view == "graph":
+        return X["g_shared_nonhub"].fillna(0).to_numpy() > 0
+    if view == "anomaly":
+        return X["anomaly_if"].notna().to_numpy()
+    raise ValueError(f"unknown view {view!r}")
 
 
 def tabular_columns(b5_columns) -> list[str]:

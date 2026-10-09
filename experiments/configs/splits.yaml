@@ -17,6 +17,14 @@ fixed:
   calibrate_fused: [147, 150]
   test: [151, 182]       # final runs only; never used for any choice
 
+# Cross-fitted out-of-time view predictions for the fusion gate (D95): expanding windows over
+# the training period; each fold is one set of view models predicting the next block. Used by
+# views/plan.crossfit_plan together with the fixed fold (1-120 -> validation).
+gate_folds:
+  - {train: [1, 30], predict: [31, 60]}
+  - {train: [1, 60], predict: [61, 90]}
+  - {train: [1, 90], predict: [91, 120]}
+
 # Drift work (Phase 10): grow the training window by 30-day blocks, test on the next block.
 rolling:
   - {train: [1, 90], test: [91, 120]}

@@ -176,3 +176,57 @@ def test_dev_compare_subgroups_from_context_and_masks():
     diff, lo, hi, _ = t.loc["with history", "MVAF - B5"]
     assert lo > 0 and t.loc["cold start", "rows"] == int(m["cold start"].sum())
     assert "MVAF - F0" not in t.columns  # F0 not given yet
+
+
+def test_fusion_tuning_spaces_and_equal_budget(table):
+    """D95/D96: every trainable method has a space; tuning uses fit -> tune rows only."""
+    pytest.importorskip("optuna")
+    from vaultic.fusion.tune_fusion import (
+        TRAINABLE,
+        concat_rows,
+        fit_seeds,
+        params_from,
+        space,
+        tune_method,
+    )
+
+    class FakeTrial:
+        def suggest_categorical(self, n, c):
+            return c[0]
+
+        def suggest_float(self, n, lo, hi, log=False):
+            return lo
+
+        def suggest_int(self, n, lo, hi):
+            return lo
+
+    for name in TRAINABLE:
+        assert space(name, FakeTrial())
+    assert "dropout" not in space("F6", FakeTrial())
+    assert params_from("MVAF", {"hidden": "32-32"})["hidden"] == (32, 32)
+    split = fusion_split(table)
+    res = tune_method("F3", split, n_trials=3)
+    assert res["trials"] == 3 and "C" in res["params"]
+    both = concat_rows(split.fit, split.tune)
+    assert len(both) == len(split.fit) + len(split.tune) and both.day.max() < 144
+    models = fit_seeds("F3", res["params"], both, seeds=(0, 1))
+    assert len(models) == 2
+
+
+def test_d95_gate_counts_and_single_run_guard(table, tmp_path, monkeypatch):
+    import sys
+
+    import vaultic.fusion.d95_compare as d95
+
+    counts = d95.gate_counts(table).set_index("fold")
+    gate = table[table["role"] == "gate_train"]
+    assert (
+        counts.loc["all", "rows"] == len(gate)
+        and counts.loc["all", "frauds"] == gate["label"].sum()
+    )
+    monkeypatch.setattr(d95, "RESEARCH_DIR", tmp_path)
+    (tmp_path / "tables").mkdir()
+    (tmp_path / "tables" / "fusion_d95.md").write_text("done")
+    monkeypatch.setattr(sys, "argv", ["d95", "--b5-run", "x", "--f0-run", "y"])
+    with pytest.raises(RuntimeError, match="runs once"):
+        d95.main()

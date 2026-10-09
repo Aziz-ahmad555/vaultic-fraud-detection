@@ -90,6 +90,9 @@ class SupervisedView:
         from vaultic.views.tabular import make_model
 
         rows = self._mask(frame)
+        if not rows.any():  # the view exists for no training row of this fold: missing (rule 11)
+            self.model_ = None
+            return self
         if len(np.unique(y[rows])) < 2:
             raise ValueError("the view's training rows need both classes")
         self.model_ = make_model(self.model, self.params, self.seed)
@@ -98,6 +101,8 @@ class SupervisedView:
 
     def predict(self, frame: pd.DataFrame) -> np.ndarray:
         out = np.full(len(frame), np.nan)
+        if self.model_ is None:
+            return out
         rows = self._mask(frame)
         if rows.any():
             out[rows] = self.model_.predict_proba(frame.loc[rows, self.columns])[:, 1]

@@ -272,6 +272,11 @@ def main() -> None:
     parser.add_argument("--device", choices=["cpu", "cuda"], default=None)
     parser.add_argument("--grid-c", type=float, nargs="+", default=[0.001, 0.01, 0.1, 1.0, 10.0])
     parser.add_argument("--config-id", required=True, help="id of the tuned config to write")
+    parser.add_argument("--val-days", type=int, nargs=2, default=None, metavar=("FIRST", "LAST"),
+                        help="score trials on these validation days only (D95: 128 143, never "
+                        "the calibrate tail)")  # fmt: skip
+    parser.add_argument("--view", default=None,
+                        help="tune a view model on the rows where the view exists (D95)")  # fmt: skip
     parser.add_argument(
         "--from-grid",
         type=Path,
@@ -293,6 +298,16 @@ def main() -> None:
     y = df["isFraud"].to_numpy()
     part = splits.assign(df["day"])
     tr, va = part == "train", part == "validation"
+    if args.val_days is not None:  # inner validation split (D95)
+        lo, hi = args.val_days
+        if splits.calibrate is not None and hi >= splits.calibrate.first:
+            raise ValueError("--val-days must end before the calibrate tail (D95)")
+        va = va & (df["day"].to_numpy() >= lo) & (df["day"].to_numpy() <= hi)
+    if args.view is not None:  # a view is trained and scored only where it exists
+        from vaultic.views.definitions import available
+
+        avail = available(args.view, X)
+        tr, va = tr & avail, va & avail
     X_tr, y_tr, X_va, y_va = X[tr], y[tr], X[va], y[va]
     del df, base, X  # the test period is never handed to the tuner
 
@@ -302,6 +317,13 @@ def main() -> None:
         else:
             _tune_boosting(args, X_tr, y_tr, X_va, y_va)
     _append_warnings(RESEARCH_DIR / f"tuning_{args.name}.md", caught)
+    if args.val_days is not None or args.view is not None:  # D95 scope of this tuning
+        with open(RESEARCH_DIR / f"tuning_{args.name}.md", "a", encoding="utf-8") as f:
+            f.write(
+                f"\nScope (D95): view `{args.view or 'all rows'}`; trials scored on validation "
+                f"days {args.val_days or 'all'} only; {int(tr.sum())} training rows, "
+                f"{int(va.sum())} scoring rows ({int(y[va].sum())} frauds).\n"
+            )
 
 
 def _append_warnings(report: Path, caught) -> None:

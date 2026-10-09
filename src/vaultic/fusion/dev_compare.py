@@ -110,7 +110,10 @@ def external_scores(run_dir: Path, ids: np.ndarray) -> np.ndarray:
     return out
 
 
-def build_table(smoke: bool):
+def build_table(smoke: bool, d95: bool = False):
+    """The view table. d95=True (D95): the cross-fitted plan, the views with their tuned
+    hyperparameters (configs EXP-V-<view>.yaml from `vaultic.eval.tune --view`), XGBoost for the
+    anomaly and temporal views (temporal on the sequence features, in-process)."""
     import yaml
 
     from vaultic.data.load import load_merged
@@ -121,20 +124,21 @@ def build_table(smoke: bool):
     from vaultic.features.sets import design_matrix
     from vaultic.paths import CONFIG_DIR, FEATURES_DIR, MERGED_PATH
     from vaultic.paths import INTERIM_DIR as _INTERIM
+    from vaultic.views.definitions import available
     from vaultic.views.orchestrate import (
         SupervisedView,
         has_graph_evidence,
         has_history,
         view_table,
     )
-    from vaultic.views.plan import fixed_plan
+    from vaultic.views.plan import crossfit_plan, fixed_plan
 
     splits = load_splits()
     variant = splits.uid_variant
     df = load_merged(MERGED_PATH)
     base = pd.read_parquet(features_path(variant))
     extra = {k: pd.read_parquet(FEATURES_DIR / f"{k}_{variant}.parquet")
-             for k in ("behavioral", "graph", "anomaly")}  # fmt: skip
+             for k in ("behavioral", "graph", "anomaly", *(("sequence",) if d95 else ()))}  # fmt: skip
     uid = pd.read_parquet(UID_PATH, columns=["TransactionID", variant])[variant]
     for name, frame in [("base", base), *extra.items()]:
         if not np.array_equal(frame["TransactionID"].to_numpy(), df["TransactionID"].to_numpy()):
@@ -153,6 +157,28 @@ def build_table(smoke: bool):
     assert all(c in features for c in LABEL_DERIVED)  # the behavioral view needs them (D89)
     features["uid"] = uid.to_numpy()
     params = yaml.safe_load((CONFIG_DIR / "EXP-009.yaml").read_text("utf-8"))["model"]["params"]
+    if d95:
+
+        def tuned(view):
+            cfg = yaml.safe_load((CONFIG_DIR / f"EXP-V-{view}.yaml").read_text("utf-8"))
+            return cfg["model"]["params"]
+
+        def avail(view):
+            return lambda f: available(view, f)
+
+        views = {
+            "tabular": SupervisedView(tab_cols, "xgboost", tuned("tabular")),
+            "behavioral": SupervisedView(behavioral_columns(cols["behavioral"]), "xgboost",
+                                         tuned("behavioral"), available=avail("behavioral")),
+            "graph": SupervisedView(cols["graph"], "xgboost", tuned("graph"),
+                                    available=avail("graph")),
+            "anomaly": SupervisedView(cols["anomaly"], "xgboost", tuned("anomaly"),
+                                      available=avail("anomaly")),
+            "temporal": SupervisedView(cols["sequence"], "xgboost", tuned("temporal"),
+                                       available=avail("temporal")),
+        }  # fmt: skip
+        encoder = fit_on_training_period(df, splits, columns=("ProductCD",))
+        return view_table(df, features, views, crossfit_plan(splits), encoder, splits)
     views = {
         "tabular": SupervisedView(tab_cols, "xgboost", params),
         "behavioral": SupervisedView(behavioral_columns(cols["behavioral"]), "xgboost", params,
