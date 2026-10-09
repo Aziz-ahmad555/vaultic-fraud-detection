@@ -128,7 +128,13 @@ def write_summary(out: Path = SUMMARY_PATH) -> None:
     elif changed:
         freeze_line = f"**Changed after freezing:** {', '.join(changed)}."
     else:
-        freeze_line = "All frozen configs are unchanged since the freeze."
+        record = FROZEN_PATH.read_text("utf-8")
+        amended = record.split("## Amendments")[1].count("\n- ") if "## Amendments" in record else 0
+        freeze_line = "All frozen configs are unchanged since the freeze" + (
+            f" record, which logs {amended} amendments (see research/frozen_configs.md)."
+            if amended
+            else "."
+        )
     lines = [
         "# Phase 2 results",
         "",

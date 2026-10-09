@@ -1,6 +1,6 @@
 # Phase 2 exit gate
 
-Generated 2026-10-08 by `python -m vaultic.reports.phase2_gate` from --final harness runs (test period).
+Generated 2026-10-09 by `python -m vaultic.reports.phase2_gate` from --final harness runs (test period).
 
 Gate: B5 beats B3 with non-overlapping 95% CIs on test PR-AUC.
 
