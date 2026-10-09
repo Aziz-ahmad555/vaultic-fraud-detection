@@ -190,7 +190,9 @@ def test_from_grid_reselects_without_refitting(tmp_path, monkeypatch):
 
     monkeypatch.setattr(tune, "RESEARCH_DIR", tmp_path)
     monkeypatch.setattr(tune, "CONFIG_DIR", tmp_path)
-    monkeypatch.setattr(tune, "load_merged", lambda *a, **k: pytest.fail("data was loaded"))
+    monkeypatch.setattr(
+        "vaultic.eval.run.load_inputs", lambda *a, **k: pytest.fail("data was loaded")
+    )
     rows = [{"C": c, "val PR-AUC": v, "seconds": 1.0, "iterations": 10, "converged": True}
             for c, v in [(1.0, 0.3678), (10.0, 0.3703), (100.0, 0.3704)]]  # fmt: skip
     grid = tmp_path / "g.json"

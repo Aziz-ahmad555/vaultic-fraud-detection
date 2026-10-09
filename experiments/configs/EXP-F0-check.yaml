@@ -1,0 +1,7 @@
+# Pipeline check for F0's feature set (D90): one XGBoost on all view features concatenated,
+# with B5's FROZEN hyperparameters. Used as --smoke before tuning F0; F0 itself is EXP-F0
+# (written by `vaultic.eval.tune --name F0 --features all_views`, same budget as B5).
+extends: EXP-009.yaml
+id: EXP-F0-check
+question: "F0 feature set check: XGBoost on all view features, frozen B5 hyperparameters"
+features: all_views

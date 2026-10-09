@@ -27,16 +27,13 @@ from datetime import date
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import yaml
 
-from vaultic.data.load import load_merged
 from vaultic.data.splits import load_splits
 from vaultic.eval.metrics import pr_auc
 from vaultic.eval.warn_capture import capture_warnings
-from vaultic.features.pipeline import features_path
-from vaultic.features.sets import NEEDS_BASE, design_matrix
-from vaultic.paths import CONFIG_DIR, MERGED_PATH, REPO_ROOT, RESEARCH_DIR
+from vaultic.features.sets import design_matrix
+from vaultic.paths import CONFIG_DIR, REPO_ROOT, RESEARCH_DIR
 from vaultic.views.tabular import resolve_device
 
 TUNING_DIR = REPO_ROOT / "experiments" / "tuning"
@@ -288,10 +285,10 @@ def main() -> None:
         return
 
     splits = load_splits()
-    df = load_merged(MERGED_PATH)
-    base = (
-        pd.read_parquet(features_path(splits.uid_variant)) if args.features in NEEDS_BASE else None
-    )
+    # the same inputs as the harness (base features plus any attached view files, D90)
+    from vaultic.eval.run import load_inputs
+
+    df, base, _ = load_inputs({"features": args.features}, splits)
     X = design_matrix(df, base, args.features)
     y = df["isFraud"].to_numpy()
     part = splits.assign(df["day"])
