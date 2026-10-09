@@ -12,6 +12,8 @@ holdout:
   ProductCD: [W, C, H, R, S]
   card4: [visa, mastercard, discover, american express]
   remove: fraud_rows_of_group_from_training   # legit rows of the group stay
+# view definitions (D89): vaultic.views.definitions; tabular = B5 without label-derived features,
+# behavioral = behavioral + label-derived customer features, temporal = XGBoost on sequences (D88)
 views: [tabular, behavioral, temporal, graph, anomaly]
 report:
   per_group_and_view: [pr_auc, recall_at_1pct_fpr]

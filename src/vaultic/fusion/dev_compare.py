@@ -1,12 +1,14 @@
 """First development comparison of MVAF with F1-F7 (item 7, D71). Validation only, no test rows.
 
-Run:  python -m vaultic.fusion.dev_compare [--smoke]
+Run:  python -m vaultic.fusion.dev_compare --b5-run <B5 run dir> --f0-run <F0 run dir> [--smoke]
 
 1. View-prediction table on the FIXED plan: ONE set of view models trained on days 1-120,
    predicting validation 128-150 (D77); roles gate_train 128-143, calibrate_views 144-146 and
    calibrate_fused 147-150 (D53, D76):
-     tabular     XGBoost on the B5 features (frozen B5 hyperparameters, seed 0)
-     behavioral  XGBoost on the behavioral features, only for uids with history
+     tabular     XGBoost on the TABULAR view: B5 features without the label-derived ones (D89;
+                 frozen B5 hyperparameters, seed 0)
+     behavioral  XGBoost on the BEHAVIORAL view: behavioral features + the label-derived customer
+                 features (D89), only for uids with history
      graph       XGBoost on the graph features (setting C), only with non-hub evidence (D52)
      anomaly     logistic link on the forward-chained anomaly scores (D68), only where scored;
                  the scores of training rows are out-of-sample, so the link is fitted where
@@ -19,7 +21,9 @@ Run:  python -m vaultic.fusion.dev_compare [--smoke]
    (the tune rows are not used: no hyperparameter search in this first look).
 4. Each method scored on the calibrate_fused rows (147-150, which no per-view calibrator saw):
    PR-AUC with a 1,000-resample bootstrap CI, and a paired bootstrap of MVAF minus each
-   baseline.
+   baseline. B5 and F0 (D90) are scored on the same rows from their development runs'
+   validation predictions (mean over seeds); both were tuned on the whole validation period,
+   which includes these days, so they are favoured here (stated in the report).
 
 Writes research/tables/fusion_dev.md (+ .json) and the view table to
 data/interim/view_table_fixed.parquet. --smoke: a fixed 1 in 10 subset of uids.
@@ -31,6 +35,7 @@ import argparse
 import json
 import time
 from datetime import date
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -43,10 +48,12 @@ METHODS = ("MVAF", "F1", "F2", "F3", "F4", "F5", "F6", "F7")
 N_BOOT = 1000
 
 
-def evaluate(fitted: dict, rows) -> pd.DataFrame:
-    """PR-AUC of each fused score on `rows`, bootstrap CI, and paired MVAF - method."""
+def evaluate(fitted: dict, rows, external: dict | None = None) -> pd.DataFrame:
+    """PR-AUC of each fused score on `rows`, bootstrap CI, and paired MVAF - method.
+    `external`: name -> scores already aligned with `rows` (e.g. B5, F0 run predictions)."""
     y = rows.y
     scores = {name: m.predict_proba(rows.views, rows.context) for name, m in fitted.items()}
+    scores.update(external or {})
     rng = np.random.default_rng(0)
     idx = [rng.integers(0, len(y), len(y)) for _ in range(N_BOOT)]
     out = []
@@ -60,6 +67,16 @@ def evaluate(fitted: dict, rows) -> pd.DataFrame:
                         "p": r["p_value"]})  # fmt: skip
         out.append(row)
     return pd.DataFrame(out)
+
+
+def external_scores(run_dir: Path, ids: np.ndarray) -> np.ndarray:
+    """A development run's validation score (mean over seeds) for the given TransactionIDs."""
+    preds = pd.read_parquet(run_dir / "predictions.parquet")
+    preds = preds[preds["split"] == "validation"].set_index("TransactionID")["score"]
+    out = preds.reindex(ids).to_numpy(dtype=float)
+    if np.isnan(out).any():
+        raise ValueError(f"{run_dir} lacks validation predictions for some evaluation rows")
+    return out
 
 
 def build_table(smoke: bool):
@@ -96,14 +113,19 @@ def build_table(smoke: bool):
         df, base, uid = (x[keep].reset_index(drop=True) for x in (df, base, uid))
         extra = {k: v[keep].reset_index(drop=True) for k, v in extra.items()}
 
+    from vaultic.views.definitions import LABEL_DERIVED, behavioral_columns, tabular_columns
+
     tab = design_matrix(df, base, "b5")
+    tab_cols = tabular_columns(tab.columns)  # D89: label-free
     cols = {k: [c for c in v.columns if c != "TransactionID"] for k, v in extra.items()}
     features = pd.concat([tab, *(extra[k][cols[k]] for k in extra)], axis=1)
+    assert all(c in features for c in LABEL_DERIVED)  # the behavioral view needs them (D89)
     features["uid"] = uid.to_numpy()
     params = yaml.safe_load((CONFIG_DIR / "EXP-009.yaml").read_text("utf-8"))["model"]["params"]
     views = {
-        "tabular": SupervisedView(list(tab.columns), "xgboost", params),
-        "behavioral": SupervisedView(cols["behavioral"], "xgboost", params, available=has_history),
+        "tabular": SupervisedView(tab_cols, "xgboost", params),
+        "behavioral": SupervisedView(behavioral_columns(cols["behavioral"]), "xgboost", params,
+                                     available=has_history),  # fmt: skip
         "graph": SupervisedView(cols["graph"], "xgboost", params, available=has_graph_evidence),
         "anomaly": SupervisedView(cols["anomaly"], "logistic_regression", {"max_iter": 2000},
                                   available=lambda f: f["anomaly_if"].notna().to_numpy()),  # fmt: skip
@@ -123,6 +145,12 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--smoke", action="store_true")
+    parser.add_argument(
+        "--b5-run", type=Path, required=True, help="B5 run (validation predictions)"
+    )
+    parser.add_argument(
+        "--f0-run", type=Path, required=True, help="F0 run (validation predictions)"
+    )
     args = parser.parse_args()
     started = time.perf_counter()
     table = build_table(args.smoke)
@@ -133,7 +161,9 @@ def main() -> None:
     table.to_parquet(INTERIM_DIR / f"view_table_fixed{suffix}.parquet", index=False)
     split = fusion_split(table)
     fitted = fit_all(split, {m: (lambda m=m: make_fusion(m, seed=0)) for m in METHODS})
-    result = evaluate(fitted, split.calibrate)
+    external = {name: external_scores(run, split.calibrate.ids)
+                for name, run in (("B5", args.b5_run), ("F0", args.f0_run))}  # fmt: skip
+    result = evaluate(fitted, split.calibrate, external)
 
     cal = table[table["role"] == "calibrate_fused"]
     view_rows = []

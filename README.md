@@ -38,6 +38,24 @@ decision D31 in `research/decisions.md`. Milestones follow the roadmap's M0–M1
 | Paper 3: drift under delayed labels | COULD | Not started |
 | M16 Phases 16–17 (adversarial, federated); Papers 4–5; TabPFN; large load test; multi-person usability study | DROPPED | — |
 
+## The five views (D89)
+
+| view | features | missing when |
+|---|---|---|
+| tabular | B5's features **without** the label-derived ones: raw columns (V-reduced) and label-free point-in-time customer features | never |
+| behavioral (customer) | behavioral features + the label-derived customer features (`uid_fraud_known`, `uid_fraud_rate_known`, `uid_n_labels_known`, all label-delayed) | the customer has no earlier transaction |
+| relational | graph features in setting C, including label-delayed neighbour fraud rates | no non-hub card or device is shared with another customer (D52) |
+| anomaly | forward-chained Isolation Forest, autoencoder and per-customer IF scores (D68) | the training period's first 30 days |
+| temporal | XGBoost on the customer's last 20 transactions, flattened (D88; the GRU was not kept) | the customer has no earlier transaction |
+
+The label-derived features sit in the behavioral view because the ablation in
+`research/ablation_label_features.md` (D65) showed they carry almost all of B5's margin over plain
+GBDTs, and only for customers with history.
+
+Comparators for MVAF and F1–F7:
+- **B5**: the strongest single model; it stays in Table 1 (D91).
+- **F0**: one XGBoost on all view features concatenated, tuned with B5's budget (D90).
+
 ## Layout
 
 ```

@@ -136,3 +136,17 @@ def test_dev_compare_evaluate_scores_methods_on_given_rows():
     assert table.loc["MVAF", "PR-AUC"] > table.loc["F1", "PR-AUC"]
     assert table.loc["F1", "MVAF - method"] > 0 and table.loc["F1", "d_low"] > 0
     assert np.isnan(table.loc["MVAF"].get("MVAF - method", np.nan))
+
+
+def test_dev_compare_scores_external_runs_on_the_same_rows(tmp_path):
+    """D90: B5 and F0 are scored on exactly the evaluation rows, from their validation preds."""
+    import pandas as pd
+
+    from vaultic.fusion.dev_compare import external_scores
+
+    preds = pd.DataFrame({"TransactionID": [1, 2, 3, 4], "split": ["validation"] * 3 + ["test"],
+                          "score": [0.1, 0.2, 0.3, 0.9]})  # fmt: skip
+    preds.to_parquet(tmp_path / "predictions.parquet")
+    assert external_scores(tmp_path, np.array([3, 1])).tolist() == [0.3, 0.1]
+    with pytest.raises(ValueError, match="lacks"):
+        external_scores(tmp_path, np.array([4]))  # a test row is never used
