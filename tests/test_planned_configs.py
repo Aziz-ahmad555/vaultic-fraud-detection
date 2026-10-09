@@ -98,3 +98,11 @@ def test_no_planned_config_early_stops_on_validation():
         "metric": "pr_auc",
         "rows": "latest_20pct_of_fold_training_rows",
     }
+
+
+def test_e10_to_e12_declare_the_same_fold_calibration_scope():
+    """Review N2 (D77): the fusion / calibration experiments use the gate plan with calibration
+    fitted and applied on one fold of view models."""
+    for n in ("110", "111", "112"):
+        cfg = yaml.safe_load((CONFIG_DIR / f"EXP-{n}.yaml").read_text("utf-8"))
+        assert cfg["plan"] == {"name": "gate", "calibration_scope": "same_fold"}, n

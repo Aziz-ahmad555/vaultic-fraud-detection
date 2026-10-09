@@ -19,4 +19,8 @@ report:
   overall: [pr_auc, roc_auc, recall_at_1pct_fpr, cost]
   statistics: {paired_bootstrap: true, holm: true, effect_size: true}
 seeds: [0, 1, 2, 3, 4]
+# Review N2 (D77): every view's validation AND test predictions come from the one fixed-plan
+# model set; calibration, conformal sets, thresholds and routing lambdas are fitted and applied
+# only on that same fold (plan.check_calibration_scope). Rolling folds add earlier gate rows.
+plan: {name: gate, calibration_scope: same_fold}
 bootstrap: {n: 1000, seed: 0}

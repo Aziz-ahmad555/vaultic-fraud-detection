@@ -68,6 +68,14 @@ def fusion_split(table: pd.DataFrame, tune_fraction: float = 0.2) -> FusionSplit
     n_tune = max(1, int(round(len(days) * tune_fraction)))
     tune_days = days[-n_tune:]
     is_tune = gate["day"].isin(tune_days)
+    # fused calibration / conformal / thresholds are fitted on calibrate_fused rows and applied
+    # to test rows: both must come from the same (fixed) fold of view models (D77)
+    from vaultic.views.plan import check_calibration_scope
+
+    cal_fold = table.loc[table["role"] == "calibrate_fused", "fold"]
+    test_fold = table.loc[table["role"] == "test", "fold"]
+    if len(cal_fold):
+        check_calibration_scope(cal_fold, test_fold, "fused calibration / conformal / thresholds")
     return FusionSplit(
         fit=_rows(gate[~is_tune]),
         tune=_rows(gate[is_tune]),

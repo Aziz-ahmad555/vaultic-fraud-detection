@@ -25,7 +25,15 @@ from vaultic.views.orchestrate import (
     mvaf_inputs,
     view_table,
 )
-from vaultic.views.plan import Fold, fixed_plan, plan_from_json, plan_to_json, rolling_plan
+from vaultic.views.plan import (
+    Fold,
+    check_calibration_scope,
+    fixed_plan,
+    gate_plan,
+    plan_from_json,
+    plan_to_json,
+    rolling_plan,
+)
 
 SPLITS = load_splits()
 ROOT = Path(__file__).resolve().parents[1]
@@ -90,10 +98,21 @@ def _encoder(df):
 
 def test_plans_from_splits():
     dev = fixed_plan(SPLITS)
-    assert [(f.name, f.train, f.predict, f.role) for f in dev] == [
-        ("fixed_validation", (1, 120), (128, 150), "gate_train")
+    assert [(f.name, f.train, f.predict, f.role, f.test) for f in dev] == [
+        ("fixed", (1, 120), (128, 150), "gate_train", None)
     ]
-    assert [f.role for f in fixed_plan(SPLITS, final=True)] == ["gate_train", "test"]
+    # D77: ONE fold (one set of view models) predicts validation and test in final runs
+    (final,) = fixed_plan(SPLITS, final=True)
+    assert (final.predict, final.test) == ((128, 182), (151, 182))
+    roles = final.row_roles(np.arange(128, 183))
+    assert set(roles[:16]) == {"gate_train"} and set(roles[23:]) == {"test"}
+    assert plan_from_json(plan_to_json([final])) == [final]
+    gate = gate_plan(SPLITS)
+    assert [(f.name, f.predict, f.calibrate_views) for f in gate] == [
+        ("rolling_0", (91, 120), (118, 120)),  # only rolling folds that end before validation
+        ("fixed", (128, 150), (144, 146)),
+    ]
+    assert [f.name for f in gate_plan(SPLITS, final=True)] == ["rolling_0", "fixed"]
     roll = rolling_plan(SPLITS)
     assert [(f.train, f.predict, f.role) for f in roll] == [
         ((1, 90), (91, 120), "gate_train"),
@@ -159,7 +178,12 @@ def test_calibration_uses_only_the_calibrate_tail_and_feeds_confidence(dev_table
     from them."""
     df, features, table = dev_table
     cal, info = calibrate_views(table)
-    assert set(info) == {"tabular", "behavioral", "graph"}  # temporal / anomaly not given
+    assert {v for _, v in info} == {
+        "tabular",
+        "behavioral",
+        "graph",
+    }  # temporal / anomaly not given
+    assert {f for f, _ in info} == {"fixed"}
     assert cal["p_temporal"].isna().all() and (cal["c_temporal"] == 0).all()
     mask, _, conf, dis = view_inputs(cal[[f"p_{v}" for v in VIEWS]].to_numpy())
     assert np.array_equal(table[[f"m_{v}" for v in VIEWS]].to_numpy() == 1, mask)
@@ -320,3 +344,55 @@ def test_anomaly_models_and_link_use_disjoint_time_ordered_rows():
     assert again.view_.global_if.n_fit_ == int((flipped[:1600] == 0).sum())
     with pytest.raises(ValueError, match="time order"):
         AnomalyScoreView(["amt", "V1"]).fit(train.iloc[::-1], y[::-1])
+
+
+# ---- calibration scope (review N2, D77) ------------------------------------------------------
+
+
+def test_calibration_scope_check():
+    check_calibration_scope(["fixed", "fixed"], ["fixed"])
+    with pytest.raises(ValueError, match="cannot be applied"):
+        check_calibration_scope(["fixed"], ["fixed", "rolling_0"])
+    with pytest.raises(ValueError, match="exactly one fold"):
+        check_calibration_scope(["fixed", "rolling_0"], ["fixed"])
+
+
+def test_per_view_calibration_is_per_fold_on_the_gate_plan():
+    """Each fold's views are calibrated on that fold's own calibrate_views rows: labels of the
+    fixed fold's slice never change the rolling fold's probabilities, and vice versa."""
+    df, features, _ = _synthetic()
+    table = view_table(df, features, _views(), gate_plan(SPLITS), _encoder(df), SPLITS)
+    assert set(table.loc[table["fold"] == "rolling_0", "role"]) == {"gate_train", "calibrate_views"}
+    cal, info = calibrate_views(table)
+    assert {f for f, _ in info} == {"rolling_0", "fixed"}
+    flipped = table.copy()
+    hit = ((flipped["fold"] == "fixed") & (flipped["role"] == "calibrate_views")).to_numpy()
+    flipped.loc[hit, "label"] = 1 - flipped.loc[hit, "label"]
+    again, _ = calibrate_views(flipped)
+    roll = (table["fold"] == "rolling_0").to_numpy()
+    cols = [f"p_{v}" for v in VIEWS]
+    assert np.allclose(
+        again.loc[roll, cols].to_numpy(), cal.loc[roll, cols].to_numpy(), equal_nan=True
+    )
+    assert not np.allclose(again.loc[~roll, cols].to_numpy(), cal.loc[~roll, cols].to_numpy(),
+                           equal_nan=True)  # fmt: skip
+    # a fold without its own calibrate_views rows cannot be calibrated with another fold's
+    no_slice = table[~((table["fold"] == "rolling_0") & (table["role"] == "calibrate_views"))]
+    with pytest.raises(ValueError, match="rolling_0 has no calibrate_views"):
+        calibrate_views(no_slice)
+
+
+def test_final_fixed_plan_test_rows_share_the_calibrate_fused_model():
+    from vaultic.fusion.data import fusion_split
+
+    df, features, _ = _synthetic()
+    table = view_table(df, features, _views(), fixed_plan(SPLITS, final=True), _encoder(df), SPLITS)
+    assert set(table["fold"]) == {"fixed"} and (table["role"] == "test").any()
+    cal, _ = calibrate_views(table)
+    split = fusion_split(cal)  # same fold: allowed
+    assert len(split.test) > 0 and split.calibrate.day.min() == 147
+    other = cal.copy()
+    other.loc[other["role"] == "test", "fold"] = "fixed_test"  # test rows from another model
+    other.attrs["calibrated"] = True
+    with pytest.raises(ValueError, match="different model"):
+        fusion_split(other)

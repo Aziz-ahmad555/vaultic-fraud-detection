@@ -241,28 +241,42 @@ def calibrate_views(table: pd.DataFrame, folds: int = 5) -> tuple[pd.DataFrame, 
     One calibrator per view (Platt or isotonic, chosen by out-of-fold ECE as in D29) fitted ONLY
     on calibrate_views rows (D76) where the view is available, applied to every row. A view
     missing on every row stays missing; a view with too few such rows or one class raises."""
+    from vaultic.views.plan import check_calibration_scope
+
     out = table.copy()
-    cal = out["role"] == "calibrate_views"
+    cal = (out["role"] == "calibrate_views").to_numpy()
     if not cal.any():
         raise ValueError(
             "no calibrate_views rows: the plan needs splits.yaml's calibrate slices (D53, D76)"
         )
+    fold = out["fold"].to_numpy()
     info = {}
-    for name in VIEWS:
-        raw = out[f"raw_{name}"].to_numpy(dtype=float)
-        p = np.full(len(out), np.nan)
-        avail = ~np.isnan(raw)
-        if avail.any():
-            fit_rows = cal.to_numpy() & avail
-            y = out.loc[fit_rows, "label"].to_numpy()
+    p_all = {name: np.full(len(out), np.nan) for name in VIEWS}
+    # one calibrator per (fold, view): a fold is one set of view models (D77)
+    for f in pd.unique(fold):
+        mine = fold == f
+        if not (cal & mine).any():
+            raise ValueError(
+                f"fold {f} has no calibrate_views rows: its views cannot be calibrated"
+            )
+        for name in VIEWS:
+            raw = out[f"raw_{name}"].to_numpy(dtype=float)
+            avail = ~np.isnan(raw) & mine
+            if not avail.any():
+                continue
+            fit_rows = cal & avail
+            y = out["label"].to_numpy()[fit_rows]
             if fit_rows.sum() < 2 * folds or len(np.unique(y)) < 2:
                 raise ValueError(
-                    f"cannot calibrate view {name}: needs both classes among enough calibrate rows"
+                    f"cannot calibrate view {name} of fold {f}: needs both classes among enough "
+                    "calibrate_views rows"
                 )
+            check_calibration_scope(fold[fit_rows], fold[avail], f"calibrator of view {name}")
             calibrator, report = choose_calibrator(y, raw[fit_rows], folds=folds)
-            p[avail] = calibrator.predict(raw[avail])
-            info[name] = report
-        out[f"p_{name}"] = p
+            p_all[name][avail] = calibrator.predict(raw[avail])
+            info[(f, name)] = report
+    for name in VIEWS:
+        out[f"p_{name}"] = p_all[name]
     mask, _, confidence, disagreement = view_inputs(
         out[[f"p_{v}" for v in VIEWS]].to_numpy(dtype=float)
     )

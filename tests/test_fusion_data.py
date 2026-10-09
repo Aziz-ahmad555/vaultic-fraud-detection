@@ -7,7 +7,7 @@ from vaultic.data.splits import load_splits
 from vaultic.fusion.baselines import make_fusion
 from vaultic.fusion.data import fit_all, fusion_split
 from vaultic.views.orchestrate import calibrate_views, view_table
-from vaultic.views.plan import fixed_plan, plan_from_json, plan_to_json, rolling_plan
+from vaultic.views.plan import fixed_plan, gate_plan, plan_from_json, plan_to_json, rolling_plan
 
 SPLITS = load_splits()
 
@@ -53,14 +53,18 @@ def table():
     from test_view_orchestration import _encoder, _synthetic, _views
 
     df, features, _ = _synthetic()
-    raw = view_table(df, features, _views(), rolling_plan(SPLITS), _encoder(df), SPLITS)
+    raw = view_table(df, features, _views(), gate_plan(SPLITS), _encoder(df), SPLITS)
     with pytest.raises(ValueError, match="not calibrated"):
         fusion_split(raw)
     return calibrate_views(raw)[0]
 
 
 def test_view_table_roles_and_fusion_split(table):
-    assert set(table.loc[table["role"] == "calibrate_views", "day"]) == set(range(144, 147))
+    fixed = table["fold"] == "fixed"
+    assert set(table.loc[fixed & (table["role"] == "calibrate_views"), "day"]) == set(
+        range(144, 147)
+    )
+    assert set(table.loc[~fixed & (table["role"] == "calibrate_views"), "day"]) == {118, 119, 120}
     assert set(table.loc[table["role"] == "calibrate_fused", "day"]) == set(range(147, 151))
     split = fusion_split(table, tune_fraction=0.2)
     fit, tune, cal = set(split.fit.ids), set(split.tune.ids), set(split.calibrate.ids)
@@ -71,7 +75,8 @@ def test_view_table_roles_and_fusion_split(table):
     views_slice = set(table.loc[table["role"] == "calibrate_views", "TransactionID"])
     assert not views_slice & (fit | tune | cal)
     gate_days = sorted(set(split.fit.day) | set(split.tune.day))
-    assert gate_days[0] == 91 and gate_days[-1] == 143  # rolling folds + validation 128-143
+    # rolling_0's block minus its own calibration slice (118-120) + validation 128-143 (D77)
+    assert gate_days[0] == 91 and gate_days[-1] == 143 and not {118, 119, 120} & set(gate_days)
     assert len(split.test) == 0  # development plan
 
 
