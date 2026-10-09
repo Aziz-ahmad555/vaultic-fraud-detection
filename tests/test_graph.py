@@ -345,3 +345,19 @@ def test_hub_thresholds_use_training_period_rows_only():
         _fit_hub_thresholds(df, uid, 1.0, last_day=splits.train.last)
     with pytest.raises(ValueError, match="no training-period rows"):
         fit_hub_thresholds_on_training_period(df[df["TransactionDT"] > 5 * D], uid, splits)
+
+
+@pytest.mark.parametrize("setting", ["A", "B"])
+def test_availability_only_from_setting_c(setting):
+    """Review N4 (D79): settings A / B see later edges; availability must not come from them."""
+    df = pd.DataFrame({
+        "TransactionID": [1, 2], "TransactionDT": [D, 2 * D], "isFraud": [0, 1],
+        "card1": [1.0, 1.0], "card2": 1.0, "card3": 1.0, "card4": "visa", "card5": 1.0,
+        "card6": "debit", "P_emaildomain": None, "R_emaildomain": None, "addr1": np.nan,
+        "addr2": np.nan, "DeviceInfo": None, "DeviceType": None,
+    })  # fmt: skip
+    uid = pd.Series(["a", "b"])
+    build_graph_features(df, uid, setting, label_delay_days=1)  # features alone are fine
+    with pytest.raises(ValueError, match="setting C"):
+        build_graph_features(df, uid, setting, label_delay_days=1,
+                             hub_thresholds={"card": 5.0, "device": 5.0})  # fmt: skip

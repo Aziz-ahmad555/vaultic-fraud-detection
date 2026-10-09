@@ -393,9 +393,15 @@ def build_graph_features(
 
     With `hub_thresholds` (fit_hub_thresholds_on_training_period) the output also has
     g_shared_nonhub: other uids sharing a non-hub card or device before t; the graph view is
-    available only where it is > 0 (D52)."""
+    available only where it is > 0 (D52). Only in setting C: A and B raise (D79)."""
     if setting not in SETTINGS:
         raise ValueError(f"setting must be one of {SETTINGS}")
+    if hub_thresholds is not None and setting != "C":
+        # availability decides whether the graph view exists for a row; settings A and B see
+        # later edges, so their g_shared_nonhub would let the future decide that (N4, D79)
+        raise ValueError(
+            "graph-view availability (g_shared_nonhub) comes from setting C edge features only"
+        )
     time = df["TransactionDT"].to_numpy(dtype=np.int64)
     if np.any(np.diff(time) < 0):
         raise ValueError("rows must be sorted by TransactionDT")
