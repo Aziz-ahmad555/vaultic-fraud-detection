@@ -1,0 +1,25 @@
+id: EXP-F0
+question: 'F0 tuned (Optuna, 25 trials per weighting arm, validation only; winning
+  arm: none)'
+model:
+  name: xgboost
+  params:
+    max_depth: 10
+    learning_rate: 0.054408
+    min_child_weight: 24.498456
+    subsample: 0.768185
+    colsample_bytree: 0.613737
+    reg_lambda: 2.63071
+    reg_alpha: 0.001695
+    gamma: 0.377703
+    n_estimators: 675
+features: all_views
+seeds:
+- 0
+- 1
+- 2
+- 3
+- 4
+bootstrap:
+  n: 1000
+  seed: 0
