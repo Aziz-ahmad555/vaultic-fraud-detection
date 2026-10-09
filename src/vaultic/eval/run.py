@@ -362,6 +362,13 @@ def load_inputs(cfg: dict[str, Any], splits) -> tuple[pd.DataFrame, pd.DataFrame
                 raise FileNotFoundError(f"{extra_path} missing; build the {kind} features first")
             base = attach_features(base, pd.read_parquet(extra_path), kind)
             inputs.append(extra_path)
+        if cfg["features"] == "behavioral_view":  # D89: behavioral file + label-derived columns
+            from vaultic.views.definitions import LABEL_DERIVED
+
+            beh_path = FEATURES_DIR / f"behavioral_{variant}.parquet"
+            base = attach_features(pd.read_parquet(beh_path),
+                                   base[["TransactionID", *LABEL_DERIVED]], "label-derived")  # fmt: skip
+            inputs.append(beh_path)
     elif cfg["features"] in VIEW_ONLY:
         path = FEATURES_DIR / f"{VIEW_ONLY[cfg['features']]}_{variant}.parquet"
         if not path.exists():

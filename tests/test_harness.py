@@ -351,3 +351,26 @@ def test_view_only_feature_set_uses_only_that_file():
     assert list(X.columns) == ["amt_z", "vel_n_1h"]
     with pytest.raises(ValueError, match="aligned"):
         sets.design_matrix(df, beh.iloc[::-1], "behavioral_only")
+
+
+def test_view_sets_split_label_features_between_tabular_and_behavioral(monkeypatch):
+    """D89: the tabular view loses the label-derived features; the behavioral view gets them."""
+    from vaultic.features import sets
+    from vaultic.views.definitions import LABEL_DERIVED, behavioral_columns, tabular_columns
+
+    monkeypatch.setattr("vaultic.features.vreduce.load_kept", lambda: [])
+    df, base = _data(50)
+    for c in LABEL_DERIVED:
+        base[c] = np.arange(50.0)
+    tab = sets.design_matrix(df, base, "tabular_view")
+    b5 = sets.design_matrix(df, base, "b5")
+    assert not set(LABEL_DERIVED) & set(tab.columns)
+    assert list(tab.columns) == tabular_columns(b5.columns)
+    assert set(b5.columns) - set(tab.columns) == set(LABEL_DERIVED)
+    beh_file = pd.DataFrame({"TransactionID": base["TransactionID"], "amt_z": np.ones(50)})
+    beh = sets.attach_features(beh_file, base[["TransactionID", *LABEL_DERIVED]], "labels")
+    X = sets.design_matrix(df, beh, "behavioral_view")
+    assert list(X.columns) == behavioral_columns(beh_file.columns) == ["amt_z", *LABEL_DERIVED]
+    with pytest.raises(ValueError, match="label-derived"):
+        sets.design_matrix(df, beh_file, "behavioral_view")
+    assert "all_views" in sets.EXTRA_FEATURES and "sequence" in sets.EXTRA_FEATURES["all_views"]

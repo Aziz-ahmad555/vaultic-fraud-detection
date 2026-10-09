@@ -13,12 +13,24 @@ EXTRA_FEATURES = {
     "b5_behavioral": ("behavioral",),
     "b5_graph": ("graph",),
     "b5_anomaly": ("anomaly",),
+    # F0 (D90): one model on every view's features concatenated
+    "all_views": ("behavioral", "graph", "anomaly", "sequence"),
 }
+# View feature sets (D89, views/definitions.py): the tabular view is b5 minus the label-derived
+# features; the behavioral view is the behavioral file + those label-derived base features.
+# For behavioral_view the harness passes, as `base`, the behavioral file plus only the
+# label-derived base columns (eval/run.load_inputs).
+VIEW_SETS = {"tabular_view", "behavioral_view"}
 # One view's precomputed features ALONE (a standalone view model for MVAF, D75): the harness
 # passes data/features/<kind>_<uid>.parquet as `base` and nothing else is used.
-VIEW_ONLY = {"behavioral_only": "behavioral", "graph_only": "graph", "anomaly_only": "anomaly"}
+VIEW_ONLY = {
+    "behavioral_only": "behavioral",
+    "graph_only": "graph",
+    "anomaly_only": "anomaly",
+    "sequence_only": "sequence",  # the temporal view's inputs (D88)
+}
 # Feature sets that include the point-in-time base features.
-NEEDS_BASE = {"raw_base", "b5", *EXTRA_FEATURES}
+NEEDS_BASE = {"raw_base", "b5", *EXTRA_FEATURES, *VIEW_SETS}
 # Feature sets that need the customer id (passed as `base` with a `uid` column).
 NEEDS_UID = {"fyp1"}
 
@@ -52,6 +64,9 @@ def design_matrix(df: pd.DataFrame, base: pd.DataFrame | None, name: str) -> pd.
     fyp1        FYP-1's global columns + point-in-time behavioural features + uid (B6)
     b5_<kind>   b5 + the precomputed <kind> features (EXTRA_FEATURES), already attached to base
     <kind>_only only the precomputed <kind> features (VIEW_ONLY), passed as base
+    all_views   F0 (D90): b5 + behavioral + graph + anomaly + sequence features
+    tabular_view     the tabular view (D89): b5 without the label-derived features
+    behavioral_view  the behavioral view (D89): behavioral features + label-derived features
     """
     raw = df[raw_columns(df)]
     if name == "fyp1":
@@ -62,6 +77,18 @@ def design_matrix(df: pd.DataFrame, base: pd.DataFrame | None, name: str) -> pd.
         return build_fyp1_frame(df, base["uid"].set_axis(df.index))
     if name in EXTRA_FEATURES:
         return design_matrix(df, base, "b5")
+    if name == "tabular_view":
+        from vaultic.views.definitions import tabular_columns
+
+        X = design_matrix(df, base, "b5")
+        return X[tabular_columns(X.columns)]
+    if name == "behavioral_view":
+        from vaultic.views.definitions import LABEL_DERIVED
+
+        missing = [c for c in LABEL_DERIVED if c not in base]
+        if missing:
+            raise ValueError(f"behavioral_view needs the label-derived features {missing}")
+        return design_matrix(df, base, "behavioral_only")
     if name in VIEW_ONLY:
         if base is None or not np.array_equal(
             base["TransactionID"].to_numpy(), df["TransactionID"].to_numpy()

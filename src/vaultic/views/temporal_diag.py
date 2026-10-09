@@ -43,6 +43,39 @@ def flatten(seq) -> np.ndarray:
     )
 
 
+def build_sequence_features() -> Path:
+    """data/features/sequence_<uid>.parquet: the flattened sequence inputs (as `flatten`) for
+    EVERY row, so the temporal view and F0 can use them through the harness (D88, D90). Label-
+    free and point-in-time (each row sees only earlier rows of its uid); the ProductCD encoder
+    is fitted on the training period; same steps and channels as the GRU development runs."""
+    from vaultic.data.load import load_merged
+    from vaultic.data.splits import load_splits
+    from vaultic.data.uid import UID_PATH
+    from vaultic.features.categories import fit_on_training_period
+    from vaultic.features.sequences import build_sequences
+    from vaultic.paths import FEATURES_DIR, MERGED_PATH
+    from vaultic.views.temporal_dev import EXTRA, N_STEPS
+    from vaultic.views.temporal_step import BASE_COLUMNS
+
+    splits = load_splits()
+    df = load_merged(MERGED_PATH, columns=[c for c in BASE_COLUMNS if c != "isFraud"] + list(EXTRA))
+    uid = pd.read_parquet(UID_PATH, columns=["TransactionID", splits.uid_variant])
+    if not (uid["TransactionID"].to_numpy() == df["TransactionID"].to_numpy()).all():
+        raise ValueError("uids.parquet is out of date")
+    encoder = fit_on_training_period(df, splits, columns=("ProductCD",))
+    seq = build_sequences(df, uid[splits.uid_variant].astype(str), encoder, n_steps=N_STEPS,
+                          extra_columns=EXTRA)  # fmt: skip
+    X = flatten(seq)
+    names = [f"seq{t:02d}_{f}" for t in range(N_STEPS) for f in seq.feature_names]
+    names += ["seq_n_steps", *[f"seq_cur_{f}" for f in seq.feature_names]]
+    out = pd.DataFrame(X, columns=names)
+    out.loc[~seq.has_history, names] = np.nan  # no history: the view is missing (rule 11)
+    out.insert(0, "TransactionID", df["TransactionID"].to_numpy())
+    path = FEATURES_DIR / f"sequence_{splits.uid_variant}.parquet"
+    out.to_parquet(path, index=False)
+    return path
+
+
 def run(in_dir: Path) -> dict:
     from xgboost import XGBClassifier
 
@@ -112,8 +145,13 @@ def run(in_dir: Path) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("in_dir", type=Path)
+    parser.add_argument("in_dir", type=Path, nargs="?")
+    parser.add_argument("--build-features", action="store_true",
+                        help="write data/features/sequence_<uid>.parquet for every row (D90)")  # fmt: skip
     args = parser.parse_args()
+    if args.build_features:
+        print(f"wrote {build_sequence_features()}")
+        return
     out = run(args.in_dir)
     print(json.dumps({k: v for k, v in out.items() if k != "step_features"}, indent=1))
 
