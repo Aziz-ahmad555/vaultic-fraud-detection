@@ -10,7 +10,9 @@ predicts the fold's later block; the result is one table, one row per predicted 
                (shared training-period encoder, D37), relative hour
 
 for the five views tabular, behavioral, temporal, graph, anomaly. `calibrate_views` then fits
-one calibrator per view on the calibrate-tail rows only (D53) and adds, for every row,
+one calibrator per view on the calibrate_views rows only (the earlier slice of the calibrate
+tail, D53/D76; the later calibrate_fused slice is kept for fused-score calibration, conformal,
+thresholds and routing lambdas) and adds, for every row,
   p_<view>     calibrated probability (NaN where missing)
   c_<view>     confidence |2p - 1| from the CALIBRATED p (0 where missing)
   disagreement std of the available CALIBRATED probabilities (0 with fewer than two)
@@ -237,12 +239,14 @@ def calibrate_views(table: pd.DataFrame, folds: int = 5) -> tuple[pd.DataFrame, 
     """Calibrated p_<view>, then c_<view> and disagreement from them (D56).
 
     One calibrator per view (Platt or isotonic, chosen by out-of-fold ECE as in D29) fitted ONLY
-    on calibrate-role rows where the view is available, applied to every row. A view missing on
-    every row stays missing; a view with too few calibrate rows or one class there raises."""
+    on calibrate_views rows (D76) where the view is available, applied to every row. A view
+    missing on every row stays missing; a view with too few such rows or one class raises."""
     out = table.copy()
-    cal = out["role"] == "calibrate"
+    cal = out["role"] == "calibrate_views"
     if not cal.any():
-        raise ValueError("no calibrate rows: the plan needs splits.yaml's calibrate tail (D53)")
+        raise ValueError(
+            "no calibrate_views rows: the plan needs splits.yaml's calibrate slices (D53, D76)"
+        )
     info = {}
     for name in VIEWS:
         raw = out[f"raw_{name}"].to_numpy(dtype=float)

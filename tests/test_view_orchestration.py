@@ -139,9 +139,11 @@ def test_table_layout_and_missing_views(dev_table):
     assert sorted(table.columns) == sorted(expected)
     assert set(table["split"]) == {"validation"} and set(table["role"]) == {
         "gate_train",
-        "calibrate",
+        "calibrate_views",
+        "calibrate_fused",
     }
-    assert set(table.loc[table["role"] == "calibrate", "day"]) <= set(range(144, 151))  # D53
+    assert set(table.loc[table["role"] == "calibrate_views", "day"]) <= set(range(144, 147))  # D76
+    assert set(table.loc[table["role"] == "calibrate_fused", "day"]) <= set(range(147, 151))
     assert table["day"].between(128, 150).all()  # development: no test-period rows at all
     rows = features.loc[SPLITS.validation.contains(df["day"].to_numpy())].reset_index(drop=True)
     assert np.array_equal(np.isnan(table["raw_behavioral"]), ~has_history(rows))
@@ -153,7 +155,8 @@ def test_table_layout_and_missing_views(dev_table):
 
 
 def test_calibration_uses_only_the_calibrate_tail_and_feeds_confidence(dev_table):
-    """D56: p_* are calibrated on calibrate rows only; c_* and disagreement come from them."""
+    """D56/D76: p_* are calibrated on calibrate_views rows only; c_* and disagreement come
+    from them."""
     df, features, table = dev_table
     cal, info = calibrate_views(table)
     assert set(info) == {"tabular", "behavioral", "graph"}  # temporal / anomaly not given
@@ -165,15 +168,16 @@ def test_calibration_uses_only_the_calibrate_tail_and_feeds_confidence(dev_table
     assert np.allclose(cal["disagreement"], dis)
     _, _, raw_conf, raw_dis = view_inputs(cal[[f"raw_{v}" for v in VIEWS]].to_numpy())
     assert not np.allclose(raw_dis, dis)  # raw-score disagreement would differ
-    # labels outside the calibrate tail never reach the calibrators
+    # labels outside the calibrate_views slice (incl. the calibrate_fused slice) never reach them
     flipped = table.copy()
-    outside = (flipped["role"] != "calibrate").to_numpy()
+    outside = (flipped["role"] != "calibrate_views").to_numpy()
+    assert (flipped.loc[outside, "role"] == "calibrate_fused").any()
     flipped.loc[outside, "label"] = 1 - flipped.loc[outside, "label"]
     again, _ = calibrate_views(flipped)
     assert np.allclose(again[[f"p_{v}" for v in VIEWS]].to_numpy(), cal[[f"p_{v}" for v in VIEWS]].to_numpy(),
                        equal_nan=True)  # fmt: skip
-    with pytest.raises(ValueError, match="calibrate rows"):
-        calibrate_views(table[table["role"] != "calibrate"])
+    with pytest.raises(ValueError, match="calibrate_views rows"):
+        calibrate_views(table[table["role"] != "calibrate_views"])
 
 
 def test_table_feeds_mvaf(dev_table):

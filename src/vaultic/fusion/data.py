@@ -4,8 +4,10 @@ From the view-prediction table (views/orchestrate.py):
   fit        gate-training rows before the inner time split: every gate is fitted on these
   tune       the latest `tune_fraction` of gate-training DAYS (inner time split): epochs,
              hidden size, dropout, F2's fixed weights, ... are chosen here, never on calibrate
-  calibrate  the calibrate tail of validation (days 144-150): per-view and fused calibration,
-             conformal calibration, decision thresholds and routing lambdas only
+  calibrate  the later slice of the calibrate tail (calibrate_fused, days 147-150, D76): fused
+             calibration, conformal calibration, decision thresholds and routing lambdas only.
+             The earlier slice (calibrate_views, 144-146) fitted the per-view calibrators and is
+             in no FusionSplit part
   test       evaluation (final runs only)
 
 Every fusion method F1-F7 and MVAF gets exactly these rows (`fit_all`), so differences between
@@ -69,7 +71,7 @@ def fusion_split(table: pd.DataFrame, tune_fraction: float = 0.2) -> FusionSplit
     return FusionSplit(
         fit=_rows(gate[~is_tune]),
         tune=_rows(gate[is_tune]),
-        calibrate=_rows(table[table["role"] == "calibrate"]),
+        calibrate=_rows(table[table["role"] == "calibrate_fused"]),
         test=_rows(table[table["role"] == "test"]),
     )
 
