@@ -48,6 +48,37 @@ METHODS = ("MVAF", "F1", "F2", "F3", "F4", "F5", "F6", "F7")
 N_BOOT = 1000
 
 
+def subgroup_masks(rows) -> dict[str, np.ndarray]:
+    """Evaluation subgroups from the gate context and view masks: history, identity, graph."""
+    from vaultic.views.orchestrate import CONTEXT, VIEWS
+
+    hist = rows.context[:, CONTEXT.index("ctx_hist_n_past")]
+    ident = rows.context[:, CONTEXT.index("ctx_has_identity")]
+    graph = ~np.isnan(rows.views[:, VIEWS.index("graph")])
+    return {
+        "cold start": hist == 0, "with history": hist > 0,
+        "has_identity yes": ident == 1, "has_identity no": ident == 0,
+        "graph view available": graph, "graph view missing": ~graph,
+    }  # fmt: skip
+
+
+def subgroup_table(scores: dict[str, np.ndarray], rows, versus=("B5", "F0")) -> pd.DataFrame:
+    """PR-AUC of every method per subgroup, and paired MVAF - B5 / MVAF - F0 with 95% CIs."""
+    out = []
+    for name, m in subgroup_masks(rows).items():
+        y = rows.y[m]
+        row = {"subgroup": name, "rows": int(m.sum()), "frauds": int(y.sum())}
+        if 0 < row["frauds"] < row["rows"]:
+            row.update({k: pr_auc(y, s[m]) for k, s in scores.items()})
+            for other in versus:
+                if other in scores and "MVAF" in scores:
+                    r = paired_bootstrap(y, [scores["MVAF"][m]], [scores[other][m]], pr_auc,
+                                         n_boot=N_BOOT, seed=0)  # fmt: skip
+                    row[f"MVAF - {other}"] = (r["diff"], r["ci_low"], r["ci_high"], r["p_value"])
+        out.append(row)
+    return pd.DataFrame(out)
+
+
 def evaluate(fitted: dict, rows, external: dict | None = None) -> pd.DataFrame:
     """PR-AUC of each fused score on `rows`, bootstrap CI, and paired MVAF - method.
     `external`: name -> scores already aligned with `rows` (e.g. B5, F0 run predictions)."""
@@ -148,22 +179,34 @@ def main() -> None:
     parser.add_argument(
         "--b5-run", type=Path, required=True, help="B5 run (validation predictions)"
     )
-    parser.add_argument(
-        "--f0-run", type=Path, required=True, help="F0 run (validation predictions)"
-    )
+    parser.add_argument("--f0-run", type=Path, default=None,
+                        help="F0 run (validation predictions); added once F0 is tuned (D90)")  # fmt: skip
+    parser.add_argument("--reuse-table", action="store_true",
+                        help="reuse the saved calibrated view table instead of rebuilding it")  # fmt: skip
     args = parser.parse_args()
     started = time.perf_counter()
-    table = build_table(args.smoke)
-    if (table["role"] == "test").any() or (table.get("split", pd.Series()) == "test").any():
-        raise RuntimeError("a test-period row reached the development view table")
-    table, cal_info = calibrate_views(table)
     suffix = "-smoke" if args.smoke else ""
-    table.to_parquet(INTERIM_DIR / f"view_table_fixed{suffix}.parquet", index=False)
+    table_path = INTERIM_DIR / f"view_table_fixed{suffix}.parquet"
+    out = RESEARCH_DIR / "tables" / f"fusion_dev{suffix}.md"
+    if args.reuse_table:
+        table = pd.read_parquet(table_path)
+        table.attrs["calibrated"] = True  # saved after calibrate_views
+        cal_info = json.loads(out.with_suffix(".json").read_text("utf-8"))["calibrators"]
+    else:
+        table = build_table(args.smoke)
+        if (table["role"] == "test").any() or (table.get("split", pd.Series()) == "test").any():
+            raise RuntimeError("a test-period row reached the development view table")
+        table, info = calibrate_views(table)
+        cal_info = {f"{f}/{v}": e for (f, v), e in info.items()}
+        table.to_parquet(table_path, index=False)
     split = fusion_split(table)
     fitted = fit_all(split, {m: (lambda m=m: make_fusion(m, seed=0)) for m in METHODS})
-    external = {name: external_scores(run, split.calibrate.ids)
-                for name, run in (("B5", args.b5_run), ("F0", args.f0_run))}  # fmt: skip
+    runs = [("B5", args.b5_run)] + ([("F0", args.f0_run)] if args.f0_run else [])
+    external = {name: external_scores(run, split.calibrate.ids) for name, run in runs}
     result = evaluate(fitted, split.calibrate, external)
+    rows = split.calibrate
+    scores = {n: m.predict_proba(rows.views, rows.context) for n, m in fitted.items()}
+    sub = subgroup_table({**scores, **external}, rows)
 
     cal = table[table["role"] == "calibrate_fused"]
     view_rows = []
@@ -176,7 +219,9 @@ def main() -> None:
         view_rows.append({"view": v, "available": float(m.mean()), "rows": int(m.sum()),
                           "PR-AUC (available rows)": auc})  # fmt: skip
     lines = [
-        "# MVAF vs F1-F7, first development comparison"
+        "# MVAF vs F1-F7, B5"
+        + (" and F0" if args.f0_run else "")
+        + ": development comparison"
         + (" — SMOKE (not a result)" if args.smoke else ""),
         "",
         f"Generated {date.today().isoformat()} by `python -m vaultic.fusion.dev_compare`. "
@@ -211,12 +256,29 @@ def main() -> None:
         )
         lines.append(f"| {r['method']} | {r['PR-AUC']:.4f} | [{r['ci_low']:.4f}, {r['ci_high']:.4f}] | "
                      f"{d[0]} | {d[1]} | {d[2]} |")  # fmt: skip
+    methods = [c for c in ("MVAF", "B5", "F0", *METHODS[1:]) if c in sub.columns]
+    versus = [c for c in sub.columns if c.startswith("MVAF - ")]
+    lines += [
+        "",
+        "## Subgroups (evaluation rows)",
+        "",
+        "PR-AUC per method; paired MVAF − B5 (and − F0) with 95% CI. History = the uid has an earlier "
+        "transaction; graph view available = non-hub relational evidence (D52).",
+        "",
+        "| subgroup | rows | frauds | " + " | ".join(methods) + " | " + " | ".join(versus) + " |",
+        "|---|---|---|" + "---|" * (len(methods) + len(versus)),
+    ]
+    for r in sub.to_dict("records"):
+        vals = ["" if pd.isna(r.get(m, np.nan)) else f"{r[m]:.4f}" for m in methods]
+        diffs = ["" if not isinstance(r.get(v), tuple) else
+                 f"{r[v][0]:+.4f} [{r[v][1]:+.4f}, {r[v][2]:+.4f}]" for v in versus]  # fmt: skip
+        lines.append(f"| {r['subgroup']} | {r['rows']} | {r['frauds']} | " + " | ".join(vals)
+                     + " | " + " | ".join(diffs) + " |")  # fmt: skip
     lines += ["", f"Runtime {time.perf_counter() - started:.0f} s.", ""]
-    out = RESEARCH_DIR / "tables" / f"fusion_dev{suffix}.md"
     out.write_text("\n".join(lines), encoding="utf-8")
     out.with_suffix(".json").write_text(json.dumps({"fusion": result.to_dict("records"),
-        "views": view_rows, "calibrators": {f"{f}/{v}": e for (f, v), e in cal_info.items()}},
-        indent=1, default=float), encoding="utf-8")  # fmt: skip
+        "views": view_rows, "calibrators": cal_info,
+        "subgroups": sub.to_dict("records")}, indent=1, default=str), encoding="utf-8")  # fmt: skip
     print(f"wrote {out}")
     print(result.to_string(index=False))
 

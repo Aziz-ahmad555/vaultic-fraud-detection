@@ -150,3 +150,29 @@ def test_dev_compare_scores_external_runs_on_the_same_rows(tmp_path):
     assert external_scores(tmp_path, np.array([3, 1])).tolist() == [0.3, 0.1]
     with pytest.raises(ValueError, match="lacks"):
         external_scores(tmp_path, np.array([4]))  # a test row is never used
+
+
+def test_dev_compare_subgroups_from_context_and_masks():
+    from types import SimpleNamespace
+
+    from vaultic.fusion.dev_compare import subgroup_masks, subgroup_table
+
+    rng = np.random.default_rng(0)
+    n = 800
+    y = (rng.random(n) < 0.2).astype(int)
+    ctx = np.zeros((n, 5))
+    ctx[:, 1] = rng.integers(0, 3, n)  # ctx_hist_n_past
+    ctx[:, 2] = rng.integers(0, 2, n)  # ctx_has_identity
+    views = np.full((n, 5), 0.5)
+    views[rng.random(n) < 0.5, 3] = np.nan  # graph missing for some rows
+    rows = SimpleNamespace(y=y, context=ctx, views=views)
+    m = subgroup_masks(rows)
+    assert (m["cold start"] | m["with history"]).all() and not (
+        m["cold start"] & m["with history"]
+    ).any()
+    assert np.array_equal(m["graph view missing"], np.isnan(views[:, 3]))
+    good = y + rng.normal(0, 0.3, n)
+    t = subgroup_table({"MVAF": good, "B5": rng.random(n)}, rows).set_index("subgroup")
+    diff, lo, hi, _ = t.loc["with history", "MVAF - B5"]
+    assert lo > 0 and t.loc["cold start", "rows"] == int(m["cold start"].sum())
+    assert "MVAF - F0" not in t.columns  # F0 not given yet
