@@ -1,0 +1,25 @@
+id: EXP-V-behavioral
+question: 'V-behavioral tuned (Optuna, 25 trials per weighting arm, validation only;
+  winning arm: none)'
+model:
+  name: xgboost
+  params:
+    max_depth: 6
+    learning_rate: 0.060539
+    min_child_weight: 21.681621
+    subsample: 0.551359
+    colsample_bytree: 0.920452
+    reg_lambda: 6.695045
+    reg_alpha: 0.010246
+    gamma: 0.095787
+    n_estimators: 525
+features: behavioral_view
+seeds:
+- 0
+- 1
+- 2
+- 3
+- 4
+bootstrap:
+  n: 1000
+  seed: 0
