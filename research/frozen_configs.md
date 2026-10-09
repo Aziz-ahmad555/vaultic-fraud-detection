@@ -10,7 +10,7 @@ Frozen 2026-10-08T16:57:37 at git commit `efa0ec8b467580b1d0abbc0e157f40011a16e9
 | `experiments/configs/EXP-013.yaml` | `3a21ccdb6559678b76b4d8d30be2f22d981a3edb39cdeacb5e987fd7f056dbe7` |
 | `experiments/configs/EXP-009.yaml` | `fe949b9cb9fc2074c8d649e7bfdab9d3c13c8042ebb9b40107ef6b538515e29a` |
 | `experiments/configs/EXP-010.yaml` | `70baa14c8337903f4015cc91f08e24cba1e345b3931f6e437d33436d40870ee6` |
-| `experiments/configs/splits.yaml` | `7e580ad5b747d44eaf161f937675cbdd8a38ab200db918fc43c30818c142802f` |
+| `experiments/configs/splits.yaml` | `58fb5496c75e7d1036a978fc4e3c585c5aed0efbf2ec6d3e26e1c2469b693640` |
 | `experiments/configs/v_columns.yaml` | `34909dc424a2db19cf8684368213847dc2edeff159deed7e07e7ba8c62c04e7b` |
 | `experiments/configs/table1.yaml` | `0412b274078d258e8201b733129ce642aed434aa435732736138e50d70e3c723` |
 
@@ -20,3 +20,4 @@ Frozen 2026-10-08T16:57:37 at git commit `efa0ec8b467580b1d0abbc0e157f40011a16e9
 - 2026-10-09 `experiments/configs/table1.yaml`: `96bee2580c64…` → `2b2cc587e9e6…`. B1 redefined after the PR #1 review (M6, D61): clipped to training quantiles, lbfgs converged; FINAL-RERUN of EXP-012. table1.yaml pins the original B1 run.
 - 2026-10-09 `experiments/configs/EXP-012.yaml`: `0518b38085f2…` → `c6659e73d06b…`. B1 grid extended on validation to C = 1000 (D61) and C chosen by the D62 flat-curve rule: still C = 10; only the config's question text changed.
 - 2026-10-09 `experiments/configs/table1.yaml`: `2b2cc587e9e6…` → `0412b274078d…`. Table 1 B1 row describes the redefined model and the 7-value grid with the D62 rule (D61).
+- 2026-10-09 `experiments/configs/splits.yaml`: `7e580ad5b747…` → `58fb5496c75e…`. Review N1 (D76): the calibrate tail is split into calibrate_views 144-146 and calibrate_fused 147-150; the train, validation and test ranges are unchanged, so no Phase 2 run is affected.
