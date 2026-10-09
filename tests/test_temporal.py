@@ -149,3 +149,22 @@ def test_training_options_and_small_batch_overfit():
     assert view.pos_weight_ == pytest.approx(np.sqrt((y[:400] == 0).sum() / y[:400].sum()))
     check = view.overfit_check(data, n=64, epochs=150)
     assert check["train_pr_auc"] > 0.95
+
+
+def test_robust_inputs_tame_heavy_tails():
+    """D85: signed log1p + clipping keeps one huge counter from dominating the inputs."""
+    rng = np.random.default_rng(0)
+    n, steps = 300, 4
+    values = np.abs(rng.normal(size=(n, steps, 3))).astype(np.float32)
+    values[..., 2] = 1
+    values[0, 0, 0] = 1e6  # one extreme counter value
+    data = TemporalData(values, np.ones((n, steps), bool), values[:, -1].copy(),
+                        (rng.random(n) < 0.2).astype(int))  # fmt: skip
+    plain = GRUTemporalView(n_products=3)
+    plain._fit_scaler(data)
+    robust = GRUTemporalView(n_products=3, robust_inputs=True)
+    robust._fit_scaler(data)
+    v_plain = plain._tensors(data)[0].numpy()[..., 0]
+    v_robust = robust._tensors(data)[0].numpy()[..., 0]
+    assert np.std(v_plain.ravel()[1:]) < 0.001  # every other value squashed to ~one point
+    assert np.abs(v_robust).max() <= 5.0 and np.median(np.abs(v_robust)) > 0.3

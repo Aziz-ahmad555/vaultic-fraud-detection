@@ -30,6 +30,8 @@ from torch import nn
 
 from vaultic.eval.metrics import pr_auc
 
+CLIP = 5.0  # robust_inputs: standardised channels clipped to +-CLIP (D85)
+
 
 @dataclass
 class TemporalData:
@@ -87,6 +89,7 @@ class GRUTemporalView:
         seed: int = 0,
         lr_decay: float | None = None,
         grad_clip: float | None = None,
+        robust_inputs: bool = False,
     ):
         self.n_products = n_products
         self.product_channel = product_channel
@@ -100,16 +103,29 @@ class GRUTemporalView:
         self.seed = seed
         self.lr_decay = lr_decay
         self.grad_clip = grad_clip
+        # D85: heavy-tailed counters (C, D columns) dominate a plain standardisation; with
+        # robust_inputs the continuous channels get a signed log1p first and are clipped to
+        # +-CLIP standard deviations after it (statistics from the training steps only)
+        self.robust_inputs = robust_inputs
 
     # ---- inputs -------------------------------------------------------------------------
+    def _transform(self, x: np.ndarray) -> np.ndarray:
+        if not self.robust_inputs:
+            return x
+        out = np.sign(x) * np.log1p(np.abs(x))
+        out[..., self.product_channel] = x[..., self.product_channel]
+        return out
+
     def _fit_scaler(self, data: TemporalData) -> None:
-        steps = data.values[data.mask]  # real history steps of the training period
+        steps = self._transform(data.values[data.mask])  # real history steps of the training period
         self.mean_ = steps.mean(axis=0)
         self.std_ = steps.std(axis=0) + 1e-6
         self.mean_[self.product_channel], self.std_[self.product_channel] = 0.0, 1.0
 
     def _tensors(self, data: TemporalData):
-        values = (data.values - self.mean_) / self.std_
+        values = (self._transform(data.values) - self.mean_) / self.std_
+        if self.robust_inputs:
+            values = np.clip(values, -CLIP, CLIP)
         values = np.where(data.mask[..., None], values, 0.0)
         # padded steps get code 0 (the embedding's padding row), whatever they contain
         codes = np.where(data.mask, data.values[..., self.product_channel], 0)
@@ -118,7 +134,9 @@ class GRUTemporalView:
         if top >= self.n_products:
             raise ValueError(f"product code {top:.0f} >= n_products {self.n_products}: use the "
                              "training-period CategoryEncoder the view was built for")  # fmt: skip
-        current = (data.current - self.mean_) / self.std_
+        current = (self._transform(data.current) - self.mean_) / self.std_
+        if self.robust_inputs:
+            current = np.clip(current, -CLIP, CLIP)
         current[:, self.product_channel] = data.current[:, self.product_channel]
         current[:, 1] = 0.0  # the gap channel is undefined for the scored transaction
         return (
