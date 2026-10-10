@@ -1,0 +1,25 @@
+id: EXP-103-tuned
+question: 'E3 tuned (Optuna, 25 trials per weighting arm, validation only; winning
+  arm: none)'
+model:
+  name: xgboost
+  params:
+    max_depth: 9
+    learning_rate: 0.031976
+    min_child_weight: 1.393714
+    subsample: 0.710327
+    colsample_bytree: 0.553675
+    reg_lambda: 0.001634
+    reg_alpha: 0.568162
+    gamma: 1.107429
+    n_estimators: 1225
+features: b5_behavioral
+seeds:
+- 0
+- 1
+- 2
+- 3
+- 4
+bootstrap:
+  n: 1000
+  seed: 0
