@@ -98,6 +98,7 @@ DATA_ROW = re.compile(r"^\| `([^`]+)` \| (\d+) \| `([0-9a-f]{64})` \|$", re.M)
 ENV_VARS = ("VAULTIC_DATA_DIR", "VAULTIC_RAW_DIR")
 ENV_LINE = re.compile(r"Environment at freeze: VAULTIC_DATA_DIR = `([^`]*)`; "
                       r"VAULTIC_RAW_DIR = `([^`]*)`")  # fmt: skip
+FREEZE_RECORD = "research/frozen_final.md"
 LOG_FILES = {"research/frozen_final.md", "research/experiment_log.md", "research/decisions.md"}
 
 
@@ -144,11 +145,36 @@ def check_git(frozen: Path, repo: Path = REPO_ROOT) -> str:
     if git("merge-base", "--is-ancestor", frozen_commit, head).returncode != 0:
         raise RuntimeError(f"HEAD {head[:12]} does not descend from the frozen commit "
                            f"{frozen_commit[:12]}")  # fmt: skip
-    changed = set(git("diff", "--name-only", frozen_commit, head).stdout.split())
+    changed = set(
+        git("diff", "--name-only", "--no-renames", frozen_commit, head).stdout.splitlines()
+    )
     if changed - LOG_FILES:
         raise RuntimeError(f"files changed since the frozen commit {frozen_commit[:12]}: "
                            f"{sorted(changed - LOG_FILES)}; re-freeze (logged) first")  # fmt: skip
+    # D113: the two logs may only gain lines after the frozen commit
+    for name in sorted((LOG_FILES - {FREEZE_RECORD}) & changed):
+        stat = git("diff", "--numstat", "--no-renames", frozen_commit, head, "--", name).stdout
+        for line in stat.splitlines():
+            added, deleted, _ = line.split("\t", 2)
+            if deleted != "0":
+                raise RuntimeError(f"{name} lost or changed {deleted} line(s) since the frozen "
+                                   f"commit {frozen_commit[:12]}; the logs may only gain lines")  # fmt: skip
+    # D113: a changed freeze record needs a decisions.md row naming its frozen commit
+    if FREEZE_RECORD in changed:
+        decisions = git("show", f"{head}:research/decisions.md").stdout
+        if not any(line.startswith("|") and frozen_commit in line
+                   for line in decisions.splitlines()):  # fmt: skip
+            raise RuntimeError(f"research/decisions.md has no row naming the frozen commit "
+                               f"{frozen_commit}; log the freeze first")  # fmt: skip
     return head
+
+
+def freeze_row(frozen_commit: str) -> str:
+    """D113: the decisions.md row that records a (re-)freeze and names its frozen commit."""
+    return (f"| FREEZE | {date.today().isoformat()} | EXP-200-final final-run configs, data files, "
+            f"data paths and library versions frozen at git commit `{frozen_commit}` "
+            "(research/frozen_final.md) | — | Written by `final_run --mode freeze` | A final run "
+            "needs this row for its frozen commit (D113) | Default |{NL}")  # fmt: skip
 
 
 def _git_env() -> dict:
@@ -500,6 +526,11 @@ def main() -> None:
                      title="Frozen configs for the Paper 2 final runs (E10-E12, D101)")  # fmt: skip
         with open(FROZEN, "a", encoding="utf-8") as f:
             f.write(data_section(data_files(cfg), env_values()))
+        frozen_commit = re.search(r"at git commit `([0-9a-f]{40})`",
+                                  FROZEN.read_text("utf-8")).group(1)  # fmt: skip
+        with open(RESEARCH_DIR / "decisions.md", "a", encoding="utf-8") as f:
+            f.write(freeze_row(frozen_commit))  # D113
+        print(f"logged the freeze of commit {frozen_commit[:12]} in research/decisions.md")
         print(f"wrote {FROZEN}")
         return
     if args.mode == "refit-check":

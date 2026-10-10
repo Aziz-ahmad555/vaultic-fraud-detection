@@ -18,6 +18,7 @@ from vaultic.fusion.final_run import (
     count_final_rows,
     data_section,
     exclusive_lock,
+    freeze_row,
     log_guard,
     record_start,
 )
@@ -52,6 +53,9 @@ def test_check_git_needs_clean_tree_and_the_frozen_commit(tmp_path):
     _git(repo, "config", "user.name", "t")
     (repo / "research").mkdir()
     (repo / "code.py").write_text("x = 1\n")
+    log, decisions = repo / "research" / "experiment_log.md", repo / "research" / "decisions.md"
+    log.write_text("| id |\n| EXP-1 | old row |\n")
+    decisions.write_text("| D1 |\n")
     _git(repo, "add", ".")
     _git(repo, "commit", "-qm", "code")
     frozen_commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True,
@@ -59,14 +63,23 @@ def test_check_git_needs_clean_tree_and_the_frozen_commit(tmp_path):
     record = repo / "research" / "frozen_final.md"
     record.write_text(f"Frozen at git commit `{frozen_commit}`, before any run.\n")
     _git(repo, "add", ".")
-    _git(repo, "commit", "-qm", "freeze")
-    assert check_git(record, repo)  # freeze record committed after the frozen commit: allowed
-    (repo / "research" / "experiment_log.md").write_text("FINAL-STARTED\n")
+    _git(repo, "commit", "-qm", "freeze without its decisions row")
+    with pytest.raises(RuntimeError, match="no row naming the frozen commit"):
+        check_git(record, repo)  # D113
+    _append(decisions, freeze_row(frozen_commit).rstrip())
+    _git(repo, "commit", "-qam", "log the freeze")
+    assert check_git(record, repo)  # freeze record + its row, after the frozen commit: allowed
+    _append(log, "| EXP-200-final | FINAL-STARTED |")
     with pytest.raises(RuntimeError, match="not clean"):
         check_git(record, repo)
-    _git(repo, "add", ".")
-    _git(repo, "commit", "-qm", "log")
-    assert check_git(record, repo)  # the logs may differ
+    _git(repo, "commit", "-qam", "log")
+    assert check_git(record, repo)  # the logs may gain lines
+    log.write_text(log.read_text().replace("| EXP-1 | old row |\n", ""))
+    _git(repo, "commit", "-qam", "delete a log line")
+    with pytest.raises(RuntimeError, match="may only gain lines"):
+        check_git(record, repo)  # D113
+    _git(repo, "revert", "--no-edit", "HEAD")
+    assert check_git(record, repo)
     (repo / "code.py").write_text("x = 2\n")
     _git(repo, "commit", "-qam", "change code")
     with pytest.raises(RuntimeError, match="changed since the frozen commit"):
