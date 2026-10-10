@@ -241,6 +241,19 @@ def log_guard(experiment: str, rerun_reason: str | None, branch: str,
     return found
 
 
+def repo_relative(path, repo: Path = REPO_ROOT) -> str:
+    """Path relative to the repo, without following links first (D115: experiments/runs in a
+    worktree can be a junction to another checkout's folder, and resolve() would leave the
+    repo); falls back to the resolved paths, then to the absolute path."""
+    path = Path(path)
+    for p, r in ((path.absolute(), repo.absolute()), (path.resolve(), repo.resolve())):
+        try:
+            return p.relative_to(r).as_posix()
+        except ValueError:
+            continue
+    return path.absolute().as_posix()
+
+
 def record_start(run_dir: Path, head: str, experiment_log: Path, extra_logs=(),
                  repo: Path = REPO_ROOT, push: bool = True,
                  data_hashes: dict[str, str] | None = None) -> None:  # fmt: skip
@@ -271,13 +284,13 @@ def record_start(run_dir: Path, head: str, experiment_log: Path, extra_logs=(),
         {"mode": "final", "status": "started", "git_commit": head,
          "started": datetime.now().isoformat(timespec="seconds"),
          "data_hashes": data_hashes or {}}, indent=1), "utf-8")  # fmt: skip
-    rel = run_dir.resolve().relative_to(repo.resolve()).as_posix()
+    rel = repo_relative(run_dir, repo)
     with open(experiment_log, "a", encoding="utf-8") as f:
         f.write(f"| {run_dir.parent.name} | {date.today().isoformat()} | FINAL-STARTED: E10-E12 "
                 f"final run started at commit `{head[:12]}` (D101); test data not scored or evaluated yet | run "
                 f"`{rel}` | — |\n")  # fmt: skip
     logs = [experiment_log, *extra_logs]
-    git("add", *[Path(p).resolve().relative_to(repo.resolve()).as_posix() for p in logs])
+    git("add", *[repo_relative(p, repo) for p in logs])
     message = f"FINAL-STARTED {run_dir.parent.name} ({run_dir.name})"
     if data_hashes:  # D112: the data the run is about to use, as checked against the freeze
         message += ("\n\nData files (SHA-256, checked against research/frozen_final.md):\n"

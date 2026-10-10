@@ -25,6 +25,7 @@ from vaultic.fusion.final_run import (
     library_versions,
     log_guard,
     record_start,
+    repo_relative,
 )
 
 
@@ -316,3 +317,38 @@ def test_library_versions_must_match_the_freeze():
         check_libraries(record, {**now, "xgboost": "0.0.1"})
     with pytest.raises(RuntimeError, match="no library versions"):
         check_libraries("# record\n", now)
+
+
+def test_record_start_with_runs_behind_a_junction():
+    """D115: experiments/runs in a worktree is a junction to the main checkout's runs folder;
+    the start record must not fail because the resolved run folder lies outside the repo."""
+    import os
+    import tempfile
+    from pathlib import Path
+
+    # under the system temp folder (E:\\dev-cache\\tmp in our runs): on C:\\...\\Temp nothing
+    # can be created through a junction at all, so the test probes first and skips there
+    with tempfile.TemporaryDirectory() as base:
+        base = Path(base)
+        repo, elsewhere = base / "repo", base / "main-checkout-runs"
+        repo.mkdir()
+        elsewhere.mkdir()
+        if os.name == "nt":
+            r = subprocess.run(["cmd", "/c", "mklink", "/J", str(repo / "runs"), str(elsewhere)],
+                               capture_output=True, text=True)  # fmt: skip
+        else:
+            r = subprocess.run(["ln", "-s", str(elsewhere), str(repo / "runs")])
+        try:
+            if r.returncode != 0:
+                raise OSError("no link")
+            (repo / "runs" / "probe").mkdir()
+        except OSError:
+            pytest.skip("cannot create a writable link in this temp folder")
+        log, decisions = _repo_with_logs(repo)
+        run_dir = repo / "runs" / "EXP-200-final" / "20261010-000000-000002"
+        assert repo_relative(run_dir, repo) == "runs/EXP-200-final/20261010-000000-000002"
+        record_start(run_dir, "a" * 40, log, extra_logs=[decisions], repo=repo, push=False)
+        assert "runs/EXP-200-final/20261010-000000-000002" in log.read_text("utf-8")
+        assert (elsewhere / "EXP-200-final" / "20261010-000000-000002" / "metrics.json").exists()
+        if os.name == "nt":
+            os.rmdir(repo / "runs")  # remove the junction itself before the tree is deleted
