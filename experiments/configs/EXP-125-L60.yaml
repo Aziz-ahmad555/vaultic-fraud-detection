@@ -1,0 +1,7 @@
+# E25 development run (validation only, D99): B5 with its frozen hyperparameters, trained only on
+# labels already known when validation starts (its_time + L <= validation start), L = 60 days.
+extends: EXP-125.yaml
+id: EXP-125-L60
+status: development
+question: "E25: B5 trained only on labels mature 60 days before validation starts"
+train_label_maturity_days: 60

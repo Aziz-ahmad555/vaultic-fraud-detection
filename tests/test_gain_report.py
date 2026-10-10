@@ -94,3 +94,19 @@ def test_emerging_configs_drop_one_groups_frauds(tmp_path, monkeypatch):
     cfg = yaml.safe_load((tmp_path / "EXP-108-holdout-card4-american-express.yaml").read_text())
     assert cfg["train_drop_fraud"] == {"card4": "american express"}
     assert cfg["extends"] == "EXP-108-frozen.yaml"
+
+
+def test_gain_table_full_kind_adds_extra_subgroups():
+    rng = np.random.default_rng(1)
+    n = 500
+    y = (rng.random(n) < 0.2).astype(int)
+    ids = np.arange(n)
+    base = _preds(ids, y, [rng.random(n)])
+    new = _preds(ids, y, [y + rng.normal(0, 0.4, n)])
+    ident = rng.random(n) < 0.3
+    t = gain_table(base, new, np.full(n, 3), "full", {"has_identity yes": ident,
+                                                      "has_identity no": ~ident})  # fmt: skip
+    groups = t["group"].tolist()
+    assert groups[:4] == ["all", ">= 5 past", "1-4 past", "cold start"]
+    assert groups[-2:] == ["has_identity yes", "has_identity no"]
+    assert t.set_index("group").loc["has_identity yes", "rows"] == int(ident.sum())

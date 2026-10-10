@@ -10,6 +10,8 @@ averaged as in vaultic.eval.compare). Groups come from the uid's number of earli
 
   history  all; >= 5 past transactions; 1-4; cold start (0)
   gru      all; 1-4; 5-19; 20+; cold start (0)
+  full     history groups + has_identity yes / no + graph view available yes / no (non-hub
+           relational evidence, D52) — the subgroups of the fusion comparisons
 
 Only the validation split is read. Writes research/tables/gain_<name>.md.
 """
@@ -56,7 +58,11 @@ def group_masks(n_past: np.ndarray, kind: str) -> dict[str, np.ndarray]:
 
 
 def gain_table(
-    base: pd.DataFrame, new: pd.DataFrame, n_past: np.ndarray, kind: str = "history"
+    base: pd.DataFrame,
+    new: pd.DataFrame,
+    n_past: np.ndarray,
+    kind: str = "history",
+    extra_masks: dict[str, np.ndarray] | None = None,
 ) -> pd.DataFrame:
     """One row per group: rows, frauds, base and new PR-AUC, paired gain with 95% CI and p."""
     if not np.array_equal(base["TransactionID"].to_numpy(), new["TransactionID"].to_numpy()):
@@ -64,7 +70,8 @@ def gain_table(
     y = base["label"].to_numpy()
     sb, sn = _seeds(base), _seeds(new)
     rows = []
-    for name, mask in group_masks(n_past, kind).items():
+    masks = {**group_masks(n_past, "history" if kind == "full" else kind), **(extra_masks or {})}
+    for name, mask in masks.items():
         yy = y[mask]
         row = {"group": name, "rows": int(mask.sum()), "frauds": int(yy.sum())}
         if row["frauds"] == 0 or row["frauds"] == row["rows"]:
@@ -85,6 +92,24 @@ def gain_table(
             }
         )
     return pd.DataFrame(rows)
+
+
+def full_masks(preds: pd.DataFrame) -> dict[str, np.ndarray]:
+    """has_identity and graph-view availability of each prediction row (by TransactionID)."""
+    from vaultic.data.load import load_merged
+    from vaultic.data.splits import load_splits
+    from vaultic.paths import FEATURES_DIR, MERGED_PATH
+
+    ids = preds["TransactionID"].to_numpy()
+    ident = load_merged(MERGED_PATH, columns=["TransactionID", "has_identity"])
+    ident = ident.set_index("TransactionID")["has_identity"].reindex(ids).to_numpy()
+    graph = pd.read_parquet(FEATURES_DIR / f"graph_{load_splits().uid_variant}.parquet",
+                            columns=["TransactionID", "g_shared_nonhub"])  # fmt: skip
+    avail = (
+        graph.set_index("TransactionID")["g_shared_nonhub"].reindex(ids).fillna(0).to_numpy() > 0
+    )
+    return {"has_identity yes": ident == 1, "has_identity no": ident == 0,
+            "graph view available": avail, "graph view missing": ~avail}  # fmt: skip
 
 
 def n_past_for(preds: pd.DataFrame, base_features: pd.DataFrame) -> np.ndarray:
@@ -145,7 +170,7 @@ def main() -> None:
     parser.add_argument("base_run", type=Path)
     parser.add_argument("new_run", type=Path)
     parser.add_argument("--name", required=True)
-    parser.add_argument("--groups", default="history", choices=sorted(GROUPS))
+    parser.add_argument("--groups", default="history", choices=[*sorted(GROUPS), "full"])
     parser.add_argument("--title", default=None)
     parser.add_argument("--subset", default=None,
                         help="COLUMN=VALUE: only validation rows where a merged column has VALUE")  # fmt: skip
@@ -156,7 +181,8 @@ def main() -> None:
     feats = pd.read_parquet(
         features_path(load_splits().uid_variant), columns=["TransactionID", "uid_n_past"]
     )
-    table = gain_table(base, new, n_past_for(base, feats), args.groups)
+    extra = full_masks(base) if args.groups == "full" else None
+    table = gain_table(base, new, n_past_for(base, feats), args.groups, extra)
     title = args.title or f"Gain: {args.new_run.parent.name} over {args.base_run.parent.name}"
     out = RESEARCH_DIR / "tables" / f"gain_{args.name}.md"
     out.write_text(to_markdown(table, title, args.base_run, args.new_run), encoding="utf-8")
