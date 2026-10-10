@@ -26,7 +26,9 @@ Refit check (validation only):  python -m vaultic.fusion.final_run --mode refit-
 
 Final mode refuses to run unless research/frozen_final.md matches every frozen file, the
 working tree is clean and HEAD is the frozen commit (only the freeze record and the two logs
-may differ), and a second final run needs --rerun-reason (FINAL-RERUN rule, logged in
+may differ), the branch is not behind or diverged from origin (fetched), and a second final run
+(a run folder, or a FINAL-STARTED / FINAL-RERUN row in the logs at HEAD or origin, D110) needs
+--rerun-reason (FINAL-RERUN rule, logged in
 research/decisions.md). Every E10-E12 setting is read from EXP-200-final.yaml and checked
 against the D101 / D102 values (EXPECTED) at startup; SHA-256 hashes of the data and feature
 files and of the stored B5 / F0 predictions are recorded in metrics.json (D108).
@@ -141,6 +143,66 @@ def check_git(frozen: Path, repo: Path = REPO_ROOT) -> str:
     return head
 
 
+def _git_env() -> dict:
+    return {**os.environ, "GIT_TERMINAL_PROMPT": "0"}  # never wait for a credential prompt
+
+
+def check_origin(repo: Path = REPO_ROOT) -> str:
+    """D110: fetch origin and refuse if the branch is behind or has diverged from
+    origin/<branch> (another machine may have a final run on record). Returns the branch."""
+
+    def git(*a, timeout=PUSH_TIMEOUT_S):
+        try:
+            return subprocess.run(["git", *a], cwd=repo, capture_output=True, text=True,
+                                  env=_git_env(), timeout=timeout)  # fmt: skip
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError(f"git {' '.join(a)} timed out; cannot check origin") from e
+
+    branch = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    if not branch or branch == "HEAD":
+        raise RuntimeError("detached HEAD: the final run needs a branch that tracks origin")
+    r = git("fetch", "-q", "origin", branch)
+    if r.returncode != 0:
+        raise RuntimeError(f"git fetch origin {branch} failed; cannot check origin:\n{r.stderr}")
+    r = git("rev-list", "--left-right", "--count", f"HEAD...origin/{branch}")
+    if r.returncode != 0:
+        raise RuntimeError(f"cannot compare HEAD with origin/{branch}:\n{r.stderr}")
+    ahead, behind = (int(x) for x in r.stdout.split())
+    if behind:
+        state = "diverged from" if ahead else "is behind"
+        raise RuntimeError(f"{branch} {state} origin/{branch} ({ahead} ahead, {behind} behind); "
+                           "pull / reconcile first")  # fmt: skip
+    return branch
+
+
+def count_final_rows(text: str, experiment: str) -> int:
+    """FINAL-STARTED / FINAL-RERUN table rows for this experiment id."""
+    return sum(1 for line in text.splitlines() if line.startswith("|")
+               and f"| {experiment} |" in line
+               and ("FINAL-STARTED" in line or "FINAL-RERUN" in line))  # fmt: skip
+
+
+def log_guard(experiment: str, rerun_reason: str | None, branch: str,
+              repo: Path = REPO_ROOT) -> dict[str, int]:  # fmt: skip
+    """D110: the re-run guard also counts FINAL-STARTED / FINAL-RERUN rows for this experiment
+    in research/experiment_log.md and research/decisions.md, at HEAD and at origin/<branch>
+    (run folders are git-ignored, so the logs are the record that travels between machines).
+    Any such row without --rerun-reason stops the run."""
+    found = {}
+    for ref in ("HEAD", f"origin/{branch}"):
+        for name in ("research/experiment_log.md", "research/decisions.md"):
+            r = subprocess.run(["git", "show", f"{ref}:{name}"], cwd=repo, capture_output=True,
+                               text=True, encoding="utf-8")  # fmt: skip
+            found[f"{ref}:{name}"] = count_final_rows(r.stdout if r.returncode == 0 else "",
+                                                      experiment)  # fmt: skip
+    if any(found.values()) and not rerun_reason:
+        raise RuntimeError(f"{experiment} already has a final run on record in the logs "
+                           f"({ {k: v for k, v in found.items() if v} }); final runs are not "
+                           "repeated after seeing results; if a bug forces a re-run, pass "
+                           "--rerun-reason")  # fmt: skip
+    return found
+
+
 def record_start(run_dir: Path, head: str, experiment_log: Path, extra_logs=(),
                  repo: Path = REPO_ROOT, push: bool = True) -> None:  # fmt: skip
     """D109: mark the final run as started, committed and pushed; test data is not scored or
@@ -150,7 +212,7 @@ def record_start(run_dir: Path, head: str, experiment_log: Path, extra_logs=(),
     run stops before any test data is scored or evaluated. The local start record stays (metrics.json "started"
     and the local commit), so the guard still counts the attempt; push it by hand before a
     logged re-run."""
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}  # never wait for a credential prompt
+    env = _git_env()
 
     def git(*a):
         try:
@@ -178,7 +240,14 @@ def record_start(run_dir: Path, head: str, experiment_log: Path, extra_logs=(),
     git("add", *[Path(p).resolve().relative_to(repo.resolve()).as_posix() for p in logs])
     git("commit", "-q", "-m", f"FINAL-STARTED {run_dir.parent.name} ({run_dir.name})")
     if push:
-        git("push", "-q", "origin", "HEAD")
+        try:
+            git("push", "-q", "origin", "HEAD")
+        except RuntimeError as e:  # D110: name the unpushed commit so it can be pushed by hand
+            commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True,
+                                    text=True).stdout.strip()  # fmt: skip
+            print(f"FINAL-STARTED commit {commit} was NOT pushed; push it by hand "
+                  "(git push origin HEAD) before any logged re-run", flush=True)  # fmt: skip
+            raise RuntimeError(f"{e}\nunpushed FINAL-STARTED commit: {commit}") from e
 
 
 def file_sha256(path: Path) -> str:
@@ -287,7 +356,7 @@ def _feature_model_scores(parts, cfg_id: str, columns: list[str], cal_ids, ev_id
 
 
 def main() -> None:
-    from vaultic.eval.run import _guard_final_rerun
+    from vaultic.eval.run import _guard_final_rerun, previous_final_runs
     from vaultic.fusion.data import fusion_split
     from vaultic.fusion.dev_compare import build_table
     from vaultic.fusion.final_eval import (
@@ -330,8 +399,16 @@ def main() -> None:
             raise RuntimeError(f"{FROZEN} is missing or a frozen file changed: "
                                f"{check_freeze(FROZEN) if FROZEN.exists() else 'no record'}")  # fmt: skip
         head = check_git(FROZEN)
+        branch = check_origin(REPO_ROOT)  # D110: not behind / diverged from origin
+        prev_dirs = previous_final_runs(cfg["id"], RUNS_DIR)
         # a run whose metrics.json says mode final (also "started") counts as a final run
         _guard_final_rerun(cfg["id"], RUNS_DIR, args.rerun_reason, RESEARCH_DIR / "decisions.md")
+        logged = log_guard(cfg["id"], args.rerun_reason, branch, REPO_ROOT)  # D110
+        if any(logged.values()) and not prev_dirs:  # on record elsewhere, no local run folder
+            with open(RESEARCH_DIR / "decisions.md", "a", encoding="utf-8") as f:
+                f.write(f"| FINAL-RERUN | {date.today().isoformat()} | {cfg['id']} | --final "
+                        f"re-run; earlier final run on record in the logs ({sum(logged.values())} "
+                        f"rows) | — | {args.rerun_reason} | Logged by final_run |\n")  # fmt: skip
         run_dir = RUNS_DIR / cfg["id"] / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         record_start(run_dir, head, RESEARCH_DIR / "experiment_log.md",
                      extra_logs=[RESEARCH_DIR / "decisions.md"], repo=REPO_ROOT)  # fmt: skip
