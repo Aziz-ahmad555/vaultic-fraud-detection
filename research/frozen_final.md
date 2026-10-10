@@ -1,6 +1,6 @@
 # Frozen configs for the Paper 2 final runs (E10-E12, D101)
 
-Frozen 2026-10-10T22:49:59 at git commit `3fb214bf1bb3208ca1480d990d49437aa32792dd`, before any --final run. Final runs are made once per baseline and never repeated after seeing results (a forced re-run is logged in research/decisions.md as FINAL-RERUN).
+Frozen 2026-10-10T23:57:36 at git commit `e86dee069588a3401eb5b3f43bb2a26b618bbbad`, before any --final run. Final runs are made once per baseline and never repeated after seeing results (a forced re-run is logged in research/decisions.md as FINAL-RERUN).
 
 | file | sha256 |
 |---|---|
