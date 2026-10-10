@@ -13,12 +13,16 @@ from vaultic.fusion.final_run import (
     CONFIG,
     check_data,
     check_git,
+    check_libraries,
     check_origin,
+    check_package_location,
     check_settings,
     count_final_rows,
     data_section,
     exclusive_lock,
     freeze_row,
+    library_section,
+    library_versions,
     log_guard,
     record_start,
 )
@@ -157,6 +161,8 @@ def test_final_mode_aborts_before_scoring_test_data_when_the_push_fails(tmp_path
     monkeypatch.setattr(fr, "RUNS_DIR", tmp_path / "runs")
     monkeypatch.setattr(fr, "FROZEN", frozen)
     monkeypatch.setattr(fr, "check_git", lambda *a, **k: "a" * 40)
+    monkeypatch.setattr(fr, "check_libraries", lambda *a, **k: {})
+    monkeypatch.setattr(fr, "check_package_location", lambda *a, **k: None)
     monkeypatch.setattr(fr, "check_origin", lambda *a, **k: "main")
     monkeypatch.setattr(fr, "log_guard", lambda *a, **k: {})
     monkeypatch.setattr(fr, "data_files", lambda *a, **k: [])
@@ -293,3 +299,20 @@ def test_record_start_writes_data_hashes_into_metrics_and_commit(tmp_path):
     body = subprocess.run(["git", "log", "-1", "--format=%B"], cwd=tmp_path, capture_output=True,
                           text=True).stdout  # fmt: skip
     assert "ab" * 32 + "  E:/data/interim/merged.parquet" in body
+
+
+def test_package_must_come_from_this_checkout(tmp_path):
+    assert check_package_location().name == "__init__.py"  # tests import from this checkout
+    with pytest.raises(RuntimeError, match="not from"):
+        check_package_location(tmp_path)
+
+
+def test_library_versions_must_match_the_freeze():
+    now = library_versions()
+    assert "python" in now and "xgboost" in now
+    record = "# record\n" + library_section(now)
+    assert check_libraries(record, now) == now
+    with pytest.raises(RuntimeError, match="differ from the freeze"):
+        check_libraries(record, {**now, "xgboost": "0.0.1"})
+    with pytest.raises(RuntimeError, match="no library versions"):
+        check_libraries("# record\n", now)

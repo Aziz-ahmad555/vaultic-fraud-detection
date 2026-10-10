@@ -98,6 +98,10 @@ DATA_ROW = re.compile(r"^\| `([^`]+)` \| (\d+) \| `([0-9a-f]{64})` \|$", re.M)
 ENV_VARS = ("VAULTIC_DATA_DIR", "VAULTIC_RAW_DIR")
 ENV_LINE = re.compile(r"Environment at freeze: VAULTIC_DATA_DIR = `([^`]*)`; "
                       r"VAULTIC_RAW_DIR = `([^`]*)`")  # fmt: skip
+# D114: libraries whose version is frozen with the run (python itself included)
+LIBRARIES = ("numpy", "pandas", "scikit-learn", "scipy", "xgboost", "pyarrow", "optuna",
+             "lightgbm", "pyyaml", "matplotlib", "torch")  # fmt: skip
+LIB_ROW = re.compile(r"^\| library `([^`]+)` \| `([^`]*)` \|$", re.M)
 FREEZE_RECORD = "research/frozen_final.md"
 LOG_FILES = {"research/frozen_final.md", "research/experiment_log.md", "research/decisions.md"}
 
@@ -333,6 +337,50 @@ def start_final(cfg: dict, rerun_reason: str | None, head: str, branch: str) -> 
     return run_dir
 
 
+def check_package_location(repo: Path = REPO_ROOT) -> Path:
+    """D114: the vaultic package must be imported from this checkout's src/, not from another
+    checkout or an installed copy."""
+    import vaultic
+
+    where = Path(vaultic.__file__).resolve()
+    src = (repo / "src").resolve()
+    if not where.is_relative_to(src):
+        raise RuntimeError(f"vaultic is imported from {where}, not from {src}; set PYTHONPATH "
+                           "to this checkout's src")  # fmt: skip
+    return where
+
+
+def library_versions() -> dict[str, str]:
+    import importlib.metadata as md
+    import sys
+
+    out = {"python": sys.version.split()[0]}
+    for name in LIBRARIES:
+        try:
+            out[name] = md.version(name)
+        except md.PackageNotFoundError:
+            out[name] = "not installed"
+    return out
+
+
+def library_section(versions: dict[str, str]) -> str:
+    lines = ["", "## Library versions (D114)", "", "| library | version |", "|---|---|"]
+    lines += [f"| library `{k}` | `{v}` |" for k, v in versions.items()]
+    return "\n".join(lines) + "\n"
+
+
+def check_libraries(record: str, versions: dict[str, str]) -> dict[str, str]:
+    """D114: the library versions must equal those recorded at freeze time."""
+    frozen = dict(LIB_ROW.findall(record))
+    if not frozen:
+        raise RuntimeError("the freeze record has no library versions (D114); re-freeze first")
+    diff = {k: (frozen.get(k), versions.get(k)) for k in set(frozen) | set(versions)
+            if frozen.get(k) != versions.get(k)}  # fmt: skip
+    if diff:
+        raise RuntimeError(f"library versions differ from the freeze (frozen, now): {diff}")
+    return versions
+
+
 def data_files(cfg: dict) -> list[Path]:
     """D112: every data file the final run reads: the merged data, the uid file, every feature
     parquet, the temporal_dev_v4 inputs, and the stored B5 / F0 predictions."""
@@ -519,6 +567,7 @@ def main() -> None:
     args = parser.parse_args()
     cfg = yaml.safe_load(CONFIG.read_text("utf-8"))
     check_settings(cfg)  # every mode, so nothing is frozen or run with other settings (D108)
+    check_package_location()  # D114
     if args.mode == "freeze":  # hash every file the final run depends on (D101)
         from vaultic.reports.phase2_summary import write_freeze
 
@@ -526,6 +575,7 @@ def main() -> None:
                      title="Frozen configs for the Paper 2 final runs (E10-E12, D101)")  # fmt: skip
         with open(FROZEN, "a", encoding="utf-8") as f:
             f.write(data_section(data_files(cfg), env_values()))
+            f.write(library_section(library_versions()))  # D114
         frozen_commit = re.search(r"at git commit `([0-9a-f]{40})`",
                                   FROZEN.read_text("utf-8")).group(1)  # fmt: skip
         with open(RESEARCH_DIR / "decisions.md", "a", encoding="utf-8") as f:
@@ -543,6 +593,7 @@ def main() -> None:
         if not FROZEN.exists() or check_freeze(FROZEN):
             raise RuntimeError(f"{FROZEN} is missing or a frozen file changed: "
                                f"{check_freeze(FROZEN) if FROZEN.exists() else 'no record'}")  # fmt: skip
+        check_libraries(FROZEN.read_text("utf-8"), library_versions())  # D114
         head = check_git(FROZEN)
         branch = check_origin(REPO_ROOT)  # D110: not behind / diverged from origin
         run_dir = start_final(cfg, args.rerun_reason, head, branch)
@@ -636,7 +687,7 @@ def main() -> None:
             "evaluation_rows": int(len(ev.y)), "evaluation_frauds": int(ev.y.sum()),
             "calibration_rows": int(len(cal.y)), "calibration_frauds": int(cal.y.sum()),
             "gate_rows": int(len(both.y)), "thresholds": thresholds, "refit_check": sanity,
-            "git_commit": head,
+            "git_commit": head, "library_versions": library_versions(),
             "input_hashes": input_hashes([*parts["inputs"],
                                           REPO_ROOT / cfg["b5_run"] / "predictions.parquet",
                                           REPO_ROOT / cfg["f0_run"] / "predictions.parquet"]),
