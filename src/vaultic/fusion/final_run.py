@@ -178,7 +178,7 @@ def freeze_row(frozen_commit: str) -> str:
     return (f"| FREEZE | {date.today().isoformat()} | EXP-200-final final-run configs, data files, "
             f"data paths and library versions frozen at git commit `{frozen_commit}` "
             "(research/frozen_final.md) | — | Written by `final_run --mode freeze` | A final run "
-            "needs this row for its frozen commit (D113) | Default |{NL}")  # fmt: skip
+            "needs this row for its frozen commit (D113) | Default |\n")  # fmt: skip
 
 
 def _git_env() -> dict:

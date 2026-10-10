@@ -352,3 +352,9 @@ def test_record_start_with_runs_behind_a_junction():
         assert (elsewhere / "EXP-200-final" / "20261010-000000-000002" / "metrics.json").exists()
         if os.name == "nt":
             os.rmdir(repo / "runs")  # remove the junction itself before the tree is deleted
+
+
+def test_freeze_row_is_one_table_row_ending_in_a_newline():
+    row = freeze_row("c" * 40)
+    assert row.endswith("|\n") and row.count("\n") == 1 and "{NL}" not in row
+    assert row.count(" | ") + 1 == 7 and ("`" + "c" * 40 + "`") in row
