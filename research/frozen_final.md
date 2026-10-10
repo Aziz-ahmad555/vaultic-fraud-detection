@@ -1,10 +1,10 @@
 # Frozen configs for the Paper 2 final runs (E10-E12, D101)
 
-Frozen 2026-10-10T20:45:29 at git commit `72d8c69c19eaa343a25f9f4f1f6c683ffada89fd`, before any --final run. Final runs are made once per baseline and never repeated after seeing results (a forced re-run is logged in research/decisions.md as FINAL-RERUN).
+Frozen 2026-10-10T22:13:12 at git commit `d2ff85abdacb20650a3f6b6c91541afae7cda48d`, before any --final run. Final runs are made once per baseline and never repeated after seeing results (a forced re-run is logged in research/decisions.md as FINAL-RERUN).
 
 | file | sha256 |
 |---|---|
-| `experiments/configs/EXP-200-final.yaml` | `cef0740cb1701253689c8c5e18505186c4fc113325c2119be13c37bf0b1282c2` |
+| `experiments/configs/EXP-200-final.yaml` | `280127bff8e70ecab050662442c1e074c9bb81f8cd6c17a249455cc50e4a6ccd` |
 | `experiments/configs/splits.yaml` | `96666efd2da333cffab20c1f4ce8a567481d8fb5da5724a2e9757bd40e5c6955` |
 | `experiments/configs/v_columns.yaml` | `34909dc424a2db19cf8684368213847dc2edeff159deed7e07e7ba8c62c04e7b` |
 | `experiments/configs/EXP-009.yaml` | `fe949b9cb9fc2074c8d649e7bfdab9d3c13c8042ebb9b40107ef6b538515e29a` |
