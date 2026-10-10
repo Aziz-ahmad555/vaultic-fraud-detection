@@ -9,6 +9,7 @@ from vaultic.fusion.final_eval import (
     e10_table,
     e11_drops,
     h2_verdict,
+    holm_nan,
     refit_check,
     subgroup_masks,
 )
@@ -142,3 +143,24 @@ def test_refit_check_skips_missing_ids_and_nans():
     assert r["max_abs_diff"] == pytest.approx(0.01)
     assert np.isfinite(r["corr"]) and r["corr"] > 0.99
     assert np.isnan(refit_check(stored, [99], [0.5])["corr"])
+
+
+def test_subgroups_survive_empty_and_one_class_resamples():
+    """D106: a subgroup whose resamples are all unusable gives NaN CIs and p, never an error."""
+    y = np.array([0, 1, 0, 0, 1, 0])
+    scores = {"MVAF": np.linspace(0, 1, 6), "F3": np.linspace(1, 0, 6), "F4": np.full(6, 0.5)}
+    masks = {"tiny": np.array([True, True, False, False, False, False]),  # 1 legit + 1 fraud
+             "one class": np.array([True, False, True, True, False, False])}  # fmt: skip
+    sub = e10_subgroups(y, scores, masks, n_boot=0).set_index("subgroup")  # no resamples at all
+    assert np.isnan(sub.loc["tiny", "MVAF_ci_low"]) and np.isfinite(sub.loc["tiny", "MVAF"])
+    cell = sub.loc["tiny", "MVAF - F3"]
+    assert np.isnan(cell[3]) and np.isnan(cell[4])  # p and Holm p
+    assert "MVAF" not in sub.columns or pd.isna(sub.loc["one class", "MVAF"])
+    sub2 = e10_subgroups(y, scores, masks, n_boot=5)  # few resamples, many one-class: no error
+    assert len(sub2) == 2
+
+
+def test_holm_nan_leaves_nan_out_of_the_family():
+    adj = holm_nan([0.01, np.nan, 0.04])
+    assert adj[0] == pytest.approx(0.02) and np.isnan(adj[1]) and adj[2] == pytest.approx(0.04)
+    assert all(np.isnan(holm_nan([np.nan, np.nan])))

@@ -31,9 +31,34 @@ def boot_indices(n: int, n_boot: int = N_BOOT, seed: int = 0) -> list[np.ndarray
 
 
 def _p_two_sided(diffs: np.ndarray) -> float:
+    """NaN when there is no valid resample (D106: never crash on a small subgroup)."""
     diffs = np.asarray(diffs, dtype=float)
+    diffs = diffs[np.isfinite(diffs)]
+    if diffs.size == 0:
+        return float("nan")
     p = 2 * min((diffs <= 0).mean(), (diffs >= 0).mean())
     return float(min(p, 1.0))
+
+
+def _ci(values) -> tuple[float, float]:
+    """95% percentile interval; (NaN, NaN) when there is no valid resample (D106)."""
+    b = np.asarray(values, dtype=float)
+    b = b[np.isfinite(b)]
+    if b.size == 0:
+        return float("nan"), float("nan")
+    lo, hi = np.quantile(b, [0.025, 0.975])
+    return float(lo), float(hi)
+
+
+def holm_nan(p_values) -> list[float]:
+    """Holm over the finite p-values; a NaN p (no valid resample) stays NaN and is not part of
+    the family (D106)."""
+    p = np.asarray(p_values, dtype=float)
+    out = np.full(len(p), np.nan)
+    ok = np.isfinite(p)
+    if ok.any():
+        out[ok] = holm(p[ok].tolist())
+    return out.tolist()
 
 
 def _ok(y: np.ndarray) -> bool:
@@ -81,7 +106,7 @@ def e10_table(
         for k, f in fns.items():
             b = np.asarray(boots[m][k])
             row[k] = f(m, y, s, all_rows)
-            row[f"{k}_ci_low"], row[f"{k}_ci_high"] = np.quantile(b, [0.025, 0.975])
+            row[f"{k}_ci_low"], row[f"{k}_ci_high"] = _ci(b)
         seeds = per_seed.get(m)
         row["pr_auc_per_seed"] = [float(pr_auc(y, x)) for x in seeds] if seeds else None
         methods.append(row)
@@ -95,7 +120,7 @@ def e10_table(
             entry = {"metric": k, "comparison": f"{reference} - {m}",
                      "diff": fns[k](reference, y, scores[reference], all_rows)
                      - fns[k](m, y, scores[m], all_rows),
-                     "ci_low": float(np.quantile(d, 0.025)), "ci_high": float(np.quantile(d, 0.975)),
+                     "ci_low": _ci(d)[0], "ci_high": _ci(d)[1],
                      "p_value": _p_two_sided(d)}  # fmt: skip
             if k == "pr_auc":
                 # relative % from the reported diff (seed-averaged scores), so both share a sign;
@@ -109,7 +134,7 @@ def e10_table(
                     entry.update({"seed_mean_diff": es["diff"],
                                   "cohens_d_paired": es["cohens_d_paired"]})  # fmt: skip
             fam.append(entry)
-        adj = holm([e["p_value"] for e in fam])
+        adj = holm_nan([e["p_value"] for e in fam])
         for e, p in zip(fam, adj, strict=True):
             e["p_holm"] = p
         comps.extend(fam)
@@ -150,8 +175,9 @@ def paired_pr_auc(y, a, b, n_boot: int = N_BOOT, seed: int = 0) -> dict[str, flo
     y = np.asarray(y).astype(int)
     d = [pr_auc(y[i], a[i]) - pr_auc(y[i], b[i]) for i in boot_indices(len(y), n_boot, seed)
          if _ok(y[i])]  # fmt: skip
-    return {"diff": pr_auc(y, a) - pr_auc(y, b), "ci_low": float(np.quantile(d, 0.025)),
-            "ci_high": float(np.quantile(d, 0.975)), "p_value": _p_two_sided(np.asarray(d))}  # fmt: skip
+    lo, hi = _ci(d)
+    return {"diff": pr_auc(y, a) - pr_auc(y, b), "ci_low": lo, "ci_high": hi,
+            "p_value": _p_two_sided(np.asarray(d))}  # fmt: skip
 
 
 def e10_subgroups(y, scores: dict[str, np.ndarray], masks: dict[str, np.ndarray],
@@ -169,15 +195,13 @@ def e10_subgroups(y, scores: dict[str, np.ndarray], masks: dict[str, np.ndarray]
             ym = y[m]
             idx = [i for i in boot_indices(len(ym), n_boot) if _ok(ym[i])]
             for k, s in scores.items():
-                b = [pr_auc(ym[i], s[m][i]) for i in idx]
-                row[f"{k}_ci_low"] = float(np.quantile(b, 0.025))
-                row[f"{k}_ci_high"] = float(np.quantile(b, 0.975))
+                row[f"{k}_ci_low"], row[f"{k}_ci_high"] = _ci([pr_auc(ym[i], s[m][i]) for i in idx])
             for v in versus:
                 r = paired_pr_auc(y[m], scores[reference][m], scores[v][m], n_boot)
                 row[f"{reference} - {v}"] = (r["diff"], r["ci_low"], r["ci_high"], r["p_value"])
                 tests.append((len(rows), f"{reference} - {v}"))
         rows.append(row)
-    adj = holm([rows[i][c][3] for i, c in tests]) if tests else []
+    adj = holm_nan([rows[i][c][3] for i, c in tests]) if tests else []
     for (i, c), p in zip(tests, adj, strict=True):
         rows[i][c] = (*rows[i][c], float(p))
     return pd.DataFrame(rows)
@@ -238,8 +262,7 @@ def e11_drops(y, full: dict[str, np.ndarray], removed: dict[str, dict[str, np.nd
             boot_drop[(cond, m)] = b
             drops.append({"condition": cond, "method": m, "pr_auc_full": pr_auc(y, full[m]),
                           "pr_auc_removed": pr_auc(y, s), "drop": point,
-                          "ci_low": float(np.quantile(b, 0.025)),
-                          "ci_high": float(np.quantile(b, 0.975))})  # fmt: skip
+                          "ci_low": _ci(b)[0], "ci_high": _ci(b)[1]})  # fmt: skip
     comps = []
     for v in versus:
         fam = []
@@ -250,10 +273,10 @@ def e11_drops(y, full: dict[str, np.ndarray], removed: dict[str, dict[str, np.nd
             point = ((pr_auc(y, full[reference]) - pr_auc(y, by_method[reference]))
                      - (pr_auc(y, full[v]) - pr_auc(y, by_method[v])))  # fmt: skip
             fam.append({"condition": cond, "comparison": f"drop {reference} - drop {v}",
-                        "diff": point, "ci_low": float(np.quantile(d, 0.025)),
-                        "ci_high": float(np.quantile(d, 0.975)), "p_value": _p_two_sided(d)})  # fmt: skip
+                        "diff": point, "ci_low": _ci(d)[0], "ci_high": _ci(d)[1],
+                        "p_value": _p_two_sided(d)})  # fmt: skip
         single = [e for e in fam if e["condition"] != "tabular only"]
-        adj = holm([e["p_value"] for e in single]) if single else []
+        adj = holm_nan([e["p_value"] for e in single]) if single else []
         for e, p in zip(single, adj, strict=True):
             e["p_holm"] = p
         for e in fam:
