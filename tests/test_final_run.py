@@ -102,7 +102,10 @@ def _repo_with_logs(path):
 def test_record_start_raises_when_the_push_fails(tmp_path):
     log, decisions = _repo_with_logs(tmp_path)
     run_dir = tmp_path / "runs" / "EXP-200-final" / "20261010-000000-000000"
-    with pytest.raises(RuntimeError, match="push.*failed; the final run stops before reading"):
+    with pytest.raises(
+        RuntimeError,
+        match="push.*failed; the final run stops before any test data is scored or evaluated",
+    ):
         record_start(run_dir, "a" * 40, log, extra_logs=[decisions], repo=tmp_path, push=True)
     # the attempt stays on record locally, so the guard still blocks an unlogged re-run
     assert json.loads((run_dir / "metrics.json").read_text("utf-8"))["status"] == "started"
@@ -110,9 +113,9 @@ def test_record_start_raises_when_the_push_fails(tmp_path):
         _guard_final_rerun("EXP-200-final", tmp_path / "runs", None, decisions)
 
 
-def test_final_mode_aborts_before_reading_test_data_when_the_push_fails(tmp_path, monkeypatch):
+def test_final_mode_aborts_before_scoring_test_data_when_the_push_fails(tmp_path, monkeypatch):
     """The whole final-mode start: a failed push must stop main() before build_table (the
-    first read of test-period data) is called."""
+    load, fit and scoring of the data) is called."""
     import vaultic.eval.run as harness
     import vaultic.fusion.dev_compare as dev_compare
     import vaultic.fusion.final_run as fr
@@ -133,5 +136,5 @@ def test_final_mode_aborts_before_reading_test_data_when_the_push_fails(tmp_path
     monkeypatch.setattr(sys, "argv", ["final_run", "--mode", "final"])
     with pytest.raises(RuntimeError, match="push.*failed"):
         fr.main()
-    assert called == []  # no test data was read
+    assert called == []  # nothing was scored
     assert "FINAL-STARTED" in log.read_text("utf-8")

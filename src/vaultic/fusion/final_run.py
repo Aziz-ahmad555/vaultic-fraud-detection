@@ -31,7 +31,9 @@ research/decisions.md). Every E10-E12 setting is read from EXP-200-final.yaml an
 against the D101 / D102 values (EXPECTED) at startup; SHA-256 hashes of the data and feature
 files and of the stored B5 / F0 predictions are recorded in metrics.json (D108).
 
-Start record (D109): right after the guards and BEFORE any test data is read, the final run
+Start record (D109): right after the guards and BEFORE any test data is scored or evaluated
+(build_table, which loads the data and fits and scores every model, runs only after it), the
+final run
 writes experiments/runs/EXP-200-final/<ts>/metrics.json {"mode": "final", "status": "started"}
 and a FINAL-STARTED line in research/experiment_log.md, and commits and pushes that line; if
 the commit or push fails it stops. The guard counts a "started" run as a final run, so a crash
@@ -141,10 +143,11 @@ def check_git(frozen: Path, repo: Path = REPO_ROOT) -> str:
 
 def record_start(run_dir: Path, head: str, experiment_log: Path, extra_logs=(),
                  repo: Path = REPO_ROOT, push: bool = True) -> None:  # fmt: skip
-    """D109: mark the final run as started, committed and pushed before test data is read.
+    """D109: mark the final run as started, committed and pushed; test data is not scored or
+    evaluated before FINAL-STARTED.
 
     Any failing git step (commit, or a push that fails or hangs: network, auth) raises, so the
-    run stops before reading test data. The local start record stays (metrics.json "started"
+    run stops before any test data is scored or evaluated. The local start record stays (metrics.json "started"
     and the local commit), so the guard still counts the attempt; push it by hand before a
     logged re-run."""
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}  # never wait for a credential prompt
@@ -155,10 +158,11 @@ def record_start(run_dir: Path, head: str, experiment_log: Path, extra_logs=(),
                                timeout=PUSH_TIMEOUT_S)  # fmt: skip
         except subprocess.TimeoutExpired as e:
             raise RuntimeError(f"git {' '.join(a)} timed out after {PUSH_TIMEOUT_S} s; the final "
-                               "run stops before reading test data") from e  # fmt: skip
+                               "run stops before any test data is scored or evaluated") from e  # fmt: skip
         if r.returncode != 0:
-            raise RuntimeError(f"git {' '.join(a)} failed; the final run stops before reading "
-                               f"test data:\n{r.stderr}")  # fmt: skip
+            raise RuntimeError(f"git {' '.join(a)} failed; the final run stops before any test data "
+                               "is scored or evaluated:"
+                               f"\n{r.stderr}")  # fmt: skip
         return r
 
     run_dir.mkdir(parents=True)
@@ -168,7 +172,7 @@ def record_start(run_dir: Path, head: str, experiment_log: Path, extra_logs=(),
     rel = run_dir.resolve().relative_to(repo.resolve()).as_posix()
     with open(experiment_log, "a", encoding="utf-8") as f:
         f.write(f"| {run_dir.parent.name} | {date.today().isoformat()} | FINAL-STARTED: E10-E12 "
-                f"final run started at commit `{head[:12]}` (D101); test data not read yet | run "
+                f"final run started at commit `{head[:12]}` (D101); test data not scored or evaluated yet | run "
                 f"`{rel}` | — |\n")  # fmt: skip
     logs = [experiment_log, *extra_logs]
     git("add", *[Path(p).resolve().relative_to(repo.resolve()).as_posix() for p in logs])
