@@ -19,6 +19,11 @@ Dev mode (validation only, a pipeline check, never a result): evaluation rows = 
 calibration rows = 147-148, on a 1-in-10 uid sample with --smoke; reports go to
 E:\\dev-cache\\tmp\\final_dev, not to research/.
 
+Refit check (validation only):  python -m vaultic.fusion.final_run --mode refit-check
+  refits B5 and F0 on the full days 1-120 (no view models) and compares them with the stored
+  EXP-009 / EXP-F0-inner validation predictions (correlation, max |diff|). A --smoke dev run
+  cannot make this check (its models see 1 in 10 uids); a full dev run makes it on its rows.
+
 Final mode refuses to run unless research/frozen_final.md matches every frozen file, and a
 second final run needs --rerun-reason (FINAL-RERUN rule, logged in research/decisions.md).
 """
@@ -138,6 +143,7 @@ def main() -> None:
         e10_table,
         e11_drops,
         h2_verdict,
+        refit_check,
         subgroup_masks,
     )
     from vaultic.fusion.tune_fusion import concat_rows
@@ -147,7 +153,7 @@ def main() -> None:
     from vaultic.views.orchestrate import CONTEXT, calibrate_views
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--mode", choices=["dev", "freeze", "final"], required=True)
+    parser.add_argument("--mode", choices=["dev", "freeze", "refit-check", "final"], required=True)
     parser.add_argument("--smoke", action="store_true", help="dev only: 1 in 10 uids")
     parser.add_argument("--rerun-reason", default=None)
     parser.add_argument("--n-boot", type=int, default=None, help="dev only: fewer resamples")
@@ -159,6 +165,9 @@ def main() -> None:
         write_freeze(frozen_files(cfg), FROZEN,
                      title="Frozen configs for the Paper 2 final runs (E10-E12, D101)")  # fmt: skip
         print(f"wrote {FROZEN}")
+        return
+    if args.mode == "refit-check":
+        _refit_check_mode(cfg, build_table)
         return
     final = args.mode == "final"
     if final:
@@ -190,8 +199,7 @@ def main() -> None:
     b5_removals = {"tabular": vcols["tabular"], "behavioral": list(LABEL_DERIVED),
                    "tabular only": list(LABEL_DERIVED)}  # fmt: skip
     keep = set(vcols["tabular"])
-    f0_cols = list(dict.fromkeys(parts["b5_cols"] + vcols["behavioral"] + vcols["graph"]
-                                 + vcols["anomaly"] + vcols["temporal"]))  # fmt: skip
+    f0_cols = _f0_columns(parts)
     f0_removals = {v: vcols[v] for v in ("tabular", "behavioral", "temporal", "graph", "anomaly")}
     f0_removals["tabular only"] = [c for c in f0_cols if c not in keep]
     for name, cid, columns, removals in (("B5", cfg["b5_config"], parts["b5_cols"], b5_removals),
@@ -230,13 +238,16 @@ def main() -> None:
         )
     gate = phase8_gate(trust)
 
-    sanity = None
-    if final:  # the refitted B5 must reproduce the stored Phase 2 B5 test predictions
-        stored = pd.read_parquet(REPO_ROOT / cfg["b5_run"] / "predictions.parquet")
-        stored = stored[stored["split"] == "test"].set_index("TransactionID")["score"]
-        ref = stored.reindex(ev.ids).to_numpy(float)
-        sanity = {"max_abs_diff": float(np.nanmax(np.abs(ref - s_ev["B5"]))),
-                  "corr": float(np.corrcoef(ref, s_ev["B5"])[0, 1])}  # fmt: skip
+    # the refitted B5 / F0 must reproduce the stored predictions on the same rows: B5 on test
+    # (final), B5 and F0 on validation (full dev run); a smoke run cannot (1 in 10 uids)
+    if args.smoke:
+        sanity = {"skipped": "smoke run: B5 / F0 trained on a 1-in-10 uid sample; use "
+                             "--mode refit-check"}  # fmt: skip
+    elif final:
+        sanity = {"B5 (test)": refit_check(_stored(cfg["b5_run"], "test"), ev.ids, s_ev["B5"])}
+    else:
+        sanity = {f"{m} (validation)": refit_check(_stored(cfg[run], "validation"), ev.ids, s_ev[m])
+                  for m, run in (("B5", "b5_run"), ("F0", "f0_run"))}  # fmt: skip
 
     out_dir = (RESEARCH_DIR / "tables") if final else DEV_OUT
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -244,7 +255,7 @@ def main() -> None:
     meta = {"mode": args.mode, "smoke": args.smoke, "n_boot": n_boot, "seeds": list(seeds),
             "evaluation_rows": int(len(ev.y)), "evaluation_frauds": int(ev.y.sum()),
             "calibration_rows": int(len(cal.y)), "calibration_frauds": int(cal.y.sum()),
-            "gate_rows": int(len(both.y)), "thresholds": thresholds, "b5_sanity": sanity,
+            "gate_rows": int(len(both.y)), "thresholds": thresholds, "refit_check": sanity,
             "runtime_s": round(time.perf_counter() - started)}  # fmt: skip
     write_reports(out_dir, prefix, meta, methods, comps, subs, h2, drops, drop_comps, trust, gate)
     if final:
@@ -261,6 +272,34 @@ def main() -> None:
         f"wrote {out_dir} ({prefix}*); H2: {h2['verdict']}; "
         f"Phase 8 gate passed: {gate['passed']}"
     )
+
+
+def _stored(run: str, split: str) -> pd.Series:
+    stored = pd.read_parquet(REPO_ROOT / run / "predictions.parquet")
+    return stored[stored["split"] == split].set_index("TransactionID")["score"]
+
+
+def _refit_check_mode(cfg: dict, build_table) -> None:
+    """B5 and F0 refitted on the full training period vs their stored validation predictions."""
+    from vaultic.fusion.final_eval import refit_check
+
+    parts = build_table(False, d95=True, parts_only=True)
+    df, splits = parts["df"], parts["splits"]
+    val = df.loc[splits.validation.contains(df["day"].to_numpy()), "TransactionID"].to_numpy()
+    out = {}
+    for m, cid, run, columns in (("B5", cfg["b5_config"], cfg["b5_run"], parts["b5_cols"]),
+                                 ("F0", cfg["f0_config"], cfg["f0_run"], _f0_columns(parts))):  # fmt: skip
+        _, s, _, _ = _feature_model_scores(parts, cid, columns, val, val, tuple(cfg["seeds"]), {})
+        out[m] = refit_check(_stored(run, "validation"), val, s)
+        print(m, out[m], flush=True)
+    DEV_OUT.mkdir(parents=True, exist_ok=True)
+    (DEV_OUT / "final_dev_refit_check.json").write_text(json.dumps(out, indent=1), "utf-8")
+
+
+def _f0_columns(parts) -> list[str]:
+    vcols = _view_columns(parts)
+    return list(dict.fromkeys(parts["b5_cols"] + vcols["behavioral"] + vcols["graph"]
+                              + vcols["anomaly"] + vcols["temporal"]))  # fmt: skip
 
 
 def _ci(r, k):
@@ -316,10 +355,13 @@ def write_reports(out_dir, prefix, meta, methods, comps, subs, h2, drops, drop_c
     lines += ["", f"**H2 (D101):** beats F3 / F4 overall: {h2['beats_overall']}; larger margin on "
               f"missing-view rows: {h2['larger_margin_on_missing_views']} → "
               f"**{h2['verdict'].upper()}**.", ""]  # fmt: skip
-    if meta.get("b5_sanity"):
-        lines += [f"Refitted B5 vs stored Phase 2 B5 test predictions: max |diff| "
-                  f"{meta['b5_sanity']['max_abs_diff']:.2e}, correlation "
-                  f"{meta['b5_sanity']['corr']:.6f}.", ""]  # fmt: skip
+    for name, chk in (meta.get("refit_check") or {}).items():
+        if name == "skipped":
+            lines += [f"Refit check skipped: {chk}.", ""]
+        else:
+            lines += [f"Refitted {name} vs stored predictions: max |diff| {chk['max_abs_diff']:.2e}, "
+                      f"correlation {chk['corr']:.6f} ({chk['n_compared']} rows compared, "
+                      f"{chk['n_missing']} missing or not finite).", ""]  # fmt: skip
     (out_dir / f"{prefix}e10.md").write_text("\n".join(lines), encoding="utf-8")
 
     lines = [f"# E11: robustness to missing views ({meta['mode']})", "", banner + head, "",

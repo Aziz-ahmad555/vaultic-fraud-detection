@@ -110,7 +110,8 @@ def external_scores(run_dir: Path, ids: np.ndarray) -> np.ndarray:
     return out
 
 
-def build_table(smoke: bool, d95: bool = False, final: bool = False, return_parts: bool = False):
+def build_table(smoke: bool, d95: bool = False, final: bool = False, return_parts: bool = False,
+                parts_only: bool = False):  # fmt: skip
     """The view table. d95=True (D95): the cross-fitted plan, the views with their tuned
     hyperparameters (configs EXP-V-<view>.yaml from `vaultic.eval.tune --view`), XGBoost for the
     anomaly and temporal views (temporal on the sequence features, in-process).
@@ -163,6 +164,9 @@ def build_table(smoke: bool, d95: bool = False, final: bool = False, return_part
     assert all(c in features for c in LABEL_DERIVED)  # the behavioral view needs them (D89)
     features["uid"] = uid.to_numpy()
     params = yaml.safe_load((CONFIG_DIR / "EXP-009.yaml").read_text("utf-8"))["model"]["params"]
+    if parts_only:  # data and features only, no view models (refit checks)
+        return {"df": df, "features": features, "tab_cols": tab_cols, "cols": cols,
+                "b5_cols": list(tab.columns), "splits": splits}  # fmt: skip
     if d95:
 
         def tuned(view):

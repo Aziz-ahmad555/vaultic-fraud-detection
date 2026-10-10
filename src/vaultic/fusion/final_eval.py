@@ -116,6 +116,21 @@ def e10_table(
     return pd.DataFrame(methods), pd.DataFrame(comps)
 
 
+def refit_check(stored: pd.Series, ids, scores) -> dict:
+    """Refitted scores vs stored predictions (indexed by TransactionID) on the same rows. Rows
+    missing from the stored run, or not finite on either side, are left out and counted."""
+    ref = stored.reindex(np.asarray(ids)).to_numpy(float)
+    s = np.asarray(scores, dtype=float)
+    ok = np.isfinite(ref) & np.isfinite(s)
+    out = {"n_rows": int(len(s)), "n_compared": int(ok.sum()), "n_missing": int((~ok).sum()),
+           "max_abs_diff": np.nan, "corr": np.nan}  # fmt: skip
+    if ok.sum() >= 2:
+        out["max_abs_diff"] = float(np.max(np.abs(ref[ok] - s[ok])))
+        if np.std(ref[ok]) > 0 and np.std(s[ok]) > 0:
+            out["corr"] = float(np.corrcoef(ref[ok], s[ok])[0, 1])
+    return out
+
+
 def subgroup_masks(context_hist: np.ndarray, has_identity: np.ndarray,
                    view_masks: np.ndarray) -> dict[str, np.ndarray]:  # fmt: skip
     """E10 subgroups (D101): cold start vs history, has_identity, graph view available, and

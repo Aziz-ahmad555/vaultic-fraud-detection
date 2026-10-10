@@ -9,6 +9,7 @@ from vaultic.fusion.final_eval import (
     e10_table,
     e11_drops,
     h2_verdict,
+    refit_check,
     subgroup_masks,
 )
 
@@ -132,3 +133,12 @@ def test_h2_verdict_three_states():
     assert r["larger_margin_on_missing_views"]["F3"] is None
     # a decisive False elsewhere still gives "not supported"
     assert h2_verdict(*_h2_inputs(0.02, 0.02, 0.2, missing))["verdict"] == "not supported"
+
+
+def test_refit_check_skips_missing_ids_and_nans():
+    stored = pd.Series([0.1, 0.2, 0.3, 0.4], index=[10, 11, 12, 13])
+    r = refit_check(stored, [10, 11, 12, 99, 13], [0.1, 0.2, 0.31, 0.5, np.nan])
+    assert r["n_compared"] == 3 and r["n_missing"] == 2  # id 99 not stored; 13 refit NaN
+    assert r["max_abs_diff"] == pytest.approx(0.01)
+    assert np.isfinite(r["corr"]) and r["corr"] > 0.99
+    assert np.isnan(refit_check(stored, [99], [0.5])["corr"])

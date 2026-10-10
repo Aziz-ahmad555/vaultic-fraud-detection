@@ -11,6 +11,7 @@ fusion_params: research/tables/fusion_d95.json            # D95-tuned MVAF / F3-
 b5_config: EXP-009                                         # B5, frozen Phase 2 model
 b5_run: experiments/runs/EXP-009/20261008-211052-888539    # stored B5 test predictions (sanity check)
 f0_config: EXP-F0-inner                                    # F0, the D95 version (tuned on 128-143)
+f0_run: experiments/runs/EXP-F0-inner/20261009-213740-324011  # stored F0 validation predictions (refit check)
 seeds: [0, 1, 2, 3, 4]
 bootstrap: {n: 1000, seed: 0}
 e10:
