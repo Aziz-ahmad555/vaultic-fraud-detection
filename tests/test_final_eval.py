@@ -1,6 +1,7 @@
 """Final-experiment statistics (E10, E11; D101, D102) on synthetic scores."""
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from vaultic.fusion.final_eval import (
@@ -63,7 +64,9 @@ def test_subgroups_and_h2_rule():
     _, comps = e10_table(Y, scores, {}, AMOUNT, {m: 0.5 for m in scores}, n_boot=100)
     verdict = h2_verdict(comps, sub)
     assert verdict["beats_overall"] == {"F3": True, "F4": True}
-    assert set(verdict) == {"beats_overall", "larger_margin_on_missing_views", "supported"}
+    assert set(verdict) == {"beats_overall", "larger_margin_on_missing_views", "verdict",
+                            "supported"}  # fmt: skip
+    assert verdict["verdict"] == "undetermined"  # no 1-2 view rows here: that margin is NaN
     worse = {"MVAF": _score(2.0, 9), "F3": _score(0.8, 2), "F4": _score(0.8, 3)}
     _, comps2 = e10_table(Y, worse, {}, AMOUNT, {m: 0.5 for m in worse}, n_boot=100)
     assert not h2_verdict(comps2, e10_subgroups(Y, worse, masks, n_boot=100))["supported"]
@@ -102,3 +105,25 @@ def test_e10_cost_uses_the_given_threshold_only():
     assert cost["diff"] != 0  # same scores, different thresholds -> different cost
     with pytest.raises(KeyError):
         e10_table(Y, {"MVAF": s, "F3": s}, {}, AMOUNT, {"MVAF": 0.5}, n_boot=10)
+
+
+def _h2_inputs(diff_f3, diff_f4, p, margins):
+    comps = pd.DataFrame([{"metric": "pr_auc", "comparison": f"MVAF - {v}", "diff": d,
+                           "p_holm": p} for v, d in (("F3", diff_f3), ("F4", diff_f4))])  # fmt: skip
+    subs = pd.DataFrame([{"subgroup": g, "MVAF - F3": (m, 0, 0, 1), "MVAF - F4": (m, 0, 0, 1)}
+                         for g, m in margins.items()])  # fmt: skip
+    return comps, subs
+
+
+def test_h2_verdict_three_states():
+    ok = {"1-2 views": 0.05, "3-4 views": 0.04, "5 views": 0.01}
+    assert h2_verdict(*_h2_inputs(0.02, 0.02, 0.01, ok))["verdict"] == "supported"
+    assert h2_verdict(*_h2_inputs(-0.01, 0.02, 0.01, ok))["verdict"] == "not supported"
+    smaller = {**ok, "3-4 views": 0.0}
+    assert h2_verdict(*_h2_inputs(0.02, 0.02, 0.01, smaller))["verdict"] == "not supported"
+    missing = {**ok, "1-2 views": np.nan}  # one margin not finite: undetermined (D105)
+    r = h2_verdict(*_h2_inputs(0.02, 0.02, 0.01, missing))
+    assert r["verdict"] == "undetermined" and r["supported"] is False
+    assert r["larger_margin_on_missing_views"]["F3"] is None
+    # a decisive False elsewhere still gives "not supported"
+    assert h2_verdict(*_h2_inputs(0.02, 0.02, 0.2, missing))["verdict"] == "not supported"

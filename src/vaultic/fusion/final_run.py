@@ -258,7 +258,7 @@ def main() -> None:
                                                          indent=1, default=str), "utf-8")  # fmt: skip
         (run_dir / "config.yaml").write_text(CONFIG.read_text("utf-8"), "utf-8")
     print(
-        f"wrote {out_dir} ({prefix}*); H2 supported: {h2['supported']}; "
+        f"wrote {out_dir} ({prefix}*); H2: {h2['verdict']}; "
         f"Phase 8 gate passed: {gate['passed']}"
     )
 
@@ -308,7 +308,7 @@ def write_reports(out_dir, prefix, meta, methods, comps, subs, h2, drops, drop_c
                      + " | ".join(vals + ds) + " |")  # fmt: skip
     lines += ["", f"**H2 (D101):** beats F3 / F4 overall: {h2['beats_overall']}; larger margin on "
               f"missing-view rows: {h2['larger_margin_on_missing_views']} → "
-              f"**{'SUPPORTED' if h2['supported'] else 'NOT SUPPORTED'}**.", ""]  # fmt: skip
+              f"**{h2['verdict'].upper()}**.", ""]  # fmt: skip
     if meta.get("b5_sanity"):
         lines += [f"Refitted B5 vs stored Phase 2 B5 test predictions: max |diff| "
                   f"{meta['b5_sanity']['max_abs_diff']:.2e}, correlation "

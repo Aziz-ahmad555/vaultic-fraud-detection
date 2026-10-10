@@ -156,8 +156,13 @@ def e10_subgroups(y, scores: dict[str, np.ndarray], masks: dict[str, np.ndarray]
 
 def h2_verdict(comparisons: pd.DataFrame, subgroups: pd.DataFrame, alpha: float = 0.05) -> dict:
     """D101/D102: H2 is supported only if MVAF beats F3 AND F4 overall (PR-AUC, positive and
-    Holm-significant) AND its margin over each on rows with missing views (1-4 views) is larger
-    than on rows with all 5 views."""
+    Holm-significant) AND its margin over each on rows with missing views (1-2 and 3-4 views) is
+    larger than on rows with all 5 views.
+
+    D105: the margin comparison needs all three margins (1-2, 3-4, 5 views) to be finite; if one
+    is not (a subgroup without both classes), that part is undetermined (None). The verdict is
+    "not supported" if any part is False, "undetermined" if no part is False but one is None,
+    and "supported" only if every part is True."""
     pr = comparisons[comparisons["metric"] == "pr_auc"].set_index("comparison")
     overall = {v: bool(pr.loc[f"MVAF - {v}", "diff"] > 0 and pr.loc[f"MVAF - {v}", "p_holm"] < alpha)
                for v in ("F3", "F4")}  # fmt: skip
@@ -170,12 +175,20 @@ def h2_verdict(comparisons: pd.DataFrame, subgroups: pd.DataFrame, alpha: float 
     larger = {}
     for v in ("F3", "F4"):
         missing = [margin(g, v) for g in ("1-2 views", "3-4 views")]
-        missing = [m for m in missing if np.isfinite(m)]
         full = margin("5 views", v)
-        larger[v] = bool(missing and np.isfinite(full) and min(missing) > full)
-    supported = all(overall.values()) and all(larger.values())
+        if not all(np.isfinite(x) for x in [*missing, full]):
+            larger[v] = None  # undetermined (D105)
+        else:
+            larger[v] = bool(min(missing) > full)
+    parts = [*overall.values(), *larger.values()]
+    if any(p is False for p in parts):
+        verdict = "not supported"
+    elif any(p is None for p in parts):
+        verdict = "undetermined"
+    else:
+        verdict = "supported"
     return {"beats_overall": overall, "larger_margin_on_missing_views": larger,
-            "supported": supported}  # fmt: skip
+            "verdict": verdict, "supported": verdict == "supported"}  # fmt: skip
 
 
 def e11_drops(y, full: dict[str, np.ndarray], removed: dict[str, dict[str, np.ndarray]],
