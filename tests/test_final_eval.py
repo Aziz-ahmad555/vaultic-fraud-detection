@@ -61,6 +61,9 @@ def test_subgroups_and_h2_rule():
     scores = {"MVAF": _score(0.8, 1), "F3": _score(2.0, 2), "F4": _score(2.0, 3)}
     sub = e10_subgroups(Y, scores, masks, n_boot=100)
     assert "MVAF - F3" in sub.columns
+    cells = [c for col in ("MVAF - F3", "MVAF - F4") for c in sub[col] if isinstance(c, tuple)]
+    assert len(cells) == 2 * (len(sub) - 1)  # all subgroups but the empty "1-2 views"
+    assert all(len(c) == 5 and c[4] >= c[3] for c in cells)  # Holm p >= raw p (D104)
     _, comps = e10_table(Y, scores, {}, AMOUNT, {m: 0.5 for m in scores}, n_boot=100)
     verdict = h2_verdict(comps, sub)
     assert verdict["beats_overall"] == {"F3": True, "F4": True}

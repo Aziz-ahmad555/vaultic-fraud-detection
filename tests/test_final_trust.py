@@ -28,6 +28,7 @@ def test_trust_report_sections_and_gate():
     pol = {(r["policy"], r["K"]) for r in rep["routing"]["policies"]}
     assert ("R4", 50) in pol and ("R1", 500) in pol
     assert {h["comparison"] for h in rep["routing"]["h5"]} == {"R3 - R1", "R4 - R1"}
+    assert all(h["p_holm"] >= h["p_value"] for h in rep["routing"]["h5"])  # D104
     assert rep["decision"]["default"]["evaluation_cost"] > 0
     gate = phase8_gate({"MVAF": rep})
     assert set(gate["per_method"]["MVAF"]) == {"0.90", "0.95"}

@@ -141,7 +141,10 @@ def paired_pr_auc(y, a, b, n_boot: int = N_BOOT, seed: int = 0) -> dict[str, flo
 
 def e10_subgroups(y, scores: dict[str, np.ndarray], masks: dict[str, np.ndarray],
                   reference: str = "MVAF", versus=("F3", "F4"), n_boot: int = N_BOOT) -> pd.DataFrame:  # fmt: skip
-    rows = []
+    """PR-AUC per subgroup and method; reference minus each `versus` method, paired. Cells of
+    the comparison columns are (diff, ci_low, ci_high, p, p_holm), with Holm across every
+    comparison in the table (all subgroups x `versus` methods; D104)."""
+    rows, tests = [], []
     y = np.asarray(y).astype(int)
     for name, m in masks.items():
         row = {"subgroup": name, "rows": int(m.sum()), "frauds": int(y[m].sum())}
@@ -150,7 +153,11 @@ def e10_subgroups(y, scores: dict[str, np.ndarray], masks: dict[str, np.ndarray]
             for v in versus:
                 r = paired_pr_auc(y[m], scores[reference][m], scores[v][m], n_boot)
                 row[f"{reference} - {v}"] = (r["diff"], r["ci_low"], r["ci_high"], r["p_value"])
+                tests.append((len(rows), f"{reference} - {v}"))
         rows.append(row)
+    adj = holm([rows[i][c][3] for i, c in tests]) if tests else []
+    for (i, c), p in zip(tests, adj, strict=True):
+        rows[i][c] = (*rows[i][c], float(p))
     return pd.DataFrame(rows)
 
 

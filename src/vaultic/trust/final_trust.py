@@ -26,6 +26,7 @@ from dataclasses import asdict
 import numpy as np
 import pandas as pd
 
+from vaultic.eval.bootstrap import holm
 from vaultic.trust.calibration import (
     PlattCalibrator,
     calibration_report,
@@ -147,6 +148,8 @@ def routing_section(day_cal, y_cal, amt_cal, p_cal, u_cal, d_cal, day_ev, y_ev, 
             h5.append({"K": k, "comparison": f"{pol} - R1", "fraud_value_diff": float(diff_day.sum()),
                        "ci_low": float(np.quantile(d, 0.025)), "ci_high": float(np.quantile(d, 0.975)),
                        "p_value": p})  # fmt: skip
+    for h, p in zip(h5, holm([h["p_value"] for h in h5]) if h5 else [], strict=True):
+        h["p_holm"] = float(p)  # Holm across this method's H5 tests (all K, R3 / R4; D104)
     return {"policies": rows, "lambdas": {str(k): v for k, v in lambdas.items()}, "h5": h5}
 
 

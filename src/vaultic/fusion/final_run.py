@@ -303,9 +303,15 @@ def write_reports(out_dir, prefix, meta, methods, comps, subs, h2, drops, drop_c
     for r in subs.to_dict("records"):
         vals = ["" if pd.isna(r.get(c, np.nan)) else f"{r[c]:.4f}" for c in mcols]
         ds = ["" if not isinstance(r.get(c), tuple) else
-              f"{r[c][0]:+.4f} [{r[c][1]:+.4f}, {r[c][2]:+.4f}]" for c in vcols]  # fmt: skip
+              f"{r[c][0]:+.4f} [{r[c][1]:+.4f}, {r[c][2]:+.4f}], p (Holm) {r[c][4]:.3f}"
+              for c in vcols]  # fmt: skip
         lines.append(f"| {r['subgroup']} | {r['rows']} | {r['frauds']} | "
                      + " | ".join(vals + ds) + " |")  # fmt: skip
+    lines += [
+        "",
+        "Subgroup comparisons: paired bootstrap; Holm across every comparison in this "
+        "table (D104).",
+    ]
     lines += ["", f"**H2 (D101):** beats F3 / F4 overall: {h2['beats_overall']}; larger margin on "
               f"missing-view rows: {h2['larger_margin_on_missing_views']} → "
               f"**{h2['verdict'].upper()}**.", ""]  # fmt: skip
@@ -357,9 +363,14 @@ def write_reports(out_dir, prefix, meta, methods, comps, subs, h2, drops, drop_c
             lines.append(f"| {p['K']} | {p['policy']} | {p['fraud_value_caught']:,.0f} | "
                          f"{p['fraud_caught']} | {p['recall_at_k']:.4f} | "
                          f"{p['money_saved_per_review']:.1f} |")  # fmt: skip
-        lines += ["", "H5 (fraud value, day-block bootstrap):", ""]
+        lines += [
+            "",
+            "H5 (fraud value, day-block bootstrap; Holm across this method's H5 tests, " "D104):",
+            "",
+        ]
         lines += [f"- K = {h['K']}: {h['comparison']} {h['fraud_value_diff']:+,.0f} "
-                  f"[{h['ci_low']:+,.0f}, {h['ci_high']:+,.0f}], p = {h['p_value']:.3f}"
+                  f"[{h['ci_low']:+,.0f}, {h['ci_high']:+,.0f}], p = {h['p_value']:.3f}, "
+                  f"p (Holm) = {h['p_holm']:.3f}"
                   for h in r["routing"]["h5"]]  # fmt: skip
         lines.append("")
     lines += [f"**Phase 8 exit gate** (Mondrian coverage within 2 points of target): "
