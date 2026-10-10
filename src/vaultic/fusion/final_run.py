@@ -92,6 +92,12 @@ EXPECTED = {
 }  # fmt: skip
 PUSH_TIMEOUT_S = 120
 LOCK_NAME = ".final.lock"
+# D112: data files in the freeze record ("| `path` | bytes | `sha256` |", which check_freeze's
+# two-column pattern does not match) and the data-path environment at freeze time
+DATA_ROW = re.compile(r"^\| `([^`]+)` \| (\d+) \| `([0-9a-f]{64})` \|$", re.M)
+ENV_VARS = ("VAULTIC_DATA_DIR", "VAULTIC_RAW_DIR")
+ENV_LINE = re.compile(r"Environment at freeze: VAULTIC_DATA_DIR = `([^`]*)`; "
+                      r"VAULTIC_RAW_DIR = `([^`]*)`")  # fmt: skip
 LOG_FILES = {"research/frozen_final.md", "research/experiment_log.md", "research/decisions.md"}
 
 
@@ -206,7 +212,8 @@ def log_guard(experiment: str, rerun_reason: str | None, branch: str,
 
 
 def record_start(run_dir: Path, head: str, experiment_log: Path, extra_logs=(),
-                 repo: Path = REPO_ROOT, push: bool = True) -> None:  # fmt: skip
+                 repo: Path = REPO_ROOT, push: bool = True,
+                 data_hashes: dict[str, str] | None = None) -> None:  # fmt: skip
     """D109: mark the final run as started, committed and pushed; test data is not scored or
     evaluated before FINAL-STARTED.
 
@@ -232,7 +239,8 @@ def record_start(run_dir: Path, head: str, experiment_log: Path, extra_logs=(),
     run_dir.mkdir(parents=True)
     (run_dir / "metrics.json").write_text(json.dumps(
         {"mode": "final", "status": "started", "git_commit": head,
-         "started": datetime.now().isoformat(timespec="seconds")}, indent=1), "utf-8")  # fmt: skip
+         "started": datetime.now().isoformat(timespec="seconds"),
+         "data_hashes": data_hashes or {}}, indent=1), "utf-8")  # fmt: skip
     rel = run_dir.resolve().relative_to(repo.resolve()).as_posix()
     with open(experiment_log, "a", encoding="utf-8") as f:
         f.write(f"| {run_dir.parent.name} | {date.today().isoformat()} | FINAL-STARTED: E10-E12 "
@@ -240,7 +248,11 @@ def record_start(run_dir: Path, head: str, experiment_log: Path, extra_logs=(),
                 f"`{rel}` | — |\n")  # fmt: skip
     logs = [experiment_log, *extra_logs]
     git("add", *[Path(p).resolve().relative_to(repo.resolve()).as_posix() for p in logs])
-    git("commit", "-q", "-m", f"FINAL-STARTED {run_dir.parent.name} ({run_dir.name})")
+    message = f"FINAL-STARTED {run_dir.parent.name} ({run_dir.name})"
+    if data_hashes:  # D112: the data the run is about to use, as checked against the freeze
+        message += ("\n\nData files (SHA-256, checked against research/frozen_final.md):\n"
+                    + "\n".join(f"{h}  {p}" for p, h in data_hashes.items()))  # fmt: skip
+    git("commit", "-q", "-m", message)
     if push:
         try:
             git("push", "-q", "origin", "HEAD")
@@ -286,10 +298,69 @@ def start_final(cfg: dict, rerun_reason: str | None, head: str, branch: str) -> 
                 f.write(f"| FINAL-RERUN | {date.today().isoformat()} | {cfg['id']} | --final "
                         f"re-run; earlier final run on record in the logs ({sum(logged.values())} "
                         f"rows) | — | {rerun_reason} | Logged by final_run |\n")  # fmt: skip
+        # D112: data files and data paths as frozen, checked before the start record
+        hashes = check_data(FROZEN.read_text("utf-8"), data_files(cfg), env_values())
         run_dir = RUNS_DIR / cfg["id"] / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         record_start(run_dir, head, RESEARCH_DIR / "experiment_log.md",
-                     extra_logs=[RESEARCH_DIR / "decisions.md"], repo=REPO_ROOT)  # fmt: skip
+                     extra_logs=[RESEARCH_DIR / "decisions.md"], repo=REPO_ROOT,
+                     data_hashes=hashes)  # fmt: skip
     return run_dir
+
+
+def data_files(cfg: dict) -> list[Path]:
+    """D112: every data file the final run reads: the merged data, the uid file, every feature
+    parquet, the temporal_dev_v4 inputs, and the stored B5 / F0 predictions."""
+    from vaultic.data.uid import UID_PATH
+    from vaultic.paths import FEATURES_DIR, INTERIM_DIR, MERGED_PATH
+
+    temporal = INTERIM_DIR / "temporal_dev_v4"
+    return [MERGED_PATH, UID_PATH, *sorted(FEATURES_DIR.glob("*.parquet")),
+            *sorted(p for p in temporal.iterdir() if p.is_file()),
+            REPO_ROOT / cfg["b5_run"] / "predictions.parquet",
+            REPO_ROOT / cfg["f0_run"] / "predictions.parquet"]  # fmt: skip
+
+
+def env_values() -> dict[str, str]:
+    return {k: os.environ.get(k) or "unset" for k in ENV_VARS}
+
+
+def data_section(files, env: dict[str, str]) -> str:
+    """The freeze record's data section (D112)."""
+    lines = ["", "## Data files (D112)", "",
+             f"Environment at freeze: VAULTIC_DATA_DIR = `{env['VAULTIC_DATA_DIR']}`; "
+             f"VAULTIC_RAW_DIR = `{env['VAULTIC_RAW_DIR']}`.", "",
+             "| file | bytes | sha256 |", "|---|---|---|"]  # fmt: skip
+    for f in files:
+        f = Path(f)
+        lines.append(f"| `{f.as_posix()}` | {f.stat().st_size} | `{file_sha256(f)}` |")
+    return "\n".join(lines) + "\n"
+
+
+def check_data(record: str, files, env: dict[str, str]) -> dict[str, str]:
+    """D112: the data-path environment and every data file must match the freeze record
+    (same set of files, sizes and SHA-256). Returns {path: sha256}."""
+    m = ENV_LINE.search(record)
+    if not m:
+        raise RuntimeError("the freeze record has no data section (D112); re-freeze first")
+    frozen_env = dict(zip(ENV_VARS, m.groups(), strict=True))
+    if frozen_env != env:
+        raise RuntimeError(f"data paths differ from the freeze: now {env}, at freeze {frozen_env}")
+    rec = {p: (int(n), h) for p, n, h in DATA_ROW.findall(record)}
+    now = [Path(f).as_posix() for f in files]
+    if set(rec) != set(now):
+        raise RuntimeError(f"data files differ from the freeze: added {sorted(set(now) - set(rec))}, "
+                           f"removed {sorted(set(rec) - set(now))}")  # fmt: skip
+    out, bad = {}, []
+    for p in now:
+        size, digest = rec[p]
+        path = Path(p)
+        if not path.exists() or path.stat().st_size != size or file_sha256(path) != digest:
+            bad.append(p)
+        else:
+            out[p] = digest
+    if bad:
+        raise RuntimeError(f"data files changed since the freeze: {bad}")
+    return out
 
 
 def file_sha256(path: Path) -> str:
@@ -427,6 +498,8 @@ def main() -> None:
 
         write_freeze(frozen_files(cfg), FROZEN,
                      title="Frozen configs for the Paper 2 final runs (E10-E12, D101)")  # fmt: skip
+        with open(FROZEN, "a", encoding="utf-8") as f:
+            f.write(data_section(data_files(cfg), env_values()))
         print(f"wrote {FROZEN}")
         return
     if args.mode == "refit-check":

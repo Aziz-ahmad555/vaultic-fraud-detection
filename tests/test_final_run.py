@@ -11,10 +11,12 @@ import yaml
 from vaultic.eval.run import _guard_final_rerun
 from vaultic.fusion.final_run import (
     CONFIG,
+    check_data,
     check_git,
     check_origin,
     check_settings,
     count_final_rows,
+    data_section,
     exclusive_lock,
     log_guard,
     record_start,
@@ -144,6 +146,8 @@ def test_final_mode_aborts_before_scoring_test_data_when_the_push_fails(tmp_path
     monkeypatch.setattr(fr, "check_git", lambda *a, **k: "a" * 40)
     monkeypatch.setattr(fr, "check_origin", lambda *a, **k: "main")
     monkeypatch.setattr(fr, "log_guard", lambda *a, **k: {})
+    monkeypatch.setattr(fr, "data_files", lambda *a, **k: [])
+    monkeypatch.setattr(fr, "check_data", lambda *a, **k: {"merged.parquet": "f" * 64})
     monkeypatch.setattr(summary, "check_freeze", lambda *a, **k: [])
     monkeypatch.setattr(harness, "_guard_final_rerun", lambda *a, **k: None)
     monkeypatch.setattr(dev_compare, "build_table", lambda *a, **k: called.append(1))
@@ -242,3 +246,37 @@ def test_exclusive_lock_blocks_a_second_holder_and_is_released(tmp_path):
     with pytest.raises(RuntimeError, match="delete it by hand"):
         with exclusive_lock(lock):
             pass
+
+
+def test_data_freeze_detects_changed_added_files_and_other_data_paths(tmp_path):
+    files = []
+    for name in ("merged.parquet", "uids.parquet"):
+        files.append(tmp_path / name)
+        files[-1].write_bytes(name.encode() * 100)
+    env = {"VAULTIC_DATA_DIR": str(tmp_path), "VAULTIC_RAW_DIR": "unset"}
+    record = "# record\n" + data_section(files, env)
+    hashes = check_data(record, files, env)
+    assert set(hashes) == {f.as_posix() for f in files}
+    with pytest.raises(RuntimeError, match="data paths differ"):
+        check_data(record, files, {**env, "VAULTIC_DATA_DIR": "elsewhere"})
+    extra = tmp_path / "graph_uid.parquet"
+    extra.write_bytes(b"new")
+    with pytest.raises(RuntimeError, match="added"):
+        check_data(record, [*files, extra], env)
+    files[0].write_bytes(b"changed" * 100)
+    with pytest.raises(RuntimeError, match="changed since the freeze"):
+        check_data(record, files, env)
+    with pytest.raises(RuntimeError, match="no data section"):
+        check_data("# record without data\n", files, env)
+
+
+def test_record_start_writes_data_hashes_into_metrics_and_commit(tmp_path):
+    log, decisions = _repo_with_logs(tmp_path)
+    run_dir = tmp_path / "runs" / "EXP-200-final" / "20261010-000000-000001"
+    hashes = {"E:/data/interim/merged.parquet": "ab" * 32}
+    record_start(run_dir, "a" * 40, log, extra_logs=[decisions], repo=tmp_path, push=False,
+                 data_hashes=hashes)  # fmt: skip
+    assert json.loads((run_dir / "metrics.json").read_text("utf-8"))["data_hashes"] == hashes
+    body = subprocess.run(["git", "log", "-1", "--format=%B"], cwd=tmp_path, capture_output=True,
+                          text=True).stdout  # fmt: skip
+    assert "ab" * 32 + "  E:/data/interim/merged.parquet" in body
