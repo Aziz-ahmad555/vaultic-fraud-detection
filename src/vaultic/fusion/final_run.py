@@ -283,14 +283,16 @@ def write_reports(out_dir, prefix, meta, methods, comps, subs, h2, drops, drop_c
                      f"{r['cost']:.0f} [{r['cost_ci_low']:.0f}, {r['cost_ci_high']:.0f}] |")  # fmt: skip
     lines += ["", "Comparisons (MVAF − method; for cost, positive = MVAF costs more). Holm within "
               "each metric. Primary: MVAF − F3 PR-AUC.", "",
-              "| metric | comparison | diff | 95% CI | p | p (Holm) | relative % | Cohen's d (paired seeds) |",
-              "|---|---|---|---|---|---|---|---|"]  # fmt: skip
+              "| metric | comparison | diff | 95% CI | p | p (Holm) | relative % | per-seed mean diff | Cohen's d (paired seeds) |",
+              "|---|---|---|---|---|---|---|---|---|"]  # fmt: skip
     for r in comps.to_dict("records"):
         rel = r.get("relative_pct", np.nan)
         dd = r.get("cohens_d_paired", np.nan)
+        sm = r.get("seed_mean_diff", np.nan)
         lines.append(f"| {r['metric']} | {r['comparison']} | {r['diff']:+.4f} | "
                      f"[{r['ci_low']:+.4f}, {r['ci_high']:+.4f}] | {r['p_value']:.3f} | "
                      f"{r['p_holm']:.3f} | {'' if pd.isna(rel) else f'{rel:+.1f}'} | "
+                     f"{'' if pd.isna(sm) else f'{sm:+.4f}'} | "
                      f"{'' if pd.isna(dd) else f'{dd:+.2f}'} |")  # fmt: skip
     mcols = [c for c in subs.columns if c not in ("subgroup", "rows", "frauds")
              and not c.startswith("MVAF - ")]  # fmt: skip

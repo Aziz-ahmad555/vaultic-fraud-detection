@@ -98,15 +98,16 @@ def e10_table(
                      "ci_low": float(np.quantile(d, 0.025)), "ci_high": float(np.quantile(d, 0.975)),
                      "p_value": _p_two_sided(d)}  # fmt: skip
             if k == "pr_auc":
+                # relative % from the reported diff (seed-averaged scores), so both share a sign;
+                # Cohen's d and the per-seed mean diff from the single-seed PR-AUCs (D102)
+                base = fns[k](m, y, scores[m], all_rows)
+                entry.update({"relative_pct": entry["diff"] / base * 100 if base else np.nan,
+                              "seed_mean_diff": np.nan, "cohens_d_paired": np.nan})  # fmt: skip
                 a, b = per_seed.get(reference), per_seed.get(m)
                 if a and b and len(a) == len(b) and len(a) > 1:
                     es = effect_sizes([pr_auc(y, x) for x in a], [pr_auc(y, x) for x in b])
-                    entry.update({"relative_pct": es["relative_pct"],
+                    entry.update({"seed_mean_diff": es["diff"],
                                   "cohens_d_paired": es["cohens_d_paired"]})  # fmt: skip
-                else:
-                    base = fns[k](m, y, scores[m], all_rows)
-                    entry.update({"relative_pct": entry["diff"] / base * 100 if base else np.nan,
-                                  "cohens_d_paired": np.nan})  # fmt: skip
             fam.append(entry)
         adj = holm([e["p_value"] for e in fam])
         for e, p in zip(fam, adj, strict=True):

@@ -38,6 +38,9 @@ def test_e10_table_paired_comparisons_holm_and_effect_sizes():
     assert pr.loc["MVAF - F3", "p_holm"] >= pr.loc["MVAF - F3", "p_value"]
     assert np.isfinite(pr.loc["MVAF - F3", "cohens_d_paired"])  # per-seed values for both
     assert np.isnan(pr.loc["MVAF - B5", "cohens_d_paired"])  # B5 has no per-seed list here
+    # relative % follows the reported diff, so the two always share a sign
+    assert (np.sign(pr["relative_pct"]) == np.sign(pr["diff"])).all()
+    assert np.isfinite(pr.loc["MVAF - F3", "seed_mean_diff"])
     assert set(comps["metric"]) == {"pr_auc", "recall_at_1pct_fpr", "cost"}
     # the same method compared with itself would give exactly zero on every resample
     same, _ = e10_table(Y, {"MVAF": scores["MVAF"], "X": scores["MVAF"]}, {}, AMOUNT,
