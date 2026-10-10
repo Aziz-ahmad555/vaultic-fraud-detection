@@ -147,6 +147,8 @@ def build_table(smoke: bool, d95: bool = False, final: bool = False, return_part
     extra = {k: pd.read_parquet(FEATURES_DIR / f"{k}_{variant}.parquet")
              for k in ("behavioral", "graph", "anomaly", *(("sequence",) if d95 else ()))}  # fmt: skip
     uid = pd.read_parquet(UID_PATH, columns=["TransactionID", variant])[variant]
+    inputs = [MERGED_PATH, features_path(variant), UID_PATH,
+              *(FEATURES_DIR / f"{k}_{variant}.parquet" for k in extra)]  # fmt: skip
     for name, frame in [("base", base), *extra.items()]:
         if not np.array_equal(frame["TransactionID"].to_numpy(), df["TransactionID"].to_numpy()):
             raise ValueError(f"{name} features are not aligned with the data")
@@ -166,7 +168,7 @@ def build_table(smoke: bool, d95: bool = False, final: bool = False, return_part
     params = yaml.safe_load((CONFIG_DIR / "EXP-009.yaml").read_text("utf-8"))["model"]["params"]
     if parts_only:  # data and features only, no view models (refit checks)
         return {"df": df, "features": features, "tab_cols": tab_cols, "cols": cols,
-                "b5_cols": list(tab.columns), "splits": splits}  # fmt: skip
+                "b5_cols": list(tab.columns), "splits": splits, "inputs": inputs}  # fmt: skip
     if d95:
 
         def tuned(view):
@@ -193,7 +195,7 @@ def build_table(smoke: bool, d95: bool = False, final: bool = False, return_part
         if not return_parts:
             return table
         parts = {"df": df, "features": features, "tab_cols": tab_cols, "cols": cols,
-                 "b5_cols": list(tab.columns), "splits": splits}  # fmt: skip
+                 "b5_cols": list(tab.columns), "splits": splits, "inputs": inputs}  # fmt: skip
         return table, parts
     views = {
         "tabular": SupervisedView(tab_cols, "xgboost", params),

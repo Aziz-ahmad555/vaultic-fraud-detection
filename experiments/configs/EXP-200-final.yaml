@@ -14,8 +14,13 @@ f0_config: EXP-F0-inner                                    # F0, the D95 version
 f0_run: experiments/runs/EXP-F0-inner/20261009-213740-324011  # stored F0 validation predictions (refit check)
 seeds: [0, 1, 2, 3, 4]
 bootstrap: {n: 1000, seed: 0}
+# Every setting below is read by fusion/final_run.py, which asserts at startup that it equals
+# the D101 / D102 value (EXPECTED in final_run.py).
 e10:
+  reference: MVAF
   methods: [MVAF, F0, B5, F1, F2, F3, F4, F5, F6, F7]
+  subgroup_versus: [F3, F4]
+  h2_alpha: 0.05
   primary: "MVAF - F3 test PR-AUC, two-sided"
   secondary: ["MVAF vs F4", "MVAF vs F0", "MVAF vs B5"]
   metrics: [pr_auc, recall_at_1pct_fpr, cost]
@@ -23,9 +28,17 @@ e10:
 e11:
   conditions: [tabular, behavioral, temporal, graph, anomaly, tabular only]
   primary: "drop(MVAF) - drop(F3), drop(MVAF) - drop(F4); Holm across the 5 views"
+  versus: [F3, F4]
 e12_methods: [MVAF, F3, B5]
 e12:
   conformal_targets: [0.90, 0.95]
+  ece_bins: 15
+  min_isotonic_frauds: 100
+  sweep:   # D46 sensitivity sweep, 5 x 3 x 3 x 3 = 135 settings
+    c_fp: [2, 5, 10, 20, 50]
+    step_up_success_rate: [0.7, 0.9, 1.0]
+    legit_step_up_friction: [0.0, 1.0, 5.0]
+    c_step: [0.10, 0.50, 2.00]
   adaptive: {gamma: 0.05, block_days: 7, label_delay_days: 30}
   routing_k_per_day: [50, 100, 200, 500]
   lambda_grid: [0.0, 0.25, 0.5, 1.0, 2.0]

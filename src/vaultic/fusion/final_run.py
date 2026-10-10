@@ -24,14 +24,21 @@ Refit check (validation only):  python -m vaultic.fusion.final_run --mode refit-
   EXP-009 / EXP-F0-inner validation predictions (correlation, max |diff|). A --smoke dev run
   cannot make this check (its models see 1 in 10 uids); a full dev run makes it on its rows.
 
-Final mode refuses to run unless research/frozen_final.md matches every frozen file, and a
-second final run needs --rerun-reason (FINAL-RERUN rule, logged in research/decisions.md).
+Final mode refuses to run unless research/frozen_final.md matches every frozen file, the
+working tree is clean and HEAD is the frozen commit (only the freeze record and the two logs
+may differ), and a second final run needs --rerun-reason (FINAL-RERUN rule, logged in
+research/decisions.md). Every E10-E12 setting is read from EXP-200-final.yaml and checked
+against the D101 / D102 values (EXPECTED) at startup; SHA-256 hashes of the data and feature
+files and of the stored B5 / F0 predictions are recorded in metrics.json (D108).
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import re
+import subprocess
 import time
 from datetime import date, datetime
 from pathlib import Path
@@ -48,6 +55,100 @@ FROZEN = RESEARCH_DIR / "frozen_final.md"
 DEV_OUT = Path("E:/dev-cache/tmp/final_dev")
 GATES = ("MVAF", "F1", "F2", "F3", "F4", "F5", "F6", "F7")
 E11_CONDITIONS = ("tabular", "behavioral", "temporal", "graph", "anomaly", "tabular only")
+# D101 / D102 values of every setting the run reads from EXP-200-final.yaml (D108)
+EXPECTED = {
+    ("seeds",): [0, 1, 2, 3, 4],
+    ("bootstrap", "n"): 1000,
+    ("bootstrap", "seed"): 0,
+    ("e10", "reference"): "MVAF",
+    ("e10", "methods"): ["MVAF", "F0", "B5", "F1", "F2", "F3", "F4", "F5", "F6", "F7"],
+    ("e10", "metrics"): ["pr_auc", "recall_at_1pct_fpr", "cost"],
+    ("e10", "subgroup_versus"): ["F3", "F4"],
+    ("e10", "h2_alpha"): 0.05,
+    ("e11", "conditions"): list(E11_CONDITIONS),
+    ("e11", "versus"): ["F3", "F4"],
+    ("e12_methods",): ["MVAF", "F3", "B5"],
+    ("e12", "conformal_targets"): [0.90, 0.95],
+    ("e12", "ece_bins"): 15,
+    ("e12", "min_isotonic_frauds"): 100,
+    ("e12", "adaptive"): {"gamma": 0.05, "block_days": 7, "label_delay_days": 30},
+    ("e12", "routing_k_per_day"): [50, 100, 200, 500],
+    ("e12", "lambda_grid"): [0.0, 0.25, 0.5, 1.0, 2.0],
+    ("e12", "phase8_gate_tolerance"): 0.02,
+    ("e12", "sweep"): {"c_fp": [2, 5, 10, 20, 50], "step_up_success_rate": [0.7, 0.9, 1.0],
+                       "legit_step_up_friction": [0.0, 1.0, 5.0], "c_step": [0.10, 0.50, 2.00]},
+}  # fmt: skip
+LOG_FILES = {"research/frozen_final.md", "research/experiment_log.md", "research/decisions.md"}
+
+
+def check_settings(cfg: dict) -> None:
+    """Every E10-E12 setting in the config must equal its D101 / D102 value (D108)."""
+    from vaultic.eval.metrics import ECE_BINS
+    from vaultic.fusion.final_eval import metric_fns
+
+    bad = []
+    for path, want in EXPECTED.items():
+        got = cfg
+        for k in path:
+            got = got.get(k) if isinstance(got, dict) else None
+        if got != want:
+            bad.append(f"{'.'.join(path)} = {got!r} (D101/D102: {want!r})")
+    if list(metric_fns(np.zeros(1), {})) != cfg["e10"]["metrics"]:
+        bad.append("the E10 metric functions differ from e10.metrics")
+    if ECE_BINS != cfg["e12"]["ece_bins"]:
+        bad.append(
+            f"ECE_BINS = {ECE_BINS} in eval/metrics.py, config says {cfg['e12']['ece_bins']}"
+        )
+    if bad:
+        raise ValueError(
+            "EXP-200-final settings differ from the pre-registration: " + "; ".join(bad)
+        )
+
+
+def check_git(frozen: Path, repo: Path = REPO_ROOT) -> str:
+    """Final mode: a clean working tree whose HEAD is the commit recorded in the freeze record;
+    only the freeze record itself and the two logs may differ from it (they are written after
+    freezing: the record is committed after it is made, FINAL-STARTED / FINAL-RERUN lines are
+    appended by the run). Returns HEAD."""
+
+    def git(*a):
+        return subprocess.run(["git", *a], cwd=repo, capture_output=True, text=True)
+
+    dirty = git("status", "--porcelain").stdout.strip()
+    if dirty:
+        raise RuntimeError(f"the working tree is not clean; commit or remove first:\n{dirty}")
+    found = re.search(r"at git commit `([0-9a-f]{40})`", frozen.read_text("utf-8"))
+    if not found:
+        raise RuntimeError(f"{frozen} records no git commit")
+    frozen_commit, head = found.group(1), git("rev-parse", "HEAD").stdout.strip()
+    if git("merge-base", "--is-ancestor", frozen_commit, head).returncode != 0:
+        raise RuntimeError(f"HEAD {head[:12]} does not descend from the frozen commit "
+                           f"{frozen_commit[:12]}")  # fmt: skip
+    changed = set(git("diff", "--name-only", frozen_commit, head).stdout.split())
+    if changed - LOG_FILES:
+        raise RuntimeError(f"files changed since the frozen commit {frozen_commit[:12]}: "
+                           f"{sorted(changed - LOG_FILES)}; re-freeze (logged) first")  # fmt: skip
+    return head
+
+
+def file_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def input_hashes(paths) -> dict[str, str]:
+    out = {}
+    for p in paths:
+        p = Path(p)
+        try:
+            name = p.resolve().relative_to(REPO_ROOT.resolve()).as_posix()
+        except ValueError:
+            name = p.as_posix()
+        out[name] = file_sha256(p)
+    return out
 
 
 def frozen_files(cfg: dict) -> list[Path]:
@@ -69,14 +170,15 @@ def _params(p: dict) -> dict:
     return {k: tuple(v) if k == "hidden" else v for k, v in p.items()}
 
 
-def _gate_scores(both, cal, ev, tuned: dict, seeds) -> tuple[dict, dict, dict, dict]:
+def _gate_scores(both, cal, ev, tuned: dict, seeds,
+                 conditions=E11_CONDITIONS) -> tuple[dict, dict, dict, dict]:  # fmt: skip
     """Fused scores on calibration / evaluation rows (5-seed mean), per-seed evaluation scores,
     and the E11 evaluation scores with each view removed."""
     from vaultic.fusion.baselines import make_fusion
     from vaultic.fusion.final_eval import VIEWS
     from vaultic.fusion.tune_fusion import fit_seeds
 
-    s_cal, s_ev, per_seed, removed = {}, {}, {}, {c: {} for c in E11_CONDITIONS}
+    s_cal, s_ev, per_seed, removed = {}, {}, {}, {c: {} for c in conditions}
     for name in GATES:
         if name in tuned:
             models = fit_seeds(name, _params(tuned[name]["params"]), both, seeds)
@@ -87,7 +189,7 @@ def _gate_scores(both, cal, ev, tuned: dict, seeds) -> tuple[dict, dict, dict, d
         s_cal[name] = np.mean([m.predict_proba(cal.views, cal.context) for m in models], axis=0)
         preds = [m.predict_proba(ev.views, ev.context) for m in models]
         s_ev[name], per_seed[name] = np.mean(preds, axis=0), preds
-        for cond in E11_CONDITIONS:
+        for cond in conditions:
             v = ev.views.copy()
             if cond == "tabular only":
                 v[:, [j for j, n in enumerate(VIEWS) if n != "tabular"]] = np.nan
@@ -159,6 +261,7 @@ def main() -> None:
     parser.add_argument("--n-boot", type=int, default=None, help="dev only: fewer resamples")
     args = parser.parse_args()
     cfg = yaml.safe_load(CONFIG.read_text("utf-8"))
+    check_settings(cfg)  # every mode, so nothing is frozen or run with other settings (D108)
     if args.mode == "freeze":  # hash every file the final run depends on (D101)
         from vaultic.reports.phase2_summary import write_freeze
 
@@ -176,14 +279,22 @@ def main() -> None:
         if not FROZEN.exists() or check_freeze(FROZEN):
             raise RuntimeError(f"{FROZEN} is missing or a frozen file changed: "
                                f"{check_freeze(FROZEN) if FROZEN.exists() else 'no record'}")  # fmt: skip
+        head = check_git(FROZEN)
         _guard_final_rerun(cfg["id"], RUNS_DIR, args.rerun_reason, RESEARCH_DIR / "decisions.md")
     n_boot = args.n_boot or cfg["bootstrap"]["n"]
+    boot_seed = cfg["bootstrap"]["seed"]
     seeds = tuple(cfg["seeds"])
+    e10, e11, e12 = cfg["e10"], cfg["e11"], cfg["e12"]
+    if not final:
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, capture_output=True,
+                              text=True).stdout.strip()  # fmt: skip
     started = time.perf_counter()
 
     table, parts = build_table(args.smoke, d95=True, final=final, return_parts=True)
     if not final and ((table["role"] == "test").any() or (table.get("split") == "test").any()):
         raise RuntimeError("a test-period row reached a development run")
+    if parts["splits"].label_delay_days != e12["adaptive"]["label_delay_days"]:
+        raise ValueError("splits.yaml label delay differs from e12.adaptive.label_delay_days")
     table, _ = calibrate_views(table)
     split = fusion_split(table)
     both = concat_rows(split.fit, split.tune)
@@ -194,7 +305,7 @@ def main() -> None:
         ev = _rows_subset(split.calibrate, split.calibrate.day >= 149)
     tuned = json.loads((REPO_ROOT / cfg["fusion_params"]).read_text("utf-8"))["tuned"]
 
-    s_cal, s_ev, per_seed, removed = _gate_scores(both, cal, ev, tuned, seeds)
+    s_cal, s_ev, per_seed, removed = _gate_scores(both, cal, ev, tuned, seeds, e11["conditions"])
     vcols = _view_columns(parts)
     b5_removals = {"tabular": vcols["tabular"], "behavioral": list(LABEL_DERIVED),
                    "tabular only": list(LABEL_DERIVED)}  # fmt: skip
@@ -215,15 +326,19 @@ def main() -> None:
     amt = df.set_index("TransactionID")["TransactionAmt"]
     a_cal, a_ev = amt.reindex(cal.ids).to_numpy(float), amt.reindex(ev.ids).to_numpy(float)
     thresholds = {m: choose_cost_threshold(cal.y, s_cal[m], a_cal) for m in s_ev}
-    order = ["MVAF", "F0", "B5", *GATES[1:]]
-    scores = {m: s_ev[m] for m in order}
-    methods, comps = e10_table(ev.y, scores, per_seed, a_ev, thresholds, n_boot=n_boot)
+    if set(e10["methods"]) != set(s_ev):
+        raise RuntimeError(f"methods scored {sorted(s_ev)} differ from e10.methods")
+    scores = {m: s_ev[m] for m in e10["methods"]}
+    methods, comps = e10_table(ev.y, scores, per_seed, a_ev, thresholds,
+                               reference=e10["reference"], n_boot=n_boot, seed=boot_seed)  # fmt: skip
     masks = subgroup_masks(ev.context[:, CONTEXT.index("ctx_hist_n_past")],
                            ev.context[:, CONTEXT.index("ctx_has_identity")],
                            (~np.isnan(ev.views)).astype(int))  # fmt: skip
-    subs = e10_subgroups(ev.y, scores, masks, n_boot=n_boot)
-    h2 = h2_verdict(comps, subs)
-    drops, drop_comps = e11_drops(ev.y, scores, removed, n_boot=n_boot)
+    subs = e10_subgroups(ev.y, scores, masks, reference=e10["reference"],
+                         versus=tuple(e10["subgroup_versus"]), n_boot=n_boot)  # fmt: skip
+    h2 = h2_verdict(comps, subs, alpha=e10["h2_alpha"])
+    drops, drop_comps = e11_drops(ev.y, scores, removed, reference=e10["reference"],
+                                  versus=tuple(e11["versus"]), n_boot=n_boot, seed=boot_seed)  # fmt: skip
 
     dis = table.drop_duplicates("TransactionID").set_index("TransactionID")["disagreement"]
     trust = {}
@@ -233,10 +348,10 @@ def main() -> None:
         trust[m] = trust_report(
             {"y": cal.y, "p": s_cal[m], "amount": a_cal, "day": cal.day, "d": d_cal},
             {"y": ev.y, "p": s_ev[m], "amount": a_ev, "day": ev.day, "d": d_ev},
-            label_delay_days=parts["splits"].label_delay_days,
-            n_boot=n_boot,
-        )
-    gate = phase8_gate(trust)
+            label_delay_days=e12["adaptive"]["label_delay_days"],
+            n_boot=n_boot, settings=e12, seed=boot_seed,
+        )  # fmt: skip
+    gate = phase8_gate(trust, tolerance=e12["phase8_gate_tolerance"])
 
     # the refitted B5 / F0 must reproduce the stored predictions on the same rows: B5 on test
     # (final), B5 and F0 on validation (full dev run); a smoke run cannot (1 in 10 uids)
@@ -256,6 +371,10 @@ def main() -> None:
             "evaluation_rows": int(len(ev.y)), "evaluation_frauds": int(ev.y.sum()),
             "calibration_rows": int(len(cal.y)), "calibration_frauds": int(cal.y.sum()),
             "gate_rows": int(len(both.y)), "thresholds": thresholds, "refit_check": sanity,
+            "git_commit": head,
+            "input_hashes": input_hashes([*parts["inputs"],
+                                          REPO_ROOT / cfg["b5_run"] / "predictions.parquet",
+                                          REPO_ROOT / cfg["f0_run"] / "predictions.parquet"]),
             "runtime_s": round(time.perf_counter() - started)}  # fmt: skip
     write_reports(out_dir, prefix, meta, methods, comps, subs, h2, drops, drop_comps, trust, gate)
     if final:
