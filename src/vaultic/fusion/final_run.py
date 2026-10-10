@@ -43,6 +43,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import time
@@ -84,6 +85,7 @@ EXPECTED = {
     ("e12", "sweep"): {"c_fp": [2, 5, 10, 20, 50], "step_up_success_rate": [0.7, 0.9, 1.0],
                        "legit_step_up_friction": [0.0, 1.0, 5.0], "c_step": [0.10, 0.50, 2.00]},
 }  # fmt: skip
+PUSH_TIMEOUT_S = 120
 LOG_FILES = {"research/frozen_final.md", "research/experiment_log.md", "research/decisions.md"}
 
 
@@ -139,10 +141,21 @@ def check_git(frozen: Path, repo: Path = REPO_ROOT) -> str:
 
 def record_start(run_dir: Path, head: str, experiment_log: Path, extra_logs=(),
                  repo: Path = REPO_ROOT, push: bool = True) -> None:  # fmt: skip
-    """D109: mark the final run as started, committed (and pushed) before test data is read."""
+    """D109: mark the final run as started, committed and pushed before test data is read.
+
+    Any failing git step (commit, or a push that fails or hangs: network, auth) raises, so the
+    run stops before reading test data. The local start record stays (metrics.json "started"
+    and the local commit), so the guard still counts the attempt; push it by hand before a
+    logged re-run."""
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}  # never wait for a credential prompt
 
     def git(*a):
-        r = subprocess.run(["git", *a], cwd=repo, capture_output=True, text=True)
+        try:
+            r = subprocess.run(["git", *a], cwd=repo, capture_output=True, text=True, env=env,
+                               timeout=PUSH_TIMEOUT_S)  # fmt: skip
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError(f"git {' '.join(a)} timed out after {PUSH_TIMEOUT_S} s; the final "
+                               "run stops before reading test data") from e  # fmt: skip
         if r.returncode != 0:
             raise RuntimeError(f"git {' '.join(a)} failed; the final run stops before reading "
                                f"test data:\n{r.stderr}")  # fmt: skip
@@ -317,7 +330,7 @@ def main() -> None:
         _guard_final_rerun(cfg["id"], RUNS_DIR, args.rerun_reason, RESEARCH_DIR / "decisions.md")
         run_dir = RUNS_DIR / cfg["id"] / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         record_start(run_dir, head, RESEARCH_DIR / "experiment_log.md",
-                     extra_logs=[RESEARCH_DIR / "decisions.md"])  # fmt: skip
+                     extra_logs=[RESEARCH_DIR / "decisions.md"], repo=REPO_ROOT)  # fmt: skip
     n_boot = args.n_boot or cfg["bootstrap"]["n"]
     boot_seed = cfg["bootstrap"]["seed"]
     seeds = tuple(cfg["seeds"])

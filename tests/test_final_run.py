@@ -3,6 +3,7 @@
 import copy
 import json
 import subprocess
+import sys
 
 import pytest
 import yaml
@@ -82,3 +83,55 @@ def test_record_start_commits_before_test_data_and_blocks_a_rerun(tmp_path):
     assert status == ""  # the start line is committed
     with pytest.raises(RuntimeError, match="already has a --final run"):
         _guard_final_rerun("EXP-200-final", runs, None, decisions)  # "started" counts
+
+
+def _repo_with_logs(path):
+    _git(path, "init", "-q")
+    _git(path, "config", "user.email", "t@t")
+    _git(path, "config", "user.name", "t")
+    (path / "research").mkdir()
+    log, decisions = path / "research" / "experiment_log.md", path / "research" / "decisions.md"
+    log.write_text("| id | date |\n")
+    decisions.write_text("| D1 |\n")
+    _git(path, "add", ".")
+    _git(path, "commit", "-qm", "init")
+    _git(path, "remote", "add", "origin", str(path / "no-such-remote.git"))  # push will fail
+    return log, decisions
+
+
+def test_record_start_raises_when_the_push_fails(tmp_path):
+    log, decisions = _repo_with_logs(tmp_path)
+    run_dir = tmp_path / "runs" / "EXP-200-final" / "20261010-000000-000000"
+    with pytest.raises(RuntimeError, match="push.*failed; the final run stops before reading"):
+        record_start(run_dir, "a" * 40, log, extra_logs=[decisions], repo=tmp_path, push=True)
+    # the attempt stays on record locally, so the guard still blocks an unlogged re-run
+    assert json.loads((run_dir / "metrics.json").read_text("utf-8"))["status"] == "started"
+    with pytest.raises(RuntimeError, match="already has a --final run"):
+        _guard_final_rerun("EXP-200-final", tmp_path / "runs", None, decisions)
+
+
+def test_final_mode_aborts_before_reading_test_data_when_the_push_fails(tmp_path, monkeypatch):
+    """The whole final-mode start: a failed push must stop main() before build_table (the
+    first read of test-period data) is called."""
+    import vaultic.eval.run as harness
+    import vaultic.fusion.dev_compare as dev_compare
+    import vaultic.fusion.final_run as fr
+    import vaultic.reports.phase2_summary as summary
+
+    log, decisions = _repo_with_logs(tmp_path)
+    frozen = tmp_path / "research" / "frozen_final.md"
+    frozen.write_text("record\n")
+    called = []
+    monkeypatch.setattr(fr, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(fr, "RESEARCH_DIR", tmp_path / "research")
+    monkeypatch.setattr(fr, "RUNS_DIR", tmp_path / "runs")
+    monkeypatch.setattr(fr, "FROZEN", frozen)
+    monkeypatch.setattr(fr, "check_git", lambda *a, **k: "a" * 40)
+    monkeypatch.setattr(summary, "check_freeze", lambda *a, **k: [])
+    monkeypatch.setattr(harness, "_guard_final_rerun", lambda *a, **k: None)
+    monkeypatch.setattr(dev_compare, "build_table", lambda *a, **k: called.append(1))
+    monkeypatch.setattr(sys, "argv", ["final_run", "--mode", "final"])
+    with pytest.raises(RuntimeError, match="push.*failed"):
+        fr.main()
+    assert called == []  # no test data was read
+    assert "FINAL-STARTED" in log.read_text("utf-8")
