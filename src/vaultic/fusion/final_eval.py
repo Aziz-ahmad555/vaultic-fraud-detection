@@ -141,7 +141,8 @@ def paired_pr_auc(y, a, b, n_boot: int = N_BOOT, seed: int = 0) -> dict[str, flo
 
 def e10_subgroups(y, scores: dict[str, np.ndarray], masks: dict[str, np.ndarray],
                   reference: str = "MVAF", versus=("F3", "F4"), n_boot: int = N_BOOT) -> pd.DataFrame:  # fmt: skip
-    """PR-AUC per subgroup and method; reference minus each `versus` method, paired. Cells of
+    """PR-AUC per subgroup and method with a bootstrap 95% CI (<method>_ci_low / _ci_high, the
+    same resamples for every method); reference minus each `versus` method, paired. Cells of
     the comparison columns are (diff, ci_low, ci_high, p, p_holm), with Holm across every
     comparison in the table (all subgroups x `versus` methods; D104)."""
     rows, tests = [], []
@@ -150,6 +151,12 @@ def e10_subgroups(y, scores: dict[str, np.ndarray], masks: dict[str, np.ndarray]
         row = {"subgroup": name, "rows": int(m.sum()), "frauds": int(y[m].sum())}
         if _ok(y[m]):
             row.update({k: pr_auc(y[m], s[m]) for k, s in scores.items()})
+            ym = y[m]
+            idx = [i for i in boot_indices(len(ym), n_boot) if _ok(ym[i])]
+            for k, s in scores.items():
+                b = [pr_auc(ym[i], s[m][i]) for i in idx]
+                row[f"{k}_ci_low"] = float(np.quantile(b, 0.025))
+                row[f"{k}_ci_high"] = float(np.quantile(b, 0.975))
             for v in versus:
                 r = paired_pr_auc(y[m], scores[reference][m], scores[v][m], n_boot)
                 row[f"{reference} - {v}"] = (r["diff"], r["ci_low"], r["ci_high"], r["p_value"])

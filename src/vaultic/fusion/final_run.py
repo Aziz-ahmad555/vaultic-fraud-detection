@@ -295,13 +295,14 @@ def write_reports(out_dir, prefix, meta, methods, comps, subs, h2, drops, drop_c
                      f"{'' if pd.isna(sm) else f'{sm:+.4f}'} | "
                      f"{'' if pd.isna(dd) else f'{dd:+.2f}'} |")  # fmt: skip
     mcols = [c for c in subs.columns if c not in ("subgroup", "rows", "frauds")
-             and not c.startswith("MVAF - ")]  # fmt: skip
+             and not c.startswith("MVAF - ") and not c.endswith(("_ci_low", "_ci_high"))]  # fmt: skip
     vcols = [c for c in subs.columns if c.startswith("MVAF - ")]
     lines += ["", "## Subgroups (PR-AUC)", "",
               "| subgroup | rows | frauds | " + " | ".join(mcols + vcols) + " |",
               "|---|---|---|" + "---|" * (len(mcols) + len(vcols))]  # fmt: skip
     for r in subs.to_dict("records"):
-        vals = ["" if pd.isna(r.get(c, np.nan)) else f"{r[c]:.4f}" for c in mcols]
+        vals = ["" if pd.isna(r.get(c, np.nan)) else
+                f"{r[c]:.4f} [{r[c + '_ci_low']:.4f}, {r[c + '_ci_high']:.4f}]" for c in mcols]  # fmt: skip
         ds = ["" if not isinstance(r.get(c), tuple) else
               f"{r[c][0]:+.4f} [{r[c][1]:+.4f}, {r[c][2]:+.4f}], p (Holm) {r[c][4]:.3f}"
               for c in vcols]  # fmt: skip
@@ -309,8 +310,8 @@ def write_reports(out_dir, prefix, meta, methods, comps, subs, h2, drops, drop_c
                      + " | ".join(vals + ds) + " |")  # fmt: skip
     lines += [
         "",
-        "Subgroup comparisons: paired bootstrap; Holm across every comparison in this "
-        "table (D104).",
+        "Per-method subgroup PR-AUC with a bootstrap 95% CI. Subgroup comparisons: paired "
+        "bootstrap; Holm across every comparison in this table (D104).",
     ]
     lines += ["", f"**H2 (D101):** beats F3 / F4 overall: {h2['beats_overall']}; larger margin on "
               f"missing-view rows: {h2['larger_margin_on_missing_views']} → "
@@ -337,10 +338,16 @@ def write_reports(out_dir, prefix, meta, methods, comps, subs, h2, drops, drop_c
                      f"[{r['ci_low']:+.4f}, {r['ci_high']:+.4f}] | {r['p_value']:.3f} | {ph} |")  # fmt: skip
     (out_dir / f"{prefix}e11.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
+    from vaultic.trust.final_trust import plot_reliability
+
+    fig_dir = (RESEARCH_DIR / "figures") if meta["mode"] == "final" else out_dir
+    fig_dir.mkdir(parents=True, exist_ok=True)
     lines = [f"# E12: trust layer ({meta['mode']})", "", banner + head, ""]
     for m, r in trust.items():
         c = r["calibration"]
-        lines += [f"## {m}", "",
+        fig = fig_dir / f"{prefix}e12_reliability_{m}.png"
+        plot_reliability(r, f"{m}: reliability, evaluation rows ({meta['mode']})", fig)
+        lines += [f"## {m}", "", f"Reliability diagram: `{fig.as_posix()}`.", "",
                   f"Calibrator: {r['calibrator']['method']}. ECE {c['ece_before']:.4f} → "
                   f"{c['ece_after']:.4f}; Brier {c['brier_before']:.4f} → {c['brier_after']:.4f}.", "",
                   "| conformal | coverage | legit | fraud | uncertain sets | within 2 pts |",

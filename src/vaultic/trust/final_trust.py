@@ -183,6 +183,38 @@ def trust_report(cal: dict, ev: dict, label_delay_days: int, sweep: bool = True,
     return out
 
 
+def plot_reliability(report: dict, title: str, path) -> None:
+    """Reliability diagram (evaluation rows, 15 equal-width bins) before and after the fused
+    calibrator, with the number of rows per bin below."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, (ax, axh) = plt.subplots(2, 1, figsize=(5, 6), sharex=True,
+                                  gridspec_kw={"height_ratios": [3, 1]})  # fmt: skip
+    ax.plot([0, 1], [0, 1], color="grey", lw=1, ls="--", label="perfect calibration")
+    c = report["calibration"]
+    for key, label, mk in (("reliability_before", f"before (ECE {c['ece_before']:.3f})", "o"),
+                           ("reliability_after", f"after (ECE {c['ece_after']:.3f})", "s")):  # fmt: skip
+        t = pd.DataFrame(report[key]).dropna(subset=["mean_predicted"])
+        ax.plot(t["mean_predicted"], t["observed_rate"], marker=mk, lw=1, label=label)
+    ax.set_ylabel("observed fraud rate")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.legend(fontsize=8, loc="upper left")
+    ax.set_title(title, fontsize=10)
+    for key, label in (("reliability_before", "before"), ("reliability_after", "after")):
+        t = pd.DataFrame(report[key])
+        axh.step(t["lower"], t["count"].clip(lower=1), where="post", label=label)
+    axh.set_yscale("log")
+    axh.set_xlabel("predicted fraud probability")
+    axh.set_ylabel("rows per bin")
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+
+
 def phase8_gate(reports: dict[str, dict], tolerance: float = GATE_TOLERANCE) -> dict:
     """Mondrian coverage within `tolerance` of the target on the evaluation rows, per method
     and target (roadmap Phase 8 exit gate)."""

@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from vaultic.trust.final_trust import phase8_gate, trust_report
+from vaultic.trust.final_trust import phase8_gate, plot_reliability, trust_report
 
 
 def _rows(n, seed, day0):
@@ -14,7 +14,7 @@ def _rows(n, seed, day0):
             "d": rng.random(n) * 0.3}  # fmt: skip
 
 
-def test_trust_report_sections_and_gate():
+def test_trust_report_sections_and_gate(tmp_path):
     cal, ev = _rows(3000, 0, 100), _rows(3000, 1, 130)
     rep = trust_report(cal, ev, label_delay_days=5, sweep=False, n_boot=50)
     assert set(rep) >= {"calibrator", "calibration", "conformal", "adaptive", "decision", "routing"}
@@ -30,6 +30,8 @@ def test_trust_report_sections_and_gate():
     assert {h["comparison"] for h in rep["routing"]["h5"]} == {"R3 - R1", "R4 - R1"}
     assert all(h["p_holm"] >= h["p_value"] for h in rep["routing"]["h5"])  # D104
     assert rep["decision"]["default"]["evaluation_cost"] > 0
+    plot_reliability(rep, "MVAF", tmp_path / "rel.png")
+    assert (tmp_path / "rel.png").stat().st_size > 10_000  # a real PNG, not an empty file
     gate = phase8_gate({"MVAF": rep})
     assert set(gate["per_method"]["MVAF"]) == {"0.90", "0.95"}
 
