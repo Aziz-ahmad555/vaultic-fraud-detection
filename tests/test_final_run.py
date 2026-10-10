@@ -1,12 +1,14 @@
 """Startup checks of the final run (D108): settings vs D101 / D102, git state at freeze."""
 
 import copy
+import json
 import subprocess
 
 import pytest
 import yaml
 
-from vaultic.fusion.final_run import CONFIG, check_git, check_settings
+from vaultic.eval.run import _guard_final_rerun
+from vaultic.fusion.final_run import CONFIG, check_git, check_settings, record_start
 
 
 def test_config_settings_equal_the_preregistration():
@@ -57,3 +59,26 @@ def test_check_git_needs_clean_tree_and_the_frozen_commit(tmp_path):
     _git(repo, "commit", "-qam", "change code")
     with pytest.raises(RuntimeError, match="changed since the frozen commit"):
         check_git(record, repo)
+
+
+def test_record_start_commits_before_test_data_and_blocks_a_rerun(tmp_path):
+    repo = tmp_path
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    log, decisions = repo / "experiment_log.md", repo / "decisions.md"
+    log.write_text("| id | date |\n")
+    decisions.write_text("| D1 |\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "init")
+    runs = repo / "runs"
+    run_dir = runs / "EXP-200-final" / "20261010-000000-000000"
+    record_start(run_dir, "a" * 40, log, extra_logs=[decisions], repo=repo, push=False)
+    m = json.loads((run_dir / "metrics.json").read_text("utf-8"))
+    assert m["mode"] == "final" and m["status"] == "started"
+    assert "FINAL-STARTED" in log.read_text("utf-8")
+    status = subprocess.run(["git", "status", "--porcelain", "--", "experiment_log.md"],
+                            cwd=repo, capture_output=True, text=True).stdout  # fmt: skip
+    assert status == ""  # the start line is committed
+    with pytest.raises(RuntimeError, match="already has a --final run"):
+        _guard_final_rerun("EXP-200-final", runs, None, decisions)  # "started" counts

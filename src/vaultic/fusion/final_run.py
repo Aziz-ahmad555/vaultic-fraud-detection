@@ -30,6 +30,12 @@ may differ), and a second final run needs --rerun-reason (FINAL-RERUN rule, logg
 research/decisions.md). Every E10-E12 setting is read from EXP-200-final.yaml and checked
 against the D101 / D102 values (EXPECTED) at startup; SHA-256 hashes of the data and feature
 files and of the stored B5 / F0 predictions are recorded in metrics.json (D108).
+
+Start record (D109): right after the guards and BEFORE any test data is read, the final run
+writes experiments/runs/EXP-200-final/<ts>/metrics.json {"mode": "final", "status": "started"}
+and a FINAL-STARTED line in research/experiment_log.md, and commits and pushes that line; if
+the commit or push fails it stops. The guard counts a "started" run as a final run, so a crash
+cannot be silently re-run. At the end metrics.json is completed (status "completed").
 """
 
 from __future__ import annotations
@@ -129,6 +135,33 @@ def check_git(frozen: Path, repo: Path = REPO_ROOT) -> str:
         raise RuntimeError(f"files changed since the frozen commit {frozen_commit[:12]}: "
                            f"{sorted(changed - LOG_FILES)}; re-freeze (logged) first")  # fmt: skip
     return head
+
+
+def record_start(run_dir: Path, head: str, experiment_log: Path, extra_logs=(),
+                 repo: Path = REPO_ROOT, push: bool = True) -> None:  # fmt: skip
+    """D109: mark the final run as started, committed (and pushed) before test data is read."""
+
+    def git(*a):
+        r = subprocess.run(["git", *a], cwd=repo, capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError(f"git {' '.join(a)} failed; the final run stops before reading "
+                               f"test data:\n{r.stderr}")  # fmt: skip
+        return r
+
+    run_dir.mkdir(parents=True)
+    (run_dir / "metrics.json").write_text(json.dumps(
+        {"mode": "final", "status": "started", "git_commit": head,
+         "started": datetime.now().isoformat(timespec="seconds")}, indent=1), "utf-8")  # fmt: skip
+    rel = run_dir.resolve().relative_to(repo.resolve()).as_posix()
+    with open(experiment_log, "a", encoding="utf-8") as f:
+        f.write(f"| {run_dir.parent.name} | {date.today().isoformat()} | FINAL-STARTED: E10-E12 "
+                f"final run started at commit `{head[:12]}` (D101); test data not read yet | run "
+                f"`{rel}` | — |\n")  # fmt: skip
+    logs = [experiment_log, *extra_logs]
+    git("add", *[Path(p).resolve().relative_to(repo.resolve()).as_posix() for p in logs])
+    git("commit", "-q", "-m", f"FINAL-STARTED {run_dir.parent.name} ({run_dir.name})")
+    if push:
+        git("push", "-q", "origin", "HEAD")
 
 
 def file_sha256(path: Path) -> str:
@@ -280,7 +313,11 @@ def main() -> None:
             raise RuntimeError(f"{FROZEN} is missing or a frozen file changed: "
                                f"{check_freeze(FROZEN) if FROZEN.exists() else 'no record'}")  # fmt: skip
         head = check_git(FROZEN)
+        # a run whose metrics.json says mode final (also "started") counts as a final run
         _guard_final_rerun(cfg["id"], RUNS_DIR, args.rerun_reason, RESEARCH_DIR / "decisions.md")
+        run_dir = RUNS_DIR / cfg["id"] / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        record_start(run_dir, head, RESEARCH_DIR / "experiment_log.md",
+                     extra_logs=[RESEARCH_DIR / "decisions.md"])  # fmt: skip
     n_boot = args.n_boot or cfg["bootstrap"]["n"]
     boot_seed = cfg["bootstrap"]["seed"]
     seeds = tuple(cfg["seeds"])
@@ -377,15 +414,15 @@ def main() -> None:
                                           REPO_ROOT / cfg["f0_run"] / "predictions.parquet"]),
             "runtime_s": round(time.perf_counter() - started)}  # fmt: skip
     write_reports(out_dir, prefix, meta, methods, comps, subs, h2, drops, drop_comps, trust, gate)
-    if final:
-        run_dir = RUNS_DIR / cfg["id"] / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-        run_dir.mkdir(parents=True)
+    if final:  # run_dir was created by record_start; complete its metrics.json
         pd.DataFrame({"TransactionID": ev.ids, "day": ev.day, "label": ev.y,
                       **{f"score_{m}": s for m, s in scores.items()}}).to_parquet(
             run_dir / "predictions.parquet", index=False)  # fmt: skip
-        (run_dir / "metrics.json").write_text(json.dumps({"mode": "final", **meta,
-                                                          "h2": h2, "phase8_gate": gate},
-                                                         indent=1, default=str), "utf-8")  # fmt: skip
+        start = json.loads((run_dir / "metrics.json").read_text("utf-8"))
+        (run_dir / "metrics.json").write_text(json.dumps(
+            {**start, "mode": "final", "status": "completed",
+             "completed": datetime.now().isoformat(timespec="seconds"), **meta, "h2": h2,
+             "phase8_gate": gate}, indent=1, default=str), "utf-8")  # fmt: skip
         (run_dir / "config.yaml").write_text(CONFIG.read_text("utf-8"), "utf-8")
     print(
         f"wrote {out_dir} ({prefix}*); H2: {h2['verdict']}; "
