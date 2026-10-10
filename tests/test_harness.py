@@ -374,3 +374,13 @@ def test_view_sets_split_label_features_between_tabular_and_behavioral(monkeypat
     with pytest.raises(ValueError, match="label-derived"):
         sets.design_matrix(df, beh_file, "behavioral_view")
     assert "all_views" in sets.EXTRA_FEATURES and "sequence" in sets.EXTRA_FEATURES["all_views"]
+
+
+def test_harness_refuses_frozen_final_configs(tmp_path):
+    """D102: EXP-200-final runs only through fusion/final_run.py."""
+    from vaultic.eval.run import load_config
+
+    path = tmp_path / "EXP-X.yaml"
+    path.write_text("id: EXP-X\nstatus: frozen-final\nquestion: q\n")
+    with pytest.raises(ValueError, match="frozen final"):
+        load_config(path)

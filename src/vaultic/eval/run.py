@@ -95,6 +95,9 @@ def read_config(path: Path) -> dict[str, Any]:
 
 def load_config(path: Path) -> dict[str, Any]:
     cfg = read_config(path)
+    if cfg.get("status") == "frozen-final":  # D102: only fusion/final_run.py runs these
+        raise ValueError(f"{cfg.get('id', path)} is a frozen final config: run it with "
+                         "`python -m vaultic.fusion.final_run --mode final`")  # fmt: skip
     if cfg.get("status") == "planned":
         needs = "; ".join(cfg.get("needs", [])) or "see the config"
         raise ValueError(

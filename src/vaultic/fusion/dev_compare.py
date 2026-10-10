@@ -110,10 +110,16 @@ def external_scores(run_dir: Path, ids: np.ndarray) -> np.ndarray:
     return out
 
 
-def build_table(smoke: bool, d95: bool = False):
+def build_table(smoke: bool, d95: bool = False, final: bool = False, return_parts: bool = False):
     """The view table. d95=True (D95): the cross-fitted plan, the views with their tuned
     hyperparameters (configs EXP-V-<view>.yaml from `vaultic.eval.tune --view`), XGBoost for the
-    anomaly and temporal views (temporal on the sequence features, in-process)."""
+    anomaly and temporal views (temporal on the sequence features, in-process).
+
+    final=True (D95 pipeline only): the fixed fold also predicts the test period with the same
+    view models (D77); only the --final run of fusion/final_run.py passes it. return_parts=True
+    also returns the data, the feature frame and the view columns (for B5 / F0 and E11)."""
+    if final and not d95:
+        raise ValueError("final=True is only defined for the D95 pipeline")
     import yaml
 
     from vaultic.data.load import load_merged
@@ -178,7 +184,13 @@ def build_table(smoke: bool, d95: bool = False):
                                        available=avail("temporal")),
         }  # fmt: skip
         encoder = fit_on_training_period(df, splits, columns=("ProductCD",))
-        return view_table(df, features, views, crossfit_plan(splits), encoder, splits)
+        table = view_table(df, features, views, crossfit_plan(splits, final=final), encoder,
+                           splits)  # fmt: skip
+        if not return_parts:
+            return table
+        parts = {"df": df, "features": features, "tab_cols": tab_cols, "cols": cols,
+                 "b5_cols": list(tab.columns), "splits": splits}  # fmt: skip
+        return table, parts
     views = {
         "tabular": SupervisedView(tab_cols, "xgboost", params),
         "behavioral": SupervisedView(behavioral_columns(cols["behavioral"]), "xgboost", params,
