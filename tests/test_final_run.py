@@ -15,6 +15,7 @@ from vaultic.fusion.final_run import (
     check_origin,
     check_settings,
     count_final_rows,
+    exclusive_lock,
     log_guard,
     record_start,
 )
@@ -150,6 +151,7 @@ def test_final_mode_aborts_before_scoring_test_data_when_the_push_fails(tmp_path
     with pytest.raises(RuntimeError, match="push.*failed"):
         fr.main()
     assert called == []  # nothing was scored
+    assert not (tmp_path / "runs" / "EXP-200-final" / ".final.lock").exists()  # released
     assert "FINAL-STARTED" in log.read_text("utf-8")
 
 
@@ -221,3 +223,22 @@ def test_log_guard_counts_rows_at_head_and_at_origin(tmp_path):
     )
     _git(a, "commit", "-qam", "rerun row")
     assert log_guard("EXP-200-final", "r", "main", a)["HEAD:research/decisions.md"] == 1
+
+
+def test_exclusive_lock_blocks_a_second_holder_and_is_released(tmp_path):
+    lock = tmp_path / "runs" / "EXP-200-final" / ".final.lock"
+    with exclusive_lock(lock):
+        assert lock.exists()
+        with pytest.raises(RuntimeError, match="another final run is starting"):
+            with exclusive_lock(lock):
+                pass
+        assert lock.exists()  # the failed second attempt does not remove the holder's lock
+    assert not lock.exists()
+    with pytest.raises(ValueError):
+        with exclusive_lock(lock):
+            raise ValueError("crash inside")
+    assert not lock.exists()  # released on error too
+    lock.write_text("stale")
+    with pytest.raises(RuntimeError, match="delete it by hand"):
+        with exclusive_lock(lock):
+            pass

@@ -51,6 +51,7 @@ import os
 import re
 import subprocess
 import time
+from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
 
@@ -90,6 +91,7 @@ EXPECTED = {
                        "legit_step_up_friction": [0.0, 1.0, 5.0], "c_step": [0.10, 0.50, 2.00]},
 }  # fmt: skip
 PUSH_TIMEOUT_S = 120
+LOCK_NAME = ".final.lock"
 LOG_FILES = {"research/frozen_final.md", "research/experiment_log.md", "research/decisions.md"}
 
 
@@ -250,6 +252,46 @@ def record_start(run_dir: Path, head: str, experiment_log: Path, extra_logs=(),
             raise RuntimeError(f"{e}\nunpushed FINAL-STARTED commit: {commit}") from e
 
 
+@contextmanager
+def exclusive_lock(path: Path):
+    """D111: an exclusive lock file (O_CREAT | O_EXCL) so two final runs cannot both pass the
+    guard before either has written its start record. A lock left by a crashed run must be
+    checked and deleted by hand."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError as e:
+        raise RuntimeError(f"{path} exists: another final run is starting, or a crashed run left "
+                           "it; check, then delete it by hand") from e  # fmt: skip
+    try:
+        os.write(fd, f"pid {os.getpid()} {datetime.now().isoformat(timespec='seconds')}\n".encode())
+        os.close(fd)
+        yield path
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def start_final(cfg: dict, rerun_reason: str | None, head: str, branch: str) -> Path:
+    """Under the lock: the re-run guards (run folders, D109; logs at HEAD / origin, D110), then
+    the start record (committed and pushed). Returns the run folder."""
+    from vaultic.eval.run import _guard_final_rerun, previous_final_runs
+
+    with exclusive_lock(RUNS_DIR / cfg["id"] / LOCK_NAME):
+        prev_dirs = previous_final_runs(cfg["id"], RUNS_DIR)
+        # a run whose metrics.json says mode final (also "started") counts as a final run
+        _guard_final_rerun(cfg["id"], RUNS_DIR, rerun_reason, RESEARCH_DIR / "decisions.md")
+        logged = log_guard(cfg["id"], rerun_reason, branch, REPO_ROOT)  # D110
+        if any(logged.values()) and not prev_dirs:  # on record elsewhere, no local run folder
+            with open(RESEARCH_DIR / "decisions.md", "a", encoding="utf-8") as f:
+                f.write(f"| FINAL-RERUN | {date.today().isoformat()} | {cfg['id']} | --final "
+                        f"re-run; earlier final run on record in the logs ({sum(logged.values())} "
+                        f"rows) | — | {rerun_reason} | Logged by final_run |\n")  # fmt: skip
+        run_dir = RUNS_DIR / cfg["id"] / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        record_start(run_dir, head, RESEARCH_DIR / "experiment_log.md",
+                     extra_logs=[RESEARCH_DIR / "decisions.md"], repo=REPO_ROOT)  # fmt: skip
+    return run_dir
+
+
 def file_sha256(path: Path) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -356,7 +398,6 @@ def _feature_model_scores(parts, cfg_id: str, columns: list[str], cal_ids, ev_id
 
 
 def main() -> None:
-    from vaultic.eval.run import _guard_final_rerun, previous_final_runs
     from vaultic.fusion.data import fusion_split
     from vaultic.fusion.dev_compare import build_table
     from vaultic.fusion.final_eval import (
@@ -400,18 +441,7 @@ def main() -> None:
                                f"{check_freeze(FROZEN) if FROZEN.exists() else 'no record'}")  # fmt: skip
         head = check_git(FROZEN)
         branch = check_origin(REPO_ROOT)  # D110: not behind / diverged from origin
-        prev_dirs = previous_final_runs(cfg["id"], RUNS_DIR)
-        # a run whose metrics.json says mode final (also "started") counts as a final run
-        _guard_final_rerun(cfg["id"], RUNS_DIR, args.rerun_reason, RESEARCH_DIR / "decisions.md")
-        logged = log_guard(cfg["id"], args.rerun_reason, branch, REPO_ROOT)  # D110
-        if any(logged.values()) and not prev_dirs:  # on record elsewhere, no local run folder
-            with open(RESEARCH_DIR / "decisions.md", "a", encoding="utf-8") as f:
-                f.write(f"| FINAL-RERUN | {date.today().isoformat()} | {cfg['id']} | --final "
-                        f"re-run; earlier final run on record in the logs ({sum(logged.values())} "
-                        f"rows) | — | {args.rerun_reason} | Logged by final_run |\n")  # fmt: skip
-        run_dir = RUNS_DIR / cfg["id"] / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-        record_start(run_dir, head, RESEARCH_DIR / "experiment_log.md",
-                     extra_logs=[RESEARCH_DIR / "decisions.md"], repo=REPO_ROOT)  # fmt: skip
+        run_dir = start_final(cfg, args.rerun_reason, head, branch)
     n_boot = args.n_boot or cfg["bootstrap"]["n"]
     boot_seed = cfg["bootstrap"]["seed"]
     seeds = tuple(cfg["seeds"])
