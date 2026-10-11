@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api } from "../api";
+import { api, DATA_SOURCE } from "../api";
 import type { Feedback, ScoreInput, ScoreResult, Transaction } from "../api/types";
 import { ACTION_LABEL, VIEWS, VIEW_LABEL } from "../api/types";
 import { DecisionBadge, LockIcon, RiskCell, labelText, setText } from "../components/Badges";
@@ -13,8 +13,17 @@ import { useData } from "../lib/useData";
 import { isTyping, useApp } from "../state/app";
 import { viewScores } from "./Live";
 
-/** Plain-language case narrative from the same facts the page shows (no free text, D38). */
-export function narrative(t: Transaction, cf: string | null): string {
+/**
+ * In http mode the counterfactual runs on the illustrative model, not the evaluated system (the
+ * real counterfactual comes with E15): it stays out of the narrative and the printed report (D127).
+ */
+export const ILLUSTRATIVE_CF = DATA_SOURCE === "http";
+
+/**
+ * Plain-language case narrative from the same facts the page shows (no free text, D38).
+ * `cf`: the counterfactual sentence; `undefined` leaves counterfactuals out entirely (http mode).
+ */
+export function narrative(t: Transaction, cf?: string | null): string {
   const d = t.decision;
   const parts = [
     `Transaction ${t.row.TransactionID} (${fmtMoney2(t.amount)}, product ${t.product}) scored a risk of ${risk(d.p)} out of 100 and was routed to ${ACTION_LABEL[d.action].toLowerCase()}.`,
@@ -31,7 +40,7 @@ export function narrative(t: Transaction, cf: string | null): string {
   if (shared !== null && shared > 0)
     parts.push(`${shared} other customer${shared > 1 ? "s" : ""} used its card in the 7 days before.`);
   else if (shared === 0) parts.push("No other customer used its card in the 7 days before.");
-  parts.push(cf ?? "No counterfactual has been explored yet.");
+  if (cf !== undefined) parts.push(cf ?? "No counterfactual has been explored yet.");
   return parts.join(" ");
 }
 
@@ -80,30 +89,47 @@ function Timeline({ history, current, asOf }: { history: Transaction[]; current:
   );
 }
 
-function Counterfactual({ t, onDescribe }: { t: Transaction; onDescribe: (s: string | null) => void }) {
+export function Counterfactual({ t, onDescribe, illustrative }: { t: Transaction; onDescribe: (s: string | null) => void; illustrative: boolean }) {
   const [amount, setAmount] = useState(t.amount);
   const [deviceKnown, setDeviceKnown] = useState<boolean | null>(t.inputs.deviceKnown);
   const [result, setResult] = useState<ScoreResult | null>(null);
+  // the reference the counterfactual is compared with: the case's own decision, or, when the
+  // counterfactual runs on the illustrative model, that model's score of the unchanged case
+  const [base, setBase] = useState<{ p: number; action: ScoreResult["decision"]["action"] } | null>(illustrative ? null : { p: t.decision.p, action: t.decision.action });
+  useEffect(() => {
+    if (!illustrative) {
+      setBase({ p: t.decision.p, action: t.decision.action });
+      return;
+    }
+    let live = true;
+    setBase(null);
+    api.score(t.inputs).then((r) => live && setBase({ p: r.p, action: r.decision.action }));
+    return () => {
+      live = false;
+    };
+  }, [t, illustrative]);
   useEffect(() => {
     setAmount(t.amount);
     setDeviceKnown(t.inputs.deviceKnown);
   }, [t]);
   useEffect(() => {
+    if (!base) return;
     const input: ScoreInput = { ...t.inputs, amount, deviceKnown };
     let live = true;
     api.score(input).then((r) => {
       if (!live) return;
       setResult(r);
+      if (illustrative) return; // never described in the narrative (D127)
       const changes = [];
       if (Math.abs(amount - t.amount) > 0.005) changes.push(`the amount were ${fmtMoney2(amount)} instead of ${fmtMoney2(t.amount)}`);
       if (deviceKnown !== t.inputs.deviceKnown) changes.push(deviceKnown ? "the device were one this customer has used before" : "the device were new to this customer");
-      onDescribe(changes.length ? `If ${changes.join(" and ")}, the risk would be ${risk(r.p)} instead of ${risk(t.decision.p)}, and the decision ${ACTION_LABEL[r.decision.action].toLowerCase()}.` : null);
+      onDescribe(changes.length ? `If ${changes.join(" and ")}, the risk would be ${risk(r.p)} instead of ${risk(base.p)}, and the decision ${ACTION_LABEL[r.decision.action].toLowerCase()}.` : null);
     });
     return () => {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [amount, deviceKnown, t]);
+  }, [amount, deviceKnown, t, base]);
 
   const max = Math.max(t.amount * 2, 20);
   return (
@@ -142,10 +168,16 @@ function Counterfactual({ t, onDescribe }: { t: Transaction; onDescribe: (s: str
           </li>
         ))}
       </ul>
-      {result && (
+      {result && base && (
         <div className="cf-result" aria-live="polite">
-          Risk would be <strong className="num">{risk(result.p)}</strong> (now {risk(t.decision.p)}), decision{" "}
-          <DecisionBadge action={result.decision.action} />
+          {illustrative ? "Illustrative model: risk would be " : "Risk would be "}
+          <strong className="num">{risk(result.p)}</strong> ({illustrative ? "illustrative model on this case: " : "now "}
+          {risk(base.p)}), decision <DecisionBadge action={result.decision.action} />
+          {illustrative && (
+            <span className="muted xs" style={{ display: "block", marginTop: 4 }}>
+              Both numbers come from the illustrative model, not the evaluated system; the case's real risk is {risk(t.decision.p)}.
+            </span>
+          )}
         </div>
       )}
     </div>
@@ -318,7 +350,7 @@ export function Case() {
             </div>
             <div className="section">
               <h2>Narrative</h2>
-              <p className="narrative">{narrative(t, cfText)}</p>
+              <p className="narrative">{ILLUSTRATIVE_CF ? narrative(t) : narrative(t, cfText)}</p>
             </div>
             <div className="section no-print">
               <h2>Your decision</h2>
@@ -361,10 +393,14 @@ export function Case() {
                 <Loading what="linked entities" />
               )}
             </div>
-            <div className="section">
+            <div className={ILLUSTRATIVE_CF ? "section no-print" : "section"}>
               <h2>Counterfactual</h2>
-              <p className="muted xs">What would change the decision. Card, address and history are locked: they describe who the customer is and what already happened.</p>
-              <Counterfactual t={t} onDescribe={setCfText} />
+              {ILLUSTRATIVE_CF && <p className="mock-note xs" style={{ display: "inline-block" }}>Illustrative model, not the evaluated system</p>}
+              <p className="muted xs">
+                What would change the decision. Card, address and history are locked: they describe who the customer is and what already happened.
+                {ILLUSTRATIVE_CF && " The final-run models score recorded transactions only, so this runs on the illustrative model and is compared with that model's score of the unchanged case; it is left out of the narrative and the printed report."}
+              </p>
+              <Counterfactual t={t} onDescribe={setCfText} illustrative={ILLUSTRATIVE_CF} />
             </div>
             <div className="section">
               <h2>View scores</h2>
