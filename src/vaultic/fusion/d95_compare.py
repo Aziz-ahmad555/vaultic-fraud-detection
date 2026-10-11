@@ -58,6 +58,11 @@ def report_lines(counts: list[dict], views: list[dict], fusion: list[dict], per_
 
     res = pd.DataFrame(fusion).set_index("method")
     sub = pd.DataFrame(subgroups)
+    # Holm across the table's MVAF comparisons (D146: the report text uses the adjusted p)
+    from vaultic.eval.bootstrap import holm
+
+    tested = [m for m in res.index if m != "MVAF" and not pd.isna(res.loc[m].get("p", np.nan))]
+    p_holm = dict(zip(tested, holm([float(res.loc[m, "p"]) for m in tested]), strict=True))
     lines = [
         "# MVAF after the pre-registered changes (D95): the one evaluation on days 147-150"
         + (" — SMOKE (not a result)" if smoke else ""),
@@ -84,8 +89,8 @@ def report_lines(counts: list[dict], views: list[dict], fusion: list[dict], per_
         "## Fused and single models",
         "",
         "| method | PR-AUC (5-seed mean score) | 95% CI | per-seed mean ± std | MVAF − method | "
-        "95% CI | p | tuned on the inner split |",
-        "|---|---|---|---|---|---|---|---|",
+        f"95% CI | p | p (Holm, {len(tested)} comparisons) | tuned on the inner split |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for name in [m for m in ORDER if m in res.index]:
         r = res.loc[name]
@@ -95,15 +100,26 @@ def report_lines(counts: list[dict], views: list[dict], fusion: list[dict], per_
             ""
             if pd.isna(r.get("MVAF - method", np.nan))
             else (
-                f"{r['MVAF - method']:+.4f} | [{r['d_low']:+.4f}, {r['d_high']:+.4f}] | {r['p']:.3f}"
+                f"{r['MVAF - method']:+.4f} | [{r['d_low']:+.4f}, {r['d_high']:+.4f}] | {r['p']:.3f} | "
+                f"{p_holm[name]:.3f}"
             )
         )
         if not diff:
-            diff = " | | "
+            diff = " | | | "
         tune_txt = (f"{tuned[name]['trials']} trials, tune PR-AUC {tuned[name]['tune_pr_auc']:.4f}"
                     if name in tuned else ("F0: Optuna on 128-143" if name == "F0" else "—"))  # fmt: skip
         lines.append(f"| {name} | {r['PR-AUC']:.4f} | [{r['ci_low']:.4f}, {r['ci_high']:.4f}] | "
                      f"{seed_txt} | {diff} | {tune_txt} |")  # fmt: skip
+    lines += (
+        [
+            "",
+            "With Holm's correction over these comparisons MVAF is not different from F2-F7 "
+            "(including F4 and F6, whose raw p is below 0.05); it beats F1 and trails B5 and F0 "
+            "(D97, D146).",
+        ]
+        if p_holm
+        else []
+    )
     methods = [m for m in ORDER if m in sub.columns]
     versus = [c for c in sub.columns if c.startswith("MVAF - ")]
     lines += [

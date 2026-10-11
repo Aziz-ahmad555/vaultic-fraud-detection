@@ -2,3 +2,16 @@
 \label{sec:threats}
 % Reconstructed customer ID; masked features; no calendar time; one dataset; cost assumptions;
 % GPU vs CPU differences; anything else recorded in research/decisions.md.
+
+% Required limitations (phase3-run review #1 and #3; D140, D142):
+\paragraph{Label maturity of the gate's training rows.} The cross-fitted view predictions used
+to train the gate (D95) come from view models trained on labels that a 30-day label delay would
+not yet have released at the start of each predicted block (D140). The test-period view scores
+do not have this advantage, so the gate may have learned to trust the views somewhat more than
+it should. The post-hoc sensitivity analysis D141 measures the effect on E10.
+
+\paragraph{Emerging-fraud hold-outs.} In the hold-out experiments (D93, D98) the held-out
+group's frauds are removed from the training rows, but the label-derived features and the
+graph features are built from all earlier labels and still contain that group's fraud history
+(D142). The supervised hold-out results are therefore optimistic. The anomaly view's
+``beats random'' gate is unaffected: its scores use no labels.
