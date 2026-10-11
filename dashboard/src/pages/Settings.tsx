@@ -69,7 +69,7 @@ export function Settings() {
           <div className="pane-body print-region">
             {summary.data ? (
               <>
-                {summary.data.whatIf && <WhatIfReportNote cost={asOf.whatIf} />}
+                {summary.data.whatIf && <WhatIfReportNote cost={summary.data.whatIfCost} />}
                 <p className="small">
                   Day {summary.data.day}, up to {fmtClock(asOf.time, false)}: {fmtInt(summary.data.transactions)} transactions, {fmtInt(summary.data.alerts)} alerts,
                   expected fraud value stopped {fmtMoney(summary.data.expectedFraudStopped)}, estimated loss {fmtMoney(summary.data.expectedLoss)}. {DATA_SOURCE === "http" ? `${HTTP_SOURCE_LABEL}.` : "Synthetic mock data."}

@@ -44,7 +44,8 @@ export function WhatIfPanel() {
       toast(`Couldn't use these what-if costs. ${(e as Error).message}`, "error");
     }
   };
-  const th = whatIf ? status.data.thresholds : null;
+  // D155: thresholds from the response that produced them, only while it matches the setting shown
+  const th = whatIf && whatIfKey(status.data.cost) === whatIfKey(whatIf) ? status.data.thresholds : null;
 
   return (
     <section className="pane">

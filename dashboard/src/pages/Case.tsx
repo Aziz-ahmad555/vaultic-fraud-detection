@@ -300,7 +300,7 @@ export function Case() {
                 entities.
               </p>
             )}
-            {t.decision.whatIf && <WhatIfReportNote cost={asOf.whatIf} />}
+            {t.decision.whatIf && <WhatIfReportNote cost={t.whatIfCost} />}
             <header className="section case-head">
               <div className="case-title">
                 <h1>Case {t.row.TransactionID}</h1>

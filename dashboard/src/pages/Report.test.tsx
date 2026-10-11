@@ -25,6 +25,10 @@ vi.mock("../api", () => ({
       riskByHour: [],
       viewAvailability: { tabular: 1, behavioral: 1, temporal: 1, graph: 1, anomaly: 1 },
       whatIf: served,
+      // the costs that produced these figures (D155); the browser holds no what-if setting here
+      whatIfCost: served
+        ? { c_fp: 3, c_rev: 2, c_step: 0.1, step_up_success_rate: 0.7, legit_step_up_friction: 0, hold_success_rate: 0.8 }
+        : null,
     }),
     auditLog: async () => [],
   },
@@ -49,6 +53,9 @@ describe("printed daily report (D132)", () => {
     const region = document.querySelector(".print-region")!;
     expect(region.textContent).toMatch(/What-if cost mode: illustrative, not the evaluated system/);
     expect(region.querySelector(".no-print .whatif-report-note")).toBeNull();
+    // D155: the printed costs are the response's, although the client has no what-if setting
+    expect(region.textContent).toMatch(/false positive \$3, review \$2/);
+    expect(region.textContent).toMatch(/hold stops 80%/);
   });
 
   it("has no what-if label for the evaluated system", async () => {

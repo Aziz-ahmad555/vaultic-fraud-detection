@@ -125,6 +125,8 @@ export interface Transaction {
   weights: Record<View, number>;
   decision: DecisionRecord;
   reasons: Reason[];
+  /** the what-if costs that produced `decision` (absent or null: the evaluated system; D155) */
+  whatIfCost?: CostModel | null;
   /** inputs of the scoring function, for counterfactuals and the simulator */
   inputs: ScoreInput;
 }
@@ -185,6 +187,9 @@ export interface DaySummary {
   viewAvailability: Record<View, number>; // share of transactions with the view
   /** true when the decisions and costs come from the what-if cost mode */
   whatIf?: boolean;
+  /** the what-if costs and thresholds that produced these figures (D155) */
+  whatIfCost?: CostModel | null;
+  whatIfThresholds?: Thresholds | null;
 }
 
 export interface NetworkNode {
