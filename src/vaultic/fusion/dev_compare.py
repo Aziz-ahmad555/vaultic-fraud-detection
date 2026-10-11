@@ -200,6 +200,13 @@ def build_table(smoke: bool, d95: bool = False, final: bool = False, return_part
                 splits, final=final, label_maturity_days=gate_label_maturity_days
             )
             plan = [m if m.name != "fixed" else f for m, f in zip(mature, plan, strict=True)]
+            # D147: a mature gate fold whose training rows hold no fraud (no released labels yet,
+            # e.g. 1-30 -> 31-60) cannot train view models and is left out
+            day, time = df["day"].to_numpy(), df["TransactionDT"].to_numpy()
+            y_all = df["isFraud"].to_numpy()
+            plan = [
+                f for f in plan if f.name == "fixed" or y_all[f.train_rows(day, time)].sum() > 0
+            ]
             check_plan(plan, splits, final)
         table = view_table(df, features, views, plan, encoder,
                            splits)  # fmt: skip

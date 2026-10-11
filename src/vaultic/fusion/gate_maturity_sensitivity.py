@@ -111,6 +111,7 @@ def write_md(r: dict) -> None:
              f"Generated {r['generated']} by `python -m vaultic.fusion.gate_maturity_sensitivity`.", "",
              f"The three cross-fitted gate folds are rebuilt with {r['maturity_days']}-day label maturity "
              "(each fold's view models train only on labels released by the start of its predicted block); "
+             "the first fold (1-30 -> 31-60) has no released labels under maturity and is left out (D147); "
              "the fixed fold is unchanged, so the test-period view scores equal the final run's (max |diff| "
              f"{r['test_view_scores_max_abs_diff']:.1e}). Gate rows (fit + tune): {g0[0]:,} ({g0[1]:,} frauds) "
              f"pre-registered, {g1[0]:,} ({g1[1]:,} frauds) with mature folds. The gate methods are refitted "
