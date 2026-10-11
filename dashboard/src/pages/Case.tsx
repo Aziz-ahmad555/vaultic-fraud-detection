@@ -26,9 +26,11 @@ export function narrative(t: Transaction, cf: string | null): string {
   else parts.push("No feature raised the risk above a typical transaction.");
   const missing = VIEWS.filter((v) => t.row[`m_${v}`] === 0).map((v) => VIEW_LABEL[v].toLowerCase());
   if (missing.length) parts.push(`No ${missing.join(" or ")} evidence was available, so ${missing.length > 1 ? "those views carry" : "that view carries"} no weight.`);
-  if (t.inputs.sharedEntities > 0)
-    parts.push(`Its card or device is shared with ${t.inputs.sharedEntities} other customer${t.inputs.sharedEntities > 1 ? "s" : ""}.`);
-  else parts.push("No graph evidence of risk: no shared card or device.");
+  // only computed facts (D126): a field that is not available is left out, never guessed
+  const shared = t.inputs.sharedEntities;
+  if (shared !== null && shared > 0)
+    parts.push(`${shared} other customer${shared > 1 ? "s" : ""} used its card in the 7 days before.`);
+  else if (shared === 0) parts.push("No other customer used its card in the 7 days before.");
   parts.push(cf ?? "No counterfactual has been explored yet.");
   return parts.join(" ");
 }
@@ -114,7 +116,7 @@ function Counterfactual({ t, onDescribe }: { t: Transaction; onDescribe: (s: str
       <div className="cf-row">
         <span>Device</span>
         {t.inputs.deviceKnown === null ? (
-          <span className="muted">No device on this transaction</span>
+          <span className="muted">{t.entities.device === null ? "No device on this transaction" : "Whether the customer used this device before is not available"}</span>
         ) : (
           <div className="segmented" role="group" aria-label="Device">
             <button type="button" aria-pressed={deviceKnown === true} onClick={() => setDeviceKnown(true)}>Known</button>
@@ -128,8 +130,9 @@ function Counterfactual({ t, onDescribe }: { t: Transaction; onDescribe: (s: str
         {[
           ["Card", t.entities.card],
           ["Billing address", t.entities.address ?? "none"],
-          ["History", `${t.inputs.historyCount} earlier transactions${t.inputs.usualAmount ? `, usual ${fmtMoney2(t.inputs.usualAmount)}` : ""}`],
-          ["Shared entities", String(t.inputs.sharedEntities)],
+          ["History", `${t.inputs.historyCount} earlier transactions${t.inputs.usualAmount !== null ? `, usual ${fmtMoney2(t.inputs.usualAmount)}` : t.inputs.historyCount > 0 ? ", usual amount not available" : ""}`],
+          ["Transactions in the 24 hours before", t.inputs.velocity24h === null ? "not available" : String(t.inputs.velocity24h)],
+          ["Other customers on the card (7 days before)", t.inputs.sharedEntities === null ? "not available" : String(t.inputs.sharedEntities)],
         ].map(([k, v]) => (
           <li key={k} className="locked">
             <LockIcon title={`${k} is locked and cannot change`} />
@@ -149,12 +152,15 @@ function Counterfactual({ t, onDescribe }: { t: Transaction; onDescribe: (s: str
   );
 }
 
+/** Linked entities: other customers on the card when known, else the relational view's evidence. */
+const linked = (t: Transaction) => (t.inputs.sharedEntities !== null ? t.inputs.sharedEntities > 0 : t.row.m_graph === 1);
+
 /** How fully a transaction shows the console: all five views, history, linked entities. */
 function richness(t: Transaction) {
   const allViews = VIEWS.every((v) => t.row[`m_${v}`] === 1);
-  return (allViews ? 1000 : 0) + Math.min(t.inputs.historyCount, 50) + 5 * Math.min(t.inputs.sharedEntities, 6);
+  return (allViews ? 1000 : 0) + Math.min(t.inputs.historyCount, 50) + 5 * Math.min(t.inputs.sharedEntities ?? (linked(t) ? 1 : 0), 6);
 }
-const isRich = (t: Transaction) => VIEWS.every((v) => t.row[`m_${v}`] === 1) && t.inputs.historyCount >= 5 && t.inputs.sharedEntities > 0;
+const isRich = (t: Transaction) => VIEWS.every((v) => t.row[`m_${v}`] === 1) && t.inputs.historyCount >= 5 && linked(t);
 
 /**
  * Default case: the richest of today's alerts that has all five views, real history and linked

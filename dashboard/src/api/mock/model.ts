@@ -33,19 +33,6 @@ export const logit = (p: number) => {
 
 /** Features of the mock model, each with its baseline ("typical transaction") value. */
 type Feature = "amount" | "ratio" | "device" | "velocity" | "shared" | "c13" | "history";
-
-function featureValues(x: ScoreInput): Record<Feature, number> {
-  const ratio = x.usualAmount && x.usualAmount > 0 ? x.amount / x.usualAmount : 1;
-  return {
-    amount: Math.log10(Math.max(x.amount, 1)),
-    ratio: Math.log(Math.max(ratio, 0.05)),
-    device: x.deviceKnown === false ? 1 : 0,
-    velocity: x.velocity24h,
-    shared: x.sharedEntities,
-    c13: x.maskedC13,
-    history: Math.log1p(x.historyCount),
-  };
-}
 const BASELINE: Record<Feature, number> = {
   amount: Math.log10(80),
   ratio: 0,
@@ -55,6 +42,20 @@ const BASELINE: Record<Feature, number> = {
   c13: 1,
   history: Math.log1p(10),
 };
+
+function featureValues(x: ScoreInput): Record<Feature, number> {
+  const ratio = x.usualAmount && x.usualAmount > 0 ? x.amount / x.usualAmount : 1;
+  return {
+    amount: Math.log10(Math.max(x.amount, 1)),
+    ratio: Math.log(Math.max(ratio, 0.05)),
+    device: x.deviceKnown === false ? 1 : 0,
+    // a field that is not available contributes nothing: it sits at the baseline
+    velocity: x.velocity24h ?? BASELINE.velocity,
+    shared: x.sharedEntities ?? BASELINE.shared,
+    c13: x.maskedC13 ?? BASELINE.c13,
+    history: Math.log1p(x.historyCount),
+  };
+}
 
 /** Linear coefficients of each view's logit on the features. */
 const COEF: Record<View, { intercept: number } & Partial<Record<Feature, number>>> = {
@@ -138,12 +139,12 @@ function reasonText(feature: Feature, x: ScoreInput, points: number): { name: st
     case "velocity":
       return {
         name: "vel_n_24h",
-        text: `${x.velocity24h} earlier transactions by this customer in the last 24 hours`,
+        text: `${x.velocity24h} transactions by this customer in the 24 hours before`,
       };
     case "shared":
       return {
         name: "g_shared_uids_device",
-        text: `${x.sharedEntities} other customers share this card or device`,
+        text: `${x.sharedEntities} other customers used this card in the 7 days before`,
       };
     case "c13":
       return {

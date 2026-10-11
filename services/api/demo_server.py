@@ -93,6 +93,10 @@ def _none(x):
     return None if x is None or (isinstance(x, float) and not np.isfinite(x)) else x
 
 
+def _int_or_none(x) -> int | None:
+    return None if x is None or not np.isfinite(x) else int(x)
+
+
 def label_delay(L: int = 30) -> int:
     """The L query parameter of every as-of endpoint: one of LABEL_DELAYS, else 422 (D125)."""
     if L not in LABEL_DELAYS:
@@ -110,12 +114,79 @@ def matured_day(time: float, L: int, first_day: int) -> int | None:
     return last if last >= first_day else None
 
 
+SHARED_WINDOW_DAYS = 7
+
+
+def bundle_inputs(df: pd.DataFrame) -> pd.DataFrame:
+    """The case inputs the bundle can support, computed from its rows (D126), each ONLY where the
+    bundle makes it exact and NaN / None otherwise ("not available", never a made-up value).
+
+    The bundle holds every test-period transaction (from day `first` on) and nothing earlier, so
+    for a transaction at time t (earlier = strictly before t; same-second rows are not history):
+      velocity24h     the customer's transactions in [t - 24 h, t); exact when t - 24 h >= start
+      usualAmount     median of the customer's earlier amounts; exact when the bundle holds the
+                      customer's whole history (its earlier rows = ctx_hist_n_past > 0)
+      deviceKnown     the device was seen on an earlier transaction of the customer: True when
+                      found; False only with the whole history in the bundle; None otherwise
+                      (and None when the transaction has no device)
+      sharedEntities  other customers on the same card in [t - 7 days, t); exact when
+                      t - 7 days >= start. Devices are left out: the bundle's device is the
+                      DeviceInfo string ("Windows"), shared by thousands (a hub)
+    `df` must be sorted by TransactionDT.
+    """
+    t = df["TransactionDT"].to_numpy(dtype=float)
+    if np.any(np.diff(t) < 0):
+        raise ValueError("bundle_inputs needs rows sorted by TransactionDT")
+    start = float(int(df["day"].min()) * DAY)
+    n = len(df)
+    amount = df["amount"].to_numpy(dtype=float)
+    hist = df["ctx_hist_n_past"].to_numpy(dtype=float)
+    device = df["device"].to_numpy(dtype=object)
+    velocity = np.full(n, np.nan)
+    usual = np.full(n, np.nan)
+    known = np.full(n, None, dtype=object)
+    for idx in df.groupby("uid", sort=False).indices.values():  # positions, in time order
+        tt = t[idx]
+        before = np.searchsorted(tt, tt, side="left")  # earlier rows of this customer
+        recent = before - np.searchsorted(tt, tt - DAY, side="left")
+        velocity[idx] = np.where(tt - DAY >= start, recent, np.nan)
+        for j, b in enumerate(before):
+            i = idx[j]
+            whole = b > 0 and b == hist[i]
+            if whole:
+                usual[i] = float(np.median(amount[idx[:b]]))
+            if device[i] is not None and not (isinstance(device[i], float) and np.isnan(device[i])):
+                seen = device[i] in set(device[idx[:b]])
+                known[i] = True if seen else (False if b == hist[i] else None)
+    shared = np.full(n, np.nan)
+    window = SHARED_WINDOW_DAYS * DAY
+    uid = df["uid"].to_numpy(dtype=object)
+    for idx in df.groupby("card", sort=False).indices.values():
+        counts: dict = {}
+        lo = hi = 0
+        for j, i in enumerate(idx):
+            while hi < j and t[idx[hi]] < t[i]:  # earlier rows enter the window
+                counts[uid[idx[hi]]] = counts.get(uid[idx[hi]], 0) + 1
+                hi += 1
+            while lo < hi and t[idx[lo]] < t[i] - window:  # rows older than 7 days leave it
+                u = uid[idx[lo]]
+                counts[u] -= 1
+                if counts[u] == 0:
+                    del counts[u]
+                lo += 1
+            if t[i] - window >= start:
+                shared[i] = len(counts) - (1 if uid[i] in counts else 0)
+    return pd.DataFrame({"velocity24h": velocity, "usualAmount": usual, "deviceKnown": known,
+                         "sharedEntities": shared}, index=df.index)  # fmt: skip
+
+
 def create_app(bundle_path: Path | None = None) -> FastAPI:
     bundle_path = Path(bundle_path or os.environ.get("VAULTIC_DEMO_BUNDLE") or DEFAULT_BUNDLE)
     meta = json.loads(bundle_path.with_suffix(".json").read_text("utf-8"))
     df = pd.read_parquet(bundle_path).sort_values("TransactionDT").reset_index(drop=True)
     dt = df["TransactionDT"].to_numpy()
     by_id = {int(t): i for i, t in enumerate(df["TransactionID"].to_numpy())}
+    inputs = bundle_inputs(df)  # exact where the bundle supports it, else not available (D126)
     # t_dis = inf (disagreement rule off) on the Python side is null in the contract
     thresholds = {k: _none(float(v)) if v is not None else None
                   for k, v in meta["thresholds"].items()}  # fmt: skip
@@ -137,7 +208,7 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
         return t + L * DAY <= time
 
     def transaction(i: int, time: float, L: int) -> dict:
-        r = df.iloc[i]
+        r, x = df.iloc[i], inputs.iloc[i]
         views = {v: _none(float(r[f"p_{v}"])) for v in VIEWS}
         row = {"TransactionID": int(r["TransactionID"]), "TransactionDT": float(r["TransactionDT"]),
                "day": int(r["day"]), "fold": "fixed", "role": "test", "split": "test",
@@ -161,9 +232,12 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
                          "disagreement": float(r["disagreement"]),
                          "whatIf": state["whatif"] is not None},
             "reasons": json.loads(r["reasons"]),
-            "inputs": {"amount": amount, "usualAmount": None, "deviceKnown": _none(r["device"]) is not None,
-                       "velocity24h": 0, "sharedEntities": 0,
-                       "historyCount": int(r["ctx_hist_n_past"]), "maskedC13": 0,
+            "inputs": {"amount": amount, "usualAmount": _none(float(x["usualAmount"])),
+                       "deviceKnown": x["deviceKnown"],
+                       "velocity24h": _int_or_none(x["velocity24h"]),
+                       "sharedEntities": _int_or_none(x["sharedEntities"]),
+                       "historyCount": int(r["ctx_hist_n_past"]),
+                       "maskedC13": None,  # C13 is not in the bundle
                        "available": {v: views[v] is not None for v in VIEWS}},
             "source": meta["source"],
         }  # fmt: skip

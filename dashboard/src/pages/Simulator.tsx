@@ -63,12 +63,12 @@ export function Simulator() {
             </div>
             <div className="cf-row">
               <label htmlFor="s-vel">Velocity 24 h</label>
-              <input id="s-vel" type="range" min={0} max={20} step={1} value={x.velocity24h} onChange={(e) => set("velocity24h", Number(e.target.value))} />
+              <input id="s-vel" type="range" min={0} max={20} step={1} value={x.velocity24h ?? 0} onChange={(e) => set("velocity24h", Number(e.target.value))} />
               <span className="num">{x.velocity24h}</span>
             </div>
             <div className="cf-row">
-              <label htmlFor="s-sh">Shared entities</label>
-              <input id="s-sh" type="range" min={0} max={10} step={1} value={x.sharedEntities} onChange={(e) => set("sharedEntities", Number(e.target.value))} />
+              <label htmlFor="s-sh">Other customers on the card (7 days)</label>
+              <input id="s-sh" type="range" min={0} max={10} step={1} value={x.sharedEntities ?? 0} onChange={(e) => set("sharedEntities", Number(e.target.value))} />
               <span className="num">{x.sharedEntities}</span>
             </div>
             <fieldset className="views-fieldset">

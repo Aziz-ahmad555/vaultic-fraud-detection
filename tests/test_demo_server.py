@@ -262,3 +262,70 @@ def test_matured_day_is_always_before_the_as_of_day():
 def test_queues_matured_day_at_the_end_of_a_day_with_no_label_delay(server):
     q = _get(server, f"/api/queues?time={152 * DAY + DAY - 1}&k=50&L=0")
     assert q[0]["matured"]["day"] == 151
+
+
+def _brute_inputs(df: pd.DataFrame) -> list[dict]:
+    """Reference for bundle_inputs: the definitions applied row by row (D126)."""
+    start = int(df["day"].min()) * DAY
+    out = []
+    for _, r in df.iterrows():
+        t = r["TransactionDT"]
+        mine = df[(df["uid"] == r["uid"]) & (df["TransactionDT"] < t)]
+        whole = len(mine) > 0 and len(mine) == r["ctx_hist_n_past"]
+        on_card = df[(df["card"] == r["card"]) & (df["TransactionDT"] < t)
+                     & (df["TransactionDT"] >= t - 7 * DAY)]  # fmt: skip
+        dev = r["device"]
+        if dev is None:
+            known = None
+        elif dev in set(mine["device"]):
+            known = True
+        else:
+            known = False if len(mine) == r["ctx_hist_n_past"] else None
+        out.append({
+            "velocity24h": int((mine["TransactionDT"] >= t - DAY).sum()) if t - DAY >= start else None,
+            "usualAmount": float(np.median(mine["amount"])) if whole else None,
+            "deviceKnown": known,
+            "sharedEntities": len(set(on_card["uid"]) - {r["uid"]}) if t - 7 * DAY >= start else None,
+        })  # fmt: skip
+    return out
+
+
+def test_bundle_inputs_are_exact_where_the_bundle_supports_them_and_missing_otherwise():
+    mod = _load_module()
+    rng = np.random.default_rng(3)
+    n = 300
+    t = np.sort(151 * DAY + rng.integers(0, 20 * DAY, n)).astype(float)
+    t[10] = t[9]  # a same-second pair: not each other's history
+    uid = rng.choice([f"u{i}" for i in range(12)], n)
+    df = pd.DataFrame({"TransactionDT": t, "day": (t // DAY).astype(int), "uid": uid,
+                       "card": rng.choice(["c1", "c2", "c3"], n), "amount": rng.lognormal(4, 1, n),
+                       "device": rng.choice(np.array(["d1", "d2", None], dtype=object), n)})  # fmt: skip
+    # half the customers have their whole history in the bundle, the others had earlier rows
+    first = df.groupby("uid").cumcount().to_numpy()
+    df["ctx_hist_n_past"] = np.where(np.isin(uid, [f"u{i}" for i in range(6)]), first, first + 4)
+    got = mod.bundle_inputs(df)
+    want = _brute_inputs(df)
+    for i, w in enumerate(want):
+        g = got.iloc[i]
+        for k in ("velocity24h", "usualAmount", "sharedEntities"):
+            if w[k] is None:
+                assert np.isnan(g[k]), (i, k)
+            else:
+                assert g[k] == pytest.approx(w[k]), (i, k)
+        assert g["deviceKnown"] == w["deviceKnown"], i
+    # every kind of value occurs, including "not available"
+    assert got["velocity24h"].isna().any() and got["velocity24h"].notna().any()
+    assert got["usualAmount"].isna().any() and got["usualAmount"].notna().any()
+    assert got["sharedEntities"].isna().any() and got["sharedEntities"].notna().any()
+    assert {True, False, None} <= set(got["deviceKnown"])
+
+
+def test_served_inputs_never_invent_a_value(server):
+    rows = _get(server, f"/api/stream?time={190 * DAY + 3600}&start=0&end={190 * DAY + 3600}")
+    first_day = [r for r in rows if r["row"]["day"] == 151]
+    assert first_day and all(r["inputs"]["velocity24h"] is None for r in first_day)
+    assert all(r["inputs"]["sharedEntities"] is None for r in first_day)
+    assert all(r["inputs"]["maskedC13"] is None for r in rows)  # not in the bundle
+    assert all(r["inputs"]["deviceKnown"] is None for r in rows)  # the bundle has no devices
+    late = [r for r in rows if r["row"]["day"] == 190]
+    assert late and all(isinstance(r["inputs"]["sharedEntities"], int) for r in late)

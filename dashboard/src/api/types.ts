@@ -124,15 +124,19 @@ export interface Transaction {
   inputs: ScoreInput;
 }
 
-/** Inputs of the scoring model (mock: a fixed logistic model; later: POST /score). */
+/**
+ * Inputs of the scoring model (mock: a fixed logistic model). On the real-data backend they are
+ * computed from the frozen bundle only where it makes them exact (D126); null = not available,
+ * and no page may state a fact from a null field.
+ */
 export interface ScoreInput {
   amount: number;
-  usualAmount: number | null; // customer's median past amount; null = no history
-  deviceKnown: boolean | null; // null = no device on the transaction
-  velocity24h: number;
-  sharedEntities: number; // other customers sharing card/device
+  usualAmount: number | null; // customer's median earlier amount; null = no history or not available
+  deviceKnown: boolean | null; // seen on an earlier transaction; null = no device or not available
+  velocity24h: number | null; // the customer's transactions in the 24 hours before; null = not available
+  sharedEntities: number | null; // other customers on the same card in the 7 days before; null = not available
   historyCount: number;
-  maskedC13: number;
+  maskedC13: number | null; // null = not available
   available: Record<View, boolean>;
 }
 

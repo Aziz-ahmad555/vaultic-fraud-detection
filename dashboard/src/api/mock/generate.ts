@@ -109,6 +109,7 @@ export function generate(seed = 7): Dataset {
   const pastTimes = new Map<string, number[]>();
   const seenDevices = new Map<string, Set<string>>();
   const entityUsers = new Map<string, Set<string>>(); // card/device -> uids seen before
+  const cardUses = new Map<string, { t: number; uid: string }[]>(); // card -> earlier uses
   const transactions: Transaction[] = [];
   const labels = new Map<number, 0 | 1>();
   const ringOf = new Map<string, number>();
@@ -121,7 +122,7 @@ export function generate(seed = 7): Dataset {
     const times = pastTimes.get(uid) ?? [];
     const sorted = [...amounts].sort((a, b) => a - b);
     const usual = sorted.length ? sorted[Math.floor(sorted.length / 2)] : null;
-    const velocity = times.filter((t) => t > e.t - DAY && t < e.t).length;
+    const velocity = times.filter((t) => t >= e.t - DAY && t < e.t).length;
     const devices = seenDevices.get(uid) ?? new Set<string>();
     const others = new Set<string>();
     for (const key of [e.c.card, e.device]) {
@@ -136,7 +137,10 @@ export function generate(seed = 7): Dataset {
       usualAmount: usual,
       deviceKnown: e.device === null ? null : devices.has(e.device),
       velocity24h: velocity,
-      sharedEntities: others.size,
+      // as the backend (D126): other customers on the same card in [t - 7 days, t)
+      sharedEntities: new Set(
+        (cardUses.get(e.c.card) ?? []).filter((x) => x.t >= e.t - 7 * DAY && x.t < e.t && x.uid !== uid).map((x) => x.uid),
+      ).size,
       historyCount: amounts.length,
       maskedC13: Math.max(0, Math.round(1 + (e.fraud ? 4 : 1) * Math.abs(r.normal()))),
       available: { tabular: true, behavioral: true, temporal: true, graph: entitySeen, anomaly: true },
@@ -193,6 +197,9 @@ export function generate(seed = 7): Dataset {
     pastAmounts.set(uid, amounts);
     pastTimes.set(uid, times);
     if (e.device) devices.add(e.device);
+    const uses = cardUses.get(e.c.card) ?? [];
+    uses.push({ t: e.t, uid });
+    cardUses.set(e.c.card, uses);
     seenDevices.set(uid, devices);
     for (const key of [e.c.card, e.device]) {
       if (!key) continue;
