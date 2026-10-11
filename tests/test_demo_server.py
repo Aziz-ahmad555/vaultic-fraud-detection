@@ -475,3 +475,15 @@ def test_concurrent_feedback_keeps_labels_and_audit_consistent(tmp_path):
     assert len(chain) == 60 and chain[0]["detail"] == "first label"
     for prev, cur in zip(chain, chain[1:], strict=False):  # each "was" is the label before it
         assert cur["detail"] == "was " + prev["action"].rsplit(" as ", 1)[1]
+
+
+@pytest.mark.parametrize("hold", [None, 0.7])
+def test_day_summary_has_one_loss_definition(server, hold):
+    """D136: expected loss = missed fraud = expected fraud value not stopped; stopped + loss = the
+    day's expected fraud value, for the evaluated system and a what-if with an imperfect Hold."""
+    extra = _q({**WHATIF, "hold_success_rate": hold}) if hold else ""
+    s = _get(server, f"/api/day-summary?time={AS_OF}{extra}")
+    rows = _get(server, f"/api/stream?time={AS_OF}&start={151 * DAY - 1}&end={AS_OF}{extra}")
+    total = sum(t["decision"]["p"] * t["amount"] for t in rows)
+    assert s["expectedLoss"] == pytest.approx(s["cost"]["missedFraud"])
+    assert s["expectedFraudStopped"] + s["expectedLoss"] == pytest.approx(total)

@@ -42,12 +42,12 @@ export function Overview() {
             <div className="figure">
               <div className="muted small">Fraud value stopped</div>
               <div className="figure-value num">{fmtMoney(data.expectedFraudStopped)}</div>
-              <div className="figure-note">Expected, from risk × amount</div>
+              <div className="figure-note">Expected, from risk × amount, stopped by the decisions</div>
             </div>
             <div className="figure">
               <div className="muted small">Estimated loss</div>
               <div className="figure-value num">{fmtMoney(data.expectedLoss)}</div>
-              <div className="figure-note">Expected fraud value allowed through</div>
+              <div className="figure-note">Expected fraud value not stopped (allowed, or missed by a step-up or hold)</div>
             </div>
             <div className="figure">
               <div className="muted small">Queue</div>

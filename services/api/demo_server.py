@@ -338,16 +338,18 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
         p, amt = sub["p"].to_numpy(), sub["amount"].to_numpy()
         cost = w if w is not None else meta["cost_model"]
         hold_rate = cost.get("hold_success_rate", 1.0)
-        held = act == "hold"
-        el = p * amt
-        low = np.isin(act, ["allow", "monitor"])
-        step = act == "step_up"
         rate = cost["step_up_success_rate"]
-        stopped = float(np.sum(np.where(step, rate * el, np.where(held, hold_rate * el, el))[~low]))
-        costs = {"missedFraud": float(el[low].sum() + ((1 - rate) * el[step]).sum()
-                                      + ((1 - hold_rate) * el[held]).sum()),
-                 "falsePositives": float(((1 - p) * cost["c_fp"])[act == "block"].sum()),
-                 "reviews": float(cost["c_rev"] * np.isin(act, ["hold", "block"]).sum()),
+        el = p * amt  # expected fraud value of each transaction (risk x amount)
+        low = np.isin(act, ["allow", "monitor"])
+        step, held, block = act == "step_up", act == "hold", act == "block"
+        # one definition (D136): the expected fraud value a decision stops, and the rest missed;
+        # stopped + missed = the day's expected fraud value
+        stop_share = np.select([low, step, held, block], [0.0, rate, hold_rate, 1.0], 0.0)
+        stopped = float((stop_share * el).sum())
+        missed = float(((1 - stop_share) * el).sum())
+        costs = {"missedFraud": missed,
+                 "falsePositives": float(((1 - p) * cost["c_fp"])[block].sum()),
+                 "reviews": float(cost["c_rev"] * (held | block).sum()),
                  "stepUps": float((cost["c_step"] + (1 - p) * cost["legit_step_up_friction"])[step].sum())}  # fmt: skip
         hours = []
         for h in range(24):
@@ -363,7 +365,7 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
         return {"day": int(time // DAY), "transactions": int(len(sub)),
                 "alerts": by_action["step_up"] + by_action["hold"] + by_action["block"],
                 "queue": by_action["step_up"] + by_action["hold"], "byAction": by_action,
-                "expectedFraudStopped": stopped, "expectedLoss": float(el[low].sum()),
+                "expectedFraudStopped": stopped, "expectedLoss": missed,
                 "cost": costs, "riskByHour": hours,
                 "viewAvailability": {v: float(sub[f"p_{v}"].notna().sum() / n) for v in VIEWS},
                 "whatIf": w is not None}  # fmt: skip

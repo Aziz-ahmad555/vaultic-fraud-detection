@@ -172,8 +172,14 @@ export interface DaySummary {
   alerts: number; // step-up + hold + block
   queue: number; // hold + step-up waiting
   byAction: Record<Action, number>;
-  expectedFraudStopped: number; // sum p x amount over held/blocked/stepped-up
-  expectedLoss: number; // sum p x amount over allowed/monitored
+  /**
+   * One definition of loss (D136), with el = risk x amount per transaction and the share of fraud
+   * each decision stops (allow / monitor 0, step-up its success rate, hold its success rate,
+   * block 1): expectedFraudStopped = sum share x el; expectedLoss = sum (1 - share) x el =
+   * cost.missedFraud. Stopped + loss = the day's expected fraud value.
+   */
+  expectedFraudStopped: number;
+  expectedLoss: number;
   cost: { missedFraud: number; falsePositives: number; reviews: number; stepUps: number };
   riskByHour: { hour: number; count: number; meanRisk: number }[];
   viewAvailability: Record<View, number>; // share of transactions with the view

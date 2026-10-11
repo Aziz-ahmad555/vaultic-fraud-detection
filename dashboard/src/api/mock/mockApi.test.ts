@@ -108,4 +108,13 @@ describe("mock API as-of rules", () => {
     for (const k of [50, 100, 200, 500]) expect((await api.queues(a, k))[0].cases.length).toBeLessThanOrEqual(k);
     for (const k of [10, 25, 49, 1000]) await expect(api.queues(a, k)).rejects.toThrow(/frozen budgets/);
   });
+
+  it("has one loss definition: loss = missed fraud, stopped + loss = expected fraud value (D136)", async () => {
+    const a = asOf(141, 20, 30);
+    const s = await api.daySummary(a);
+    const rows = (await api.stream(a, 141 * DAY - 1, a.time)).filter((t) => t.row.day === 141);
+    const total = rows.reduce((x, t) => x + t.decision.p * t.amount, 0);
+    expect(s.expectedLoss).toBeCloseTo(s.cost.missedFraud, 6);
+    expect(s.expectedFraudStopped + s.expectedLoss).toBeCloseTo(total, 6);
+  });
 });

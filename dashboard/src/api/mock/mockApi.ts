@@ -40,6 +40,13 @@ const COST: CostModel = {
   step_up_success_rate: 0.9,
   legit_step_up_friction: 1,
 };
+/** Share of a transaction's expected fraud value its decision stops (D136; Hold always stops it here). */
+export function stopShare(action: Action, cost: CostModel = COST): number {
+  if (action === "step_up") return cost.step_up_success_rate;
+  if (action === "hold") return cost.hold_success_rate ?? 1;
+  return action === "block" ? 1 : 0;
+}
+
 const LAMBDA_U = 0.2;
 const LAMBDA_D = 0.5;
 const STORE_KEY = "evidence-room-mock-v1";
@@ -157,16 +164,12 @@ export function createMockApi(seed = 7): Api {
         const { action, p } = t.decision;
         const el = p * t.amount;
         byAction[action] += 1;
-        if (action === "allow" || action === "monitor") {
-          loss += el;
-          cost.missedFraud += el;
-        } else {
-          stopped += action === "step_up" ? COST.step_up_success_rate * el : el;
-        }
-        if (action === "step_up") {
-          cost.missedFraud += (1 - COST.step_up_success_rate) * el;
-          cost.stepUps += COST.c_step + (1 - p) * COST.legit_step_up_friction;
-        }
+        // one definition (D136): the share of fraud each decision stops; the rest is missed
+        const share = stopShare(action);
+        stopped += share * el;
+        loss += (1 - share) * el;
+        cost.missedFraud += (1 - share) * el;
+        if (action === "step_up") cost.stepUps += COST.c_step + (1 - p) * COST.legit_step_up_friction;
         if (action === "hold" || action === "block") cost.reviews += COST.c_rev;
         if (action === "block") cost.falsePositives += (1 - p) * COST.c_fp;
         const h = hours[t.row.ctx_hour];
