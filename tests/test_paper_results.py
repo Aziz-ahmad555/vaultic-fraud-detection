@@ -1,6 +1,8 @@
 import subprocess
 import sys
 
+import pytest
+
 from vaultic.paths import REPO_ROOT
 from vaultic.reports import paper_results
 from vaultic.reports.paper_results import STEPS, Step, run_all
@@ -24,7 +26,15 @@ def test_registry_wires_every_paper_table():
         "gate-maturity",
     }
     assert any(s.args[1:] == ("vaultic.reports.emerging", "report") for s in STEPS)
-    for s in STEPS:  # every run a step reads exists
+
+
+def test_every_run_a_step_reads_exists():
+    """The pinned runs exist locally. Run folders are not in git (CI has none): skipped there
+    (D157)."""
+    runs = REPO_ROOT / "experiments" / "runs"
+    if not runs.exists():
+        pytest.skip("experiments/runs is not in git (no run folders on CI)")
+    for s in STEPS:
         for a in s.args:
             if a.startswith("experiments/runs/"):
                 assert (REPO_ROOT / a).is_dir(), a
