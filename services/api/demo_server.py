@@ -10,8 +10,9 @@ Every response follows the dashboard's typed contract (dashboard/src/api/types.t
 rules as the mock: nothing after the as-of time is returned, and a label only once
 its_time + L days <= as-of (label-delay curtain). All data is labelled
 "IEEE-CIS test period, final run": anonymized e-commerce transactions released by Vesta for the
-IEEE-CIS competition, not bank data. Threshold changes, feedback and the audit log are kept in
-memory for the demo session only; nothing is written back.
+IEEE-CIS competition, not bank data. The decision thresholds are the frozen E12 ones and are
+read-only (D129); feedback and the audit log are kept in memory for the demo session only; nothing
+is written back.
 
 POST /api/score is not available: the final-run models score recorded transactions only, so the
 dashboard's what-if simulator keeps its illustrative model (labelled "illustrative model, not the
@@ -60,19 +61,6 @@ WHATIF_NOTE = "What-if cost mode: illustrative, not the evaluated system"
 DEFAULT_BUNDLE = (
     Path(os.environ.get("VAULTIC_DATA_DIR", "data")) / "interim" / "demo_final_bundle.parquet"
 )
-
-
-class ThresholdsIn(BaseModel):
-    t_monitor: float
-    t_step: float
-    t_hold: float
-    t_block: float | None = None  # None = never block (inf on the Python side)
-    t_dis: float | None = None
-
-
-class SaveThresholds(BaseModel):
-    thresholds: ThresholdsIn
-    role: str
 
 
 class CostIn(BaseModel):
@@ -223,7 +211,8 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
     # t_dis = inf (disagreement rule off) on the Python side is null in the contract
     thresholds = {k: _none(float(v)) if v is not None else None
                   for k, v in meta["thresholds"].items()}  # fmt: skip
-    state = {"thresholds": thresholds, "feedback": {}, "audit": []}
+    # the frozen E12 thresholds of the final run: read-only (D129); others only via what-if
+    state = {"feedback": {}, "audit": []}
     base_actions = df["action"].to_numpy().astype(object)  # the frozen E12 decisions
     whatif_cache: dict = {}  # cost settings -> (actions, thresholds); a cache, not session state
     cache_lock = threading.Lock()
@@ -520,29 +509,19 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
 
     @app.get("/api/thresholds")
     def get_thresholds():
-        return {"thresholds": state["thresholds"], "cost": cost}
+        return {"thresholds": thresholds, "cost": cost, "frozen": True}
 
     def audit(role: str, action: str, detail: str):
         state["audit"].insert(0, {"time": datetime.now(UTC).isoformat(timespec="seconds"),
                                   "actor": role, "action": action, "detail": detail})  # fmt: skip
 
     @app.put("/api/thresholds")
-    def save_thresholds(body: SaveThresholds):
-        t = body.thresholds
-        if body.role != "admin":
-            raise HTTPException(
-                403, "Only admins can change thresholds. Switch the role to admin in Settings."
-            )
-        block = float("inf") if t.t_block is None else t.t_block
-        if not (t.t_monitor <= t.t_step <= t.t_hold <= block):
-            raise HTTPException(
-                422, "Thresholds must rise from Monitor to Block. Fix the order and save again."
-            )
-        before = json.dumps(state["thresholds"])
-        state["thresholds"] = t.model_dump()
-        audit(body.role, "Changed decision thresholds (demo session only)",
-              f"{before} to {json.dumps(state['thresholds'])}")  # fmt: skip
-        return {"ok": True}
+    def save_thresholds():
+        raise HTTPException(
+            405,
+            "The decision thresholds are the frozen ones of the final run and are read-only. "
+            "Use the what-if cost mode in Settings to see decisions under other costs.",
+        )
 
     @app.post("/api/feedback/{tid}")
     def feedback(tid: int, body: FeedbackIn):

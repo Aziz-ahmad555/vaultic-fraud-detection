@@ -311,7 +311,8 @@ export interface Api {
   drift(asOf: AsOf): Promise<DriftReport>;
   lab(): Promise<Lab>;
   score(input: ScoreInput): Promise<ScoreResult>;
-  thresholds(): Promise<{ thresholds: Thresholds; cost: CostModel }>;
+  /** frozen = true: the evaluated system's thresholds, read-only (real-data backend, D129) */
+  thresholds(): Promise<{ thresholds: Thresholds; cost: CostModel; frozen?: boolean }>;
   saveThresholds(t: Thresholds, role: Role): Promise<void>;
   feedback(id: number, label: Feedback, role: Role): Promise<void>;
   auditLog(): Promise<AuditEntry[]>;

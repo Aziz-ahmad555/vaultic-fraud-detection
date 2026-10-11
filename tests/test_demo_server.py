@@ -161,20 +161,21 @@ def test_drift_lab_score_thresholds_feedback_audit(server):
     assert _get(server, "/api/lab")["runs"][0]["id"] == "MVAF"
     code, _ = _send(server, "/api/score", {}, "POST")
     assert code == 501
-    th = _get(server, "/api/thresholds")["thresholds"]
+    got = _get(server, "/api/thresholds")
+    th = got["thresholds"]
+    assert got["frozen"] is True
     assert th["t_dis"] is None and th["t_block"] is None  # inf on the Python side = null
-    code, _ = _send(server, "/api/thresholds", {"thresholds": th, "role": "analyst"}, "PUT")
-    assert code == 403
-    bad = {**th, "t_monitor": 0.99}
-    code, _ = _send(server, "/api/thresholds", {"thresholds": bad, "role": "admin"}, "PUT")
-    assert code == 422
-    new = {**th, "t_block": 0.85}
-    code, _ = _send(server, "/api/thresholds", {"thresholds": new, "role": "admin"}, "PUT")
-    assert code == 200 and _get(server, "/api/thresholds")["thresholds"]["t_block"] == 0.85
+    assert th == {"t_monitor": 0.2, "t_step": 0.4, "t_hold": 0.6, "t_block": None, "t_dis": None}
+    # read-only for everyone, admins included (D129); nothing changes
+    for role in ("analyst", "admin"):
+        code, body = _send(server, "/api/thresholds", {"thresholds": {**th, "t_block": 0.85},
+                                                        "role": role}, "PUT")  # fmt: skip
+        assert code == 405 and "read-only" in body["detail"]
+    assert _get(server, "/api/thresholds")["thresholds"] == th
     code, _ = _send(server, "/api/feedback/1000", {"label": "fraud", "role": "analyst"}, "POST")
     assert code == 200
     log = _get(server, "/api/audit")
-    assert log[0]["action"] == "Marked transaction 1000 as fraud" and len(log) == 2
+    assert log[0]["action"] == "Marked transaction 1000 as fraud" and len(log) == 1
 
 
 AS_OF_ENDPOINTS = ("/api/day-summary?time={t}", "/api/stream?time={t}&start=0&end={t}",

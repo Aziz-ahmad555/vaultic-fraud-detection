@@ -27,7 +27,10 @@ export function Settings() {
   useEffect(() => {
     if (cfg.data) setDraft(cfg.data.thresholds);
   }, [cfg.data]);
+  // real-data backend: the final run's frozen thresholds, read-only for every role (D129)
+  const frozen = cfg.data?.frozen === true;
   const admin = role === "admin";
+  const editable = admin && !frozen;
 
   const saveThresholds = async () => {
     if (!draft) return;
@@ -71,17 +74,25 @@ export function Settings() {
               <button type="button" aria-pressed={role === "analyst"} onClick={() => { setRole("analyst"); toast("Role set to analyst"); }}>Analyst</button>
               <button type="button" aria-pressed={role === "admin"} onClick={() => { setRole("admin"); toast("Role set to admin"); }}>Admin</button>
             </div>
-            <p className="muted small" style={{ marginTop: 8 }}>Mock roles for the layout; there is no sign-in yet. Admins can change decision thresholds.</p>
+            <p className="muted small" style={{ marginTop: 8 }}>
+              Mock roles for the layout; there is no sign-in yet. {DATA_SOURCE === "http" ? "With the final-run data the thresholds are frozen for every role." : "Admins can change decision thresholds."}
+            </p>
           </div>
         </section>
       </div>
       <section className="pane">
         <div className="pane-head">
           <h2>Decision thresholds</h2>
-          {!admin && (
+          {frozen ? (
             <span className="locked">
-              <LockIcon title="Read-only for analysts" /> Read-only: switch the role to admin to change them
+              <LockIcon title="Frozen thresholds of the final run" /> Read-only: the frozen thresholds of the final run
             </span>
+          ) : (
+            !admin && (
+              <span className="locked">
+                <LockIcon title="Read-only for analysts" /> Read-only: switch the role to admin to change them
+              </span>
+            )
           )}
         </div>
         <div className="pane-body">
@@ -102,27 +113,30 @@ export function Settings() {
                     min={0}
                     step={1}
                     value={draft[f.key] ?? 0}
-                    disabled={!admin}
+                    disabled={!editable}
                     onChange={(e) => setDraft({ ...draft, [f.key]: Number(e.target.value) })}
                   />
                 </label>
               ))}
               <label className="field">
                 <span>{ACTION_LABEL.block} from expected loss ($)</span>
-                <input type="number" min={0} step={1} placeholder="never" value={draft.t_block ?? ""} disabled={!admin} onChange={(e) => setDraft({ ...draft, t_block: e.target.value === "" ? null : Number(e.target.value) })} />
+                <input type="number" min={0} step={1} placeholder="never" value={draft.t_block ?? ""} disabled={!editable} onChange={(e) => setDraft({ ...draft, t_block: e.target.value === "" ? null : Number(e.target.value) })} />
               </label>
               <label className="field">
                 <span>Hold when view disagreement is at least</span>
-                <input type="number" min={0} max={1} step={0.05} value={draft.t_dis ?? ""} disabled={!admin} onChange={(e) => setDraft({ ...draft, t_dis: e.target.value === "" ? null : Number(e.target.value) })} />
+                <input type="number" min={0} max={1} step={0.05} value={draft.t_dis ?? ""} disabled={!editable} onChange={(e) => setDraft({ ...draft, t_dis: e.target.value === "" ? null : Number(e.target.value) })} />
               </label>
-              <div className="actions" style={{ alignSelf: "end" }}>
-                <button type="submit" className="btn btn-primary" disabled={!admin}>Save thresholds</button>
-              </div>
+              {!frozen && (
+                <div className="actions" style={{ alignSelf: "end" }}>
+                  <button type="submit" className="btn btn-primary" disabled={!editable}>Save thresholds</button>
+                </div>
+              )}
             </form>
           )}
           <p className="muted xs" style={{ marginTop: 8 }}>
-            In the research pipeline these thresholds are chosen on validation by minimising total cost (D43); an empty Block field means the cost
-            chose never to block. Changes here are for this {DATA_SOURCE === "http" ? "demo session" : "mock"} only and are written to the audit log.
+            {frozen
+              ? "These are the thresholds the final run chose on the calibration days (147–150) by minimising total cost (D43), as stored with the run. They are the evaluated system and cannot be edited; to see decisions under other costs, use the what-if cost mode below."
+              : "In the research pipeline these thresholds are chosen on validation by minimising total cost (D43); an empty Block field means the cost chose never to block. Changes here are for this mock only and are written to the audit log."}
           </p>
         </div>
       </section>

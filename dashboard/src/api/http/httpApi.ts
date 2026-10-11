@@ -83,7 +83,7 @@ export function createHttpApi(baseUrl = "http://127.0.0.1:8000", fetchImpl: Fetc
     drift: (asOf) => request<DriftReport>(`/api/drift?${q(asOf)}`),
     lab: () => request<Lab>("/api/lab"),
     score: (input: ScoreInput): Promise<ScoreResult> => illustrative.score(input),
-    thresholds: () => request<{ thresholds: Thresholds; cost: CostModel }>("/api/thresholds"),
+    thresholds: () => request<{ thresholds: Thresholds; cost: CostModel; frozen?: boolean }>("/api/thresholds"),
     saveThresholds: async (t: Thresholds, role: Role) => {
       await request("/api/thresholds", { method: "PUT", body: JSON.stringify({ thresholds: t, role }) });
     },
