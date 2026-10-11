@@ -99,7 +99,7 @@ def _render_with(module, out_md: Path, out_json: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("report", choices=["final", "d95", "f3-diagnosis", "f3-sensitivity",
-                                           "e5-drift", "hold-sensitivity"])  # fmt: skip
+                                           "e5-drift", "hold-sensitivity", "gate-maturity"])  # fmt: skip
     args = parser.parse_args()
     if args.report == "final":
         render_final()
@@ -111,6 +111,10 @@ def main() -> None:
         _render_with(m, m.OUT_MD, m.OUT_JSON)
     elif args.report == "f3-sensitivity":
         from vaultic.fusion import f3_sensitivity as m
+
+        _render_with(m, m.OUT_MD, m.OUT_JSON)
+    elif args.report == "gate-maturity":
+        from vaultic.fusion import gate_maturity_sensitivity as m
 
         _render_with(m, m.OUT_MD, m.OUT_JSON)
     elif args.report == "hold-sensitivity":

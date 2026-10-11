@@ -21,6 +21,7 @@ def test_registry_wires_every_paper_table():
         "f3-sensitivity",
         "e5-drift",
         "hold-sensitivity",
+        "gate-maturity",
     }
     assert any(s.args[1:] == ("vaultic.reports.emerging", "report") for s in STEPS)
     for s in STEPS:  # every run a step reads exists

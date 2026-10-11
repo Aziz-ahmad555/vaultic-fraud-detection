@@ -99,6 +99,8 @@ STEPS: tuple[Step, ...] = (
             "research/e5_graph_drift.md"),
     _render("hold-sensitivity", "Block with an imperfect Hold (post-hoc, D124)",
             "research/hold_sensitivity.md"),
+    _render("gate-maturity", "E10 with label-mature gate folds (post-hoc, D141 / D147)",
+            "research/gate_maturity_sensitivity.md"),
 )  # fmt: skip
 
 
