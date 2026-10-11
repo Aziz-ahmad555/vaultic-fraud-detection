@@ -60,3 +60,22 @@ Keyboard: Ctrl+K palette, J/K, F/L/U, G then a page letter, `[` / `]` for the as
 Pages were checked in a browser in both themes, at desktop and tablet widths. Playwright is not
 installed: the browser checks were done by hand with Claude's built-in browser pane, not as
 automated tests.
+
+## Real data: the final-run demo backend
+
+The dashboard can read the EXP-200-final test period instead of the mock (labelled
+"IEEE-CIS test period, final run" in the top bar):
+
+1. On phase3-run, write the demo bundle (reproduces MVAF's final-run scores and E12 decisions,
+   and stops if they differ): `python -m vaultic.reports.demo_export`
+   (writes `<data>/interim/demo_final_bundle.parquet` and `.json`, kept on drive E).
+2. Start the backend from the repository root:
+   `VAULTIC_DEMO_BUNDLE=<path>/demo_final_bundle.parquet uvicorn services.api.demo_server:app --port 8000`
+3. Start the dashboard with `VITE_DATA_SOURCE=http` (optional `VITE_API_URL`, default
+   `http://127.0.0.1:8000`): `VITE_DATA_SOURCE=http npm run dev`.
+
+Without `VITE_DATA_SOURCE=http` the synthetic mock is used, as before. Reasons are view-level
+(MVAF gate weight x view logit), not feature-level SHAP. The what-if simulator keeps the mock's
+illustrative model, because the final-run models score recorded transactions only. Threshold
+changes, feedback and the audit log live in the backend's memory for the session; drift alarms,
+injected drifts and retraining events are empty because none were run on the final run.

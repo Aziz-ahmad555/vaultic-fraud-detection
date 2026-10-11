@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { DATA_SOURCE } from "../api";
+import { HTTP_SOURCE_LABEL, SCORE_SOURCE } from "../api/http/httpApi";
 import { DAY, fmtClock } from "../lib/format";
 import { isTyping, useApp } from "../state/app";
 import { CommandPalette } from "./CommandPalette";
@@ -157,6 +158,11 @@ export function Shell({ children }: { children: ReactNode }) {
         {DATA_SOURCE === "mock" && (
           <p className="mock-note xs" title="Every number on these screens is synthetic until the research pipeline produces real scores">
             Synthetic mock data
+          </p>
+        )}
+        {DATA_SOURCE === "http" && (
+          <p className="mock-note xs" title={`Anonymized e-commerce transactions released by Vesta for the IEEE-CIS competition; scores, decisions and view-level reasons reproduced from the EXP-200-final run. ${SCORE_SOURCE}.`}>
+            {HTTP_SOURCE_LABEL}
           </p>
         )}
         <div className="topbar-actions">
