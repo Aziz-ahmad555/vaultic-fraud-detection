@@ -437,3 +437,41 @@ def test_queues_offer_only_the_frozen_budgets(server):
     for k in (5, 10, 25, 49, 51, 100):
         code, body = _status(server, f"/api/queues?time={AS_OF}&k={k}")
         assert code == 422 and "frozen budgets 50" in body["detail"], k
+
+
+def test_concurrent_feedback_keeps_labels_and_audit_consistent(tmp_path):
+    """D135: each label and its audit entry change together under the state lock, so the audit
+    chain of one transaction is consistent however many requests arrive at once. The audit
+    timestamp is slowed down so that, without the lock, requests overtake each other between
+    reading the old label and writing the audit entry."""
+    mod = _load_module()
+    jitter = np.random.default_rng(0)
+
+    class SlowClock(mod.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            time.sleep(float(jitter.random()) * 0.01)  # requests overtake each other
+            return super().now(tz)
+
+    mod.datetime = SlowClock
+    tid, labels = 1001, ["fraud", "legit", "unsure"]
+    errors = []
+    with _serve(mod.create_app(_bundle(tmp_path))) as base:
+
+        def post(i):
+            code, _ = _send(base, f"/api/feedback/{tid}",
+                            {"label": labels[i % 3], "role": "analyst"}, "POST")  # fmt: skip
+            if code != 200:
+                errors.append(code)
+
+        threads = [threading.Thread(target=post, args=(i,)) for i in range(60)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        log = _get(base, "/api/audit")
+    assert errors == []
+    chain = [e for e in log if f"transaction {tid} " in e["action"]][::-1]
+    assert len(chain) == 60 and chain[0]["detail"] == "first label"
+    for prev, cur in zip(chain, chain[1:], strict=False):  # each "was" is the label before it
+        assert cur["detail"] == "was " + prev["action"].rsplit(" as ", 1)[1]

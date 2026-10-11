@@ -221,6 +221,9 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
                   for k, v in meta["thresholds"].items()}  # fmt: skip
     # the frozen E12 thresholds of the final run: read-only (D129); others only via what-if
     state = {"feedback": {}, "audit": []}
+    # FastAPI runs these handlers in a thread pool: every read and write of `state` holds this
+    # lock, so a label and its audit entry change together and a reader never sees half (D135)
+    state_lock = threading.Lock()
     base_actions = df["action"].to_numpy().astype(object)  # the frozen E12 decisions
     whatif_cache: dict = {}  # cost settings -> (actions, thresholds); a cache, not session state
     cache_lock = threading.Lock()
@@ -585,6 +588,7 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
         return {"thresholds": thresholds, "cost": cost, "frozen": True}
 
     def audit(role: str, action: str, detail: str):
+        """Prepend an audit entry; the caller holds state_lock."""
         state["audit"].insert(0, {"time": datetime.now(UTC).isoformat(timespec="seconds"),
                                   "actor": role, "action": action, "detail": detail})  # fmt: skip
 
@@ -598,10 +602,11 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
 
     @app.post("/api/feedback/{tid}")
     def feedback(tid: int, body: FeedbackIn):
-        before = state["feedback"].get(tid)
-        state["feedback"][tid] = body.label
-        audit(body.role, f"Marked transaction {tid} as {body.label}",
-              f"was {before}" if before else "first label")  # fmt: skip
+        with state_lock:  # the read, the write and the audit entry as one step
+            before = state["feedback"].get(tid)
+            state["feedback"][tid] = body.label
+            audit(body.role, f"Marked transaction {tid} as {body.label}",
+                  f"was {before}" if before else "first label")  # fmt: skip
         return {"ok": True}
 
     @app.get("/api/whatif")
@@ -613,7 +618,8 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
 
     @app.get("/api/audit")
     def audit_log():
-        return state["audit"]
+        with state_lock:
+            return [dict(e) for e in state["audit"]]  # a copy, never the live list
 
     return app
 
