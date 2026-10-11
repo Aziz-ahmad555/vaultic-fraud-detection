@@ -8,7 +8,7 @@
 to train the gate (D95) come from view models trained on labels that a 30-day label delay would
 not yet have released at the start of each predicted block (D140). The test-period view scores
 do not have this advantage, so the gate may have learned to trust the views somewhat more than
-it should. The post-hoc sensitivity analysis D141 measures the effect on E10.
+it should. The post-hoc sensitivity analysis D141 (research/gate_maturity_sensitivity.md) removes this advantage: the gate-based methods, MVAF included, gain slightly and tree stacking loses slightly, so the bias did not favour MVAF, and MVAF still trails the strongest single models.
 
 \paragraph{Emerging-fraud hold-outs.} In the hold-out experiments (D93, D98) the held-out
 group's frauds are removed from the training rows, but the label-derived features and the
