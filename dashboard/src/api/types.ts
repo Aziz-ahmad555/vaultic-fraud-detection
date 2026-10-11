@@ -78,7 +78,7 @@ export interface Thresholds {
   t_monitor: number;
   t_step: number;
   t_hold: number;
-  t_block: number;
+  t_block: number | null; // null = never block (inf on the Python side: cost chose no blocking)
   t_dis: number | null; // null = disagreement rule off (inf on the Python side)
 }
 

@@ -43,7 +43,7 @@ class ThresholdsIn(BaseModel):
     t_monitor: float
     t_step: float
     t_hold: float
-    t_block: float
+    t_block: float | None = None  # None = never block (inf on the Python side)
     t_dis: float | None = None
 
 
@@ -67,7 +67,10 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
     df = pd.read_parquet(bundle_path).sort_values("TransactionDT").reset_index(drop=True)
     dt = df["TransactionDT"].to_numpy()
     by_id = {int(t): i for i, t in enumerate(df["TransactionID"].to_numpy())}
-    state = {"thresholds": dict(meta["thresholds"]), "feedback": {}, "audit": []}
+    # t_dis = inf (disagreement rule off) on the Python side is null in the contract
+    thresholds = {k: _none(float(v)) if v is not None else None
+                  for k, v in meta["thresholds"].items()}  # fmt: skip
+    state = {"thresholds": thresholds, "feedback": {}, "audit": []}
     cost = meta["cost_model"]
 
     app = FastAPI(title="Vaultic demo backend", version="0.1")
@@ -312,7 +315,8 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
             raise HTTPException(
                 403, "Only admins can change thresholds. Switch the role to admin in Settings."
             )
-        if not (t.t_monitor <= t.t_step <= t.t_hold <= t.t_block):
+        block = float("inf") if t.t_block is None else t.t_block
+        if not (t.t_monitor <= t.t_step <= t.t_hold <= block):
             raise HTTPException(
                 422, "Thresholds must rise from Monitor to Block. Fix the order and save again."
             )

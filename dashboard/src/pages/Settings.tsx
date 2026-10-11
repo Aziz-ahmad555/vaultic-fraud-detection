@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api } from "../api";
+import { HTTP_SOURCE_LABEL } from "../api/http/httpApi";
+import { api, DATA_SOURCE } from "../api";
 import type { Thresholds } from "../api/types";
 import { ACTION_LABEL } from "../api/types";
 import { LockIcon } from "../components/Badges";
@@ -8,11 +9,10 @@ import { fmtClock, fmtInt, fmtMoney } from "../lib/format";
 import { useData } from "../lib/useData";
 import { useApp } from "../state/app";
 
-const FIELDS: { key: keyof Thresholds; label: string }[] = [
+const FIELDS: { key: "t_monitor" | "t_step" | "t_hold"; label: string }[] = [
   { key: "t_monitor", label: `${ACTION_LABEL.monitor} from expected loss ($)` },
   { key: "t_step", label: `${ACTION_LABEL.step_up} from expected loss ($)` },
   { key: "t_hold", label: `${ACTION_LABEL.hold} from expected loss ($)` },
-  { key: "t_block", label: `${ACTION_LABEL.block} from expected loss ($)` },
 ];
 
 export function Settings() {
@@ -51,7 +51,7 @@ export function Settings() {
               <>
                 <p className="small">
                   Day {summary.data.day}, up to {fmtClock(asOf.time, false)}: {fmtInt(summary.data.transactions)} transactions, {fmtInt(summary.data.alerts)} alerts,
-                  expected fraud value stopped {fmtMoney(summary.data.expectedFraudStopped)}, estimated loss {fmtMoney(summary.data.expectedLoss)}. Synthetic mock data.
+                  expected fraud value stopped {fmtMoney(summary.data.expectedFraudStopped)}, estimated loss {fmtMoney(summary.data.expectedLoss)}. {DATA_SOURCE === "http" ? `${HTTP_SOURCE_LABEL}.` : "Synthetic mock data."}
                 </p>
                 <div className="actions no-print" style={{ marginTop: 12 }}>
                   <button type="button" className="btn btn-primary" onClick={() => window.print()}>Print or save daily report as PDF</button>
@@ -106,6 +106,10 @@ export function Settings() {
                 </label>
               ))}
               <label className="field">
+                <span>{ACTION_LABEL.block} from expected loss ($)</span>
+                <input type="number" min={0} step={1} placeholder="never" value={draft.t_block ?? ""} disabled={!admin} onChange={(e) => setDraft({ ...draft, t_block: e.target.value === "" ? null : Number(e.target.value) })} />
+              </label>
+              <label className="field">
                 <span>Hold when view disagreement is at least</span>
                 <input type="number" min={0} max={1} step={0.05} value={draft.t_dis ?? ""} disabled={!admin} onChange={(e) => setDraft({ ...draft, t_dis: e.target.value === "" ? null : Number(e.target.value) })} />
               </label>
@@ -115,8 +119,8 @@ export function Settings() {
             </form>
           )}
           <p className="muted xs" style={{ marginTop: 8 }}>
-            In the research pipeline these thresholds are chosen on validation by minimising total cost (D43); changes here are for the mock only and are
-            written to the audit log.
+            In the research pipeline these thresholds are chosen on validation by minimising total cost (D43); an empty Block field means the cost
+            chose never to block. Changes here are for this {DATA_SOURCE === "http" ? "demo session" : "mock"} only and are written to the audit log.
           </p>
         </div>
       </section>

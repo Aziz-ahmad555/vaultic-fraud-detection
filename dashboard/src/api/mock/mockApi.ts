@@ -254,7 +254,7 @@ export function createMockApi(seed = 7): Api {
       if (role !== "admin") {
         throw new Error("Only admins can change thresholds. Switch the role to admin in Settings.");
       }
-      if (!(t.t_monitor <= t.t_step && t.t_step <= t.t_hold && t.t_hold <= t.t_block)) {
+      if (!(t.t_monitor <= t.t_step && t.t_step <= t.t_hold && (t.t_block === null || t.t_hold <= t.t_block))) {
         throw new Error("Thresholds must rise from Monitor to Block. Fix the order and save again.");
       }
       const before = JSON.stringify(stored.thresholds);

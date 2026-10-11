@@ -57,7 +57,7 @@ def _bundle(tmp_path: Path) -> Path:
     df.to_parquet(path, index=False)
     meta = {"source": "IEEE-CIS test period, final run", "run": "runs/x", "generated": "2026-10-11",
             "rows": n, "label_delay_days": 30, "reasons_note": "view level",
-            "thresholds": {"t_monitor": 0.2, "t_step": 0.4, "t_hold": 0.6, "t_block": 0.8, "t_dis": None},
+            "thresholds": {"t_monitor": 0.2, "t_step": 0.4, "t_hold": 0.6, "t_block": float("inf"), "t_dis": float("inf")},
             "cost_model": {"c_fp": 10, "c_rev": 5, "c_step": 0.5, "step_up_success_rate": 0.9,
                            "legit_step_up_friction": 1.0},
             "routing_lambdas": {"50": {"R3": [0.0, 0.0], "R4": [0.0, 1.0]}},
@@ -154,6 +154,7 @@ def test_drift_lab_score_thresholds_feedback_audit(server):
     code, _ = _send(server, "/api/score", {}, "POST")
     assert code == 501
     th = _get(server, "/api/thresholds")["thresholds"]
+    assert th["t_dis"] is None and th["t_block"] is None  # inf on the Python side = null
     code, _ = _send(server, "/api/thresholds", {"thresholds": th, "role": "analyst"}, "PUT")
     assert code == 403
     bad = {**th, "t_monitor": 0.99}
