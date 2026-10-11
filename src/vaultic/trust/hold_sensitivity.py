@@ -80,7 +80,9 @@ def main() -> None:
     )
 
     cal = pd.read_parquet(CALIBRATION)
-    test = pd.read_parquet(BUNDLE)
+    from vaultic.eval.posthoc_guard import open_test_data
+
+    test = pd.read_parquet(open_test_data(BUNDLE))  # D144
     final = json.loads((RESEARCH_DIR / "tables" / "final_results.json").read_text("utf-8"))
     want = final["e12"]["MVAF"]["decision"]["default"]["evaluation_cost"]
     th, _ = choose_thresholds(cal["p"].to_numpy(), cal["amount"].to_numpy(), cal["label"].to_numpy(),

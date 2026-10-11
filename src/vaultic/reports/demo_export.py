@@ -60,6 +60,7 @@ def lab_runs(final: dict, stored: pd.DataFrame, ids, y) -> list[dict]:
 def main() -> None:
     from vaultic.data.splits import load_splits
     from vaultic.data.uid import UID_PATH
+    from vaultic.eval.posthoc_guard import mark_test_data, open_test_data, require_final_on_record
     from vaultic.explain.reason_codes import to_points
     from vaultic.explain.view_contrib import view_contributions
     from vaultic.fusion.f3_diagnosis import CACHE, CONTEXT, FINAL_RUN, VIEWS
@@ -70,7 +71,8 @@ def main() -> None:
     from vaultic.trust.decision import DEFAULT_COST, choose_thresholds, decide, total_cost
     from vaultic.trust.final_trust import fit_calibrator
 
-    d = dict(np.load(CACHE))
+    run = require_final_on_record()  # D144
+    d = dict(np.load(open_test_data(CACHE)))
     tuned = json.loads((RESEARCH_DIR / "tables" / "fusion_d95.json").read_text("utf-8"))["tuned"]
 
     class _Rows:
@@ -145,6 +147,7 @@ def main() -> None:
         "source": SOURCE_LABEL,
     })  # fmt: skip
     out.sort_values("TransactionDT").to_parquet(BUNDLE, index=False)
+    mark_test_data(BUNDLE, run, "per-row MVAF scores, decisions and labels of the test period")
     # calibrate_fused rows (147-150): the demo's what-if cost mode re-chooses thresholds on them
     pd.DataFrame({"p": pc, "amount": amt_cal, "conformal_set": sets_cal,
                   "disagreement": dis_cal, "label": d["cal_y"]}).to_parquet(CALIBRATION, index=False)  # fmt: skip

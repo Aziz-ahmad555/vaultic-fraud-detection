@@ -52,7 +52,9 @@ def main() -> None:
 
     if not CACHE.exists():
         raise FileNotFoundError(f"{CACHE} missing: run python -m vaultic.fusion.f3_diagnosis first")
-    d = dict(np.load(CACHE))
+    from vaultic.eval.posthoc_guard import open_test_data
+
+    d = dict(np.load(open_test_data(CACHE)))  # D144
     cap = float(d["gate_context"][:, HIST].max())
 
     pre = fit_f3(d["gate_views"], d["gate_context"], d["gate_y"])  # pre-registered F3

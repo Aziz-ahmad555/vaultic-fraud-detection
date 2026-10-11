@@ -44,8 +44,11 @@ SEEDS = (0, 1, 2, 3, 4)
 
 
 def build_inputs(reuse: bool) -> dict[str, np.ndarray]:
+    from vaultic.eval.posthoc_guard import mark_test_data, open_test_data, require_final_on_record
+
+    run = require_final_on_record()  # D144: only after the final run is on record
     if reuse and CACHE.exists():
-        return dict(np.load(CACHE))
+        return dict(np.load(open_test_data(CACHE)))
     from vaultic.fusion.data import fusion_split
     from vaultic.fusion.dev_compare import build_table
     from vaultic.fusion.tune_fusion import concat_rows
@@ -61,6 +64,7 @@ def build_inputs(reuse: bool) -> dict[str, np.ndarray]:
             out[f"{name}_{f}"] = np.asarray(getattr(rows, f))
     CACHE.parent.mkdir(parents=True, exist_ok=True)
     np.savez(CACHE, **out)
+    mark_test_data(CACHE, run, "the final run's fusion inputs (gate, calibrate_fused, test rows)")
     return out
 
 
