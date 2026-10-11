@@ -1,10 +1,6 @@
-# DRAFT v2 — Stage-2 pre-registration: E15, the ablation ladder, E23, E24
+# Stage-2 pre-registration: E15, the ablation ladder, E23, E24 (D121)
 
-**Status: DRAFT v2 for Aziz's final review. Not yet pre-registered or logged in
-research/decisions.md; nothing in it runs on the test period until Aziz approves it and it is
-logged as a decision, then frozen and hashed like D101 / D108 / D112–D114.** v1 written
-2026-10-11 during the outing; v2 the same day with Aziz's answers to the eight open questions
-(section 7 records them). E6 (graph leakage settings, Paper 1) gets its own pre-registration.
+**Status: PRE-REGISTERED as D121 (2026-10-11), approved by Aziz as version 2.** Logged before any stage-2 code runs; the implementation details of section 8 must be logged as their own decision entry before any stage-2 code runs. Nothing here runs on the test period except through the frozen final-run guards (D108–D115). E6 (graph leakage settings, Paper 1) gets its own pre-registration.
 
 Sources: roadmap Phase 9.3 (faithfulness and stability), Phase 13 (E15, E23, E24 and the main
 ablation table), D38 (immutable / derived / actionable features), D39 (EXP-1NN configs; stacking
@@ -196,7 +192,7 @@ bounded count as sensitivity; the E23 groups (email domains from the training pe
 
 ---
 
-## 7. Aziz's answers to the v1 questions (2026-10-11)
+## 7. Aziz's answers to the draft-v1 questions (2026-10-11)
 
 1. Ladder: cumulative over the new view definitions (tabular → +behavioral → +temporal → +graph →
    +anomaly) via F4, with MVAF and B5 as references.
@@ -208,7 +204,7 @@ bounded count as sensitivity; the E23 groups (email domains from the training pe
 7. E24: compute hours and hardware; carbon only as a labelled estimate.
 8. E6: its own separate pre-registration.
 
-## 8. Remaining implementation details (to be fixed in a D102-style entry before any run)
+## 8. Implementation details still open (logged as their own decision entry before any stage-2 code runs)
 
 The exact list of amount-derived inputs recomputed in 1.4; the counterfactual search settings
 (chosen on validation alerts); the grid carbon-intensity source.
