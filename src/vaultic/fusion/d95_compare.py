@@ -46,6 +46,83 @@ def gate_counts(table: pd.DataFrame) -> pd.DataFrame:
     return pd.concat([out, total], ignore_index=True)
 
 
+def report_lines(counts: list[dict], views: list[dict], fusion: list[dict], per_seed: dict,
+                 tuned: dict, subgroups: list[dict], n_rows: int, n_frauds: int,
+                 runtime_text: str, smoke: bool = False,
+                 generated: str | None = None) -> list[str]:  # fmt: skip
+    """The fusion_d95 report, from the evaluation's records (also used to re-render it from the
+    saved JSON, reports/render_saved.py)."""
+
+    def fmt(x, d=4):
+        return "" if x is None or (isinstance(x, float) and np.isnan(x)) else f"{x:.{d}f}"
+
+    res = pd.DataFrame(fusion).set_index("method")
+    sub = pd.DataFrame(subgroups)
+    lines = [
+        "# MVAF after the pre-registered changes (D95): the one evaluation on days 147-150"
+        + (" — SMOKE (not a result)" if smoke else ""),
+        "",
+        f"Generated {generated or date.today().isoformat()} by `python -m vaultic.fusion.d95_compare`. "
+        "**Validation only; no test rows.** Plan, tuning and this single evaluation were "
+        "pre-registered in D95 before any of it ran. "
+        f"Evaluation rows: {n_rows} ({n_frauds} frauds), never used to fit or tune "
+        "anything here. B5 (frozen Phase 2 model) was tuned on the whole validation period, so it "
+        "is favoured on these days.",
+        "",
+        "## Gate-training rows (cross-fitted, D95)",
+        "",
+        "| fold | rows | frauds |",
+        "|---|---|---|",
+        *[f"| {r['fold']} | {r['rows']} | {r['frauds']} |" for r in counts],
+        "",
+        "## Views on the evaluation rows",
+        "",
+        "| view | available | PR-AUC (available rows) |",
+        "|---|---|---|",
+        *[f"| {v['view']} | {v['available']:.1%} | {fmt(v['pr_auc'])} |" for v in views],
+        "",
+        "## Fused and single models",
+        "",
+        "| method | PR-AUC (5-seed mean score) | 95% CI | per-seed mean ± std | MVAF − method | "
+        "95% CI | p | tuned on the inner split |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for name in [m for m in ORDER if m in res.index]:
+        r = res.loc[name]
+        seed = per_seed.get(name)
+        seed_txt = f"{np.mean(seed):.4f} ± {np.std(seed):.4f}" if seed else "(run's 5 seeds)"
+        diff = (
+            ""
+            if pd.isna(r.get("MVAF - method", np.nan))
+            else (
+                f"{r['MVAF - method']:+.4f} | [{r['d_low']:+.4f}, {r['d_high']:+.4f}] | {r['p']:.3f}"
+            )
+        )
+        if not diff:
+            diff = " | | "
+        tune_txt = (f"{tuned[name]['trials']} trials, tune PR-AUC {tuned[name]['tune_pr_auc']:.4f}"
+                    if name in tuned else ("F0: Optuna on 128-143" if name == "F0" else "—"))  # fmt: skip
+        lines.append(f"| {name} | {r['PR-AUC']:.4f} | [{r['ci_low']:.4f}, {r['ci_high']:.4f}] | "
+                     f"{seed_txt} | {diff} | {tune_txt} |")  # fmt: skip
+    methods = [m for m in ORDER if m in sub.columns]
+    versus = [c for c in sub.columns if c.startswith("MVAF - ")]
+    lines += [
+        "",
+        "## Subgroups",
+        "",
+        "| subgroup | rows | frauds | " + " | ".join(methods) + " | " + " | ".join(versus) + " |",
+        "|---|---|---|" + "---|" * (len(methods) + len(versus)),
+    ]
+    for r in sub.to_dict("records"):
+        vals = [fmt(r.get(m)) for m in methods]
+        diffs = ["" if not isinstance(r.get(v), (tuple, list)) else
+                 f"{r[v][0]:+.4f} [{r[v][1]:+.4f}, {r[v][2]:+.4f}]" for v in versus]  # fmt: skip
+        lines.append(f"| {r['subgroup']} | {r['rows']} | {r['frauds']} | " + " | ".join(vals)
+                     + " | " + " | ".join(diffs) + " |")  # fmt: skip
+    lines += ["", runtime_text, ""]
+    return lines
+
+
 def main() -> None:
     from vaultic.fusion.baselines import make_fusion
     from vaultic.fusion.data import fusion_split
@@ -100,72 +177,9 @@ def main() -> None:
         views.append({"view": v, "available": float(m.mean()),
                       "pr_auc": pr_auc(y, cal[f"p_{v}"].to_numpy()[m]) if ok else float("nan")})  # fmt: skip
 
-    def fmt(x, d=4):
-        return "" if x is None or (isinstance(x, float) and np.isnan(x)) else f"{x:.{d}f}"
-
-    res = result.set_index("method")
-    lines = [
-        "# MVAF after the pre-registered changes (D95): the one evaluation on days 147-150"
-        + (" — SMOKE (not a result)" if args.smoke else ""),
-        "",
-        f"Generated {date.today().isoformat()} by `python -m vaultic.fusion.d95_compare`. "
-        "**Validation only; no test rows.** Plan, tuning and this single evaluation were "
-        "pre-registered in D95 before any of it ran. "
-        f"Evaluation rows: {len(rows)} ({int(rows.y.sum())} frauds), never used to fit or tune "
-        "anything here. B5 (frozen Phase 2 model) was tuned on the whole validation period, so it "
-        "is favoured on these days.",
-        "",
-        "## Gate-training rows (cross-fitted, D95)",
-        "",
-        "| fold | rows | frauds |",
-        "|---|---|---|",
-        *[f"| {r['fold']} | {r['rows']} | {r['frauds']} |" for r in counts.to_dict("records")],
-        "",
-        "## Views on the evaluation rows",
-        "",
-        "| view | available | PR-AUC (available rows) |",
-        "|---|---|---|",
-        *[f"| {v['view']} | {v['available']:.1%} | {fmt(v['pr_auc'])} |" for v in views],
-        "",
-        "## Fused and single models",
-        "",
-        "| method | PR-AUC (5-seed mean score) | 95% CI | per-seed mean ± std | MVAF − method | "
-        "95% CI | p | tuned on the inner split |",
-        "|---|---|---|---|---|---|---|---|",
-    ]
-    for name in [m for m in ORDER if m in res.index]:
-        r = res.loc[name]
-        seed = per_seed.get(name)
-        seed_txt = f"{np.mean(seed):.4f} ± {np.std(seed):.4f}" if seed else "(run's 5 seeds)"
-        diff = (
-            ""
-            if pd.isna(r.get("MVAF - method", np.nan))
-            else (
-                f"{r['MVAF - method']:+.4f} | [{r['d_low']:+.4f}, {r['d_high']:+.4f}] | {r['p']:.3f}"
-            )
-        )
-        if not diff:
-            diff = " | | "
-        tune_txt = (f"{tuned[name]['trials']} trials, tune PR-AUC {tuned[name]['tune_pr_auc']:.4f}"
-                    if name in tuned else ("F0: Optuna on 128-143" if name == "F0" else "—"))  # fmt: skip
-        lines.append(f"| {name} | {r['PR-AUC']:.4f} | [{r['ci_low']:.4f}, {r['ci_high']:.4f}] | "
-                     f"{seed_txt} | {diff} | {tune_txt} |")  # fmt: skip
-    methods = [m for m in ORDER if m in sub.columns]
-    versus = [c for c in sub.columns if c.startswith("MVAF - ")]
-    lines += [
-        "",
-        "## Subgroups",
-        "",
-        "| subgroup | rows | frauds | " + " | ".join(methods) + " | " + " | ".join(versus) + " |",
-        "|---|---|---|" + "---|" * (len(methods) + len(versus)),
-    ]
-    for r in sub.to_dict("records"):
-        vals = [fmt(r.get(m)) for m in methods]
-        diffs = ["" if not isinstance(r.get(v), tuple) else
-                 f"{r[v][0]:+.4f} [{r[v][1]:+.4f}, {r[v][2]:+.4f}]" for v in versus]  # fmt: skip
-        lines.append(f"| {r['subgroup']} | {r['rows']} | {r['frauds']} | " + " | ".join(vals)
-                     + " | " + " | ".join(diffs) + " |")  # fmt: skip
-    lines += ["", f"Runtime {time.perf_counter() - started:.0f} s.", ""]
+    lines = report_lines(counts.to_dict("records"), views, result.to_dict("records"), per_seed,
+                         tuned, sub.to_dict("records"), len(rows), int(rows.y.sum()),
+                         f"Runtime {time.perf_counter() - started:.0f} s.", args.smoke)  # fmt: skip
     out.write_text("\n".join(lines), encoding="utf-8")
     out.with_suffix(".json").write_text(json.dumps({
         "gate_counts": counts.to_dict("records"), "views": views,

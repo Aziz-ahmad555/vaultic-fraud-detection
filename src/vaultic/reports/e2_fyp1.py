@@ -14,7 +14,9 @@ labelled as such. Writes research/tables/e2_fyp1_comparison.md and .csv.
 from __future__ import annotations
 
 import json
+import os
 from datetime import date
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -24,7 +26,9 @@ from vaultic.eval.metrics import pr_auc, recall_at_fpr, roc_auc
 from vaultic.paths import REPO_ROOT, RESEARCH_DIR
 from vaultic.reports.table1 import latest_run
 
-FYP1_DIR = REPO_ROOT / "legacy" / "fyp1"
+# the FYP-1 model and test CSVs are git-ignored artifacts; in a worktree without them, point
+# VAULTIC_FYP1_DIR at a checkout that has legacy/fyp1/models_store and legacy/fyp1/data
+FYP1_DIR = Path(os.environ.get("VAULTIC_FYP1_DIR") or REPO_ROOT / "legacy" / "fyp1")
 B6_EXPERIMENT = "EXP-010"
 TABLES_DIR = RESEARCH_DIR / "tables"
 
