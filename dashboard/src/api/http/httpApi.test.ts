@@ -76,3 +76,28 @@ describe("createHttpApi", () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+describe("createHttpApi: data-source notes and the what-if cost mode", () => {
+  it("maps the backend's notes", async () => {
+    const api = createHttpApi(
+      "http://api.test",
+      fakeFetch({ "GET /api/meta": { body: { source: "IEEE-CIS test period, final run", no_block_note: "No Block decisions: ...", whatif_available: true } } }, []),
+    );
+    const info = await api.info!();
+    expect(info).toEqual({ source: "IEEE-CIS test period, final run", noBlockNote: "No Block decisions: ...", whatIfAvailable: true });
+  });
+
+  it("turns the what-if cost mode on with PUT and off with DELETE", async () => {
+    const calls: Call[] = [];
+    const status = { active: true, available: true, cost: {}, thresholds: null, note: "illustrative" };
+    const api = createHttpApi(
+      "http://api.test",
+      fakeFetch({ "PUT /api/whatif": { body: status }, "DELETE /api/whatif": { body: { ...status, active: false } } }, calls),
+    );
+    const cost = { c_fp: 2, c_rev: 1, c_step: 0.1, step_up_success_rate: 0.9, legit_step_up_friction: 0 };
+    expect((await api.setWhatIf!(cost, "analyst")).active).toBe(true);
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ cost, role: "analyst" });
+    expect((await api.setWhatIf!(null, "analyst")).active).toBe(false);
+    expect(calls[1].init?.method).toBe("DELETE");
+  });
+});

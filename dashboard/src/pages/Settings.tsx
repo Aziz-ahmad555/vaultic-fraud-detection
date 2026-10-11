@@ -4,6 +4,7 @@ import { api, DATA_SOURCE } from "../api";
 import type { Thresholds } from "../api/types";
 import { ACTION_LABEL } from "../api/types";
 import { LockIcon } from "../components/Badges";
+import { WhatIfPanel } from "../components/WhatIfPanel";
 import { ErrorState, Loading } from "../components/States";
 import { fmtClock, fmtInt, fmtMoney } from "../lib/format";
 import { useData } from "../lib/useData";
@@ -16,9 +17,9 @@ const FIELDS: { key: "t_monitor" | "t_step" | "t_hold"; label: string }[] = [
 ];
 
 export function Settings() {
-  const { asOf, role, setRole, toast } = useApp();
+  const { asOf, role, setRole, toast, whatIfActive } = useApp();
   const cfg = useData(() => api.thresholds(), []);
-  const summary = useData(() => api.daySummary(asOf), [asOf.time, asOf.labelDelayDays]);
+  const summary = useData(() => api.daySummary(asOf), [asOf.time, asOf.labelDelayDays, whatIfActive]);
   const [nonce, setNonce] = useState(0);
   const log = useData(() => api.auditLog(), [nonce]);
   const [draft, setDraft] = useState<Thresholds | null>(null);
@@ -124,6 +125,7 @@ export function Settings() {
           </p>
         </div>
       </section>
+      <WhatIfPanel onChange={() => setNonce((n) => n + 1)} />
       <section className="pane">
         <div className="pane-head"><h2>Audit log</h2></div>
         {log.loading && !log.data && <Loading what="the audit log" />}

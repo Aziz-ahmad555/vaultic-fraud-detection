@@ -65,6 +65,13 @@ def _bundle(tmp_path: Path) -> Path:
             "lab": [{"id": "MVAF", "name": "MVAF", "kind": "fusion", "prAuc": 0.6, "ciLow": 0.5,
                      "ciHigh": 0.7, "recallAt1": 0.5, "cost": 1.0, "pr": [], "calibration": []}]}  # fmt: skip
     path.with_suffix(".json").write_text(json.dumps(meta), "utf-8")
+    m = 400  # calibrate_fused rows for the what-if cost mode
+    pc = rng.random(m)
+    pd.DataFrame({"p": pc, "amount": rng.lognormal(4, 1, m),
+                  "conformal_set": np.where(pc > 0.5, "uncertain", "legit"),
+                  "disagreement": rng.random(m) * 0.2,
+                  "label": (rng.random(m) < pc * 0.3).astype(int)}).to_parquet(
+        path.with_name("demo_final_calibration.parquet"), index=False)  # fmt: skip
     return path
 
 
@@ -167,3 +174,30 @@ def test_drift_lab_score_thresholds_feedback_audit(server):
     assert code == 200
     log = _get(server, "/api/audit")
     assert log[0]["action"] == "Marked transaction 1000 as fraud" and len(log) == 2
+
+
+def test_no_block_note_and_whatif_cost_mode(server):
+    meta = _get(server, "/api/meta")
+    assert meta["whatif_available"] is True
+    assert "No Block decisions" in meta["no_block_note"]  # t_block = inf in the bundle
+    w = _get(server, "/api/whatif")
+    assert w["active"] is False and "not the evaluated system" in w["note"]
+    before = _get(server, f"/api/day-summary?time={AS_OF}")
+    assert before["whatIf"] is False
+    cost = {"c_fp": 2.0, "c_rev": 1.0, "c_step": 0.1, "step_up_success_rate": 0.9,
+            "legit_step_up_friction": 0.0}  # fmt: skip
+    code, w = _send(server, "/api/whatif", {"cost": cost, "role": "analyst"}, "PUT")
+    assert code == 200 and w["active"] is True and w["thresholds"]["t_monitor"] is not None
+    after = _get(server, f"/api/day-summary?time={AS_OF}")
+    assert after["whatIf"] is True and after["transactions"] == before["transactions"]
+    rows = _get(server, f"/api/stream?time={AS_OF}&start=0&end={AS_OF}")
+    assert all(t["decision"]["whatIf"] is True for t in rows)
+    assert _get(server, "/api/audit")[0]["action"].startswith("Turned on the what-if cost mode")
+    bad = {**cost, "step_up_success_rate": 1.5}
+    code, _ = _send(server, "/api/whatif", {"cost": bad, "role": "analyst"}, "PUT")
+    assert code == 422
+    req = urllib.request.Request(server + "/api/whatif?role=analyst", method="DELETE")
+    with urllib.request.urlopen(req) as r:
+        assert json.loads(r.read())["active"] is False
+    back = _get(server, f"/api/day-summary?time={AS_OF}")
+    assert back["whatIf"] is False and back["byAction"] == before["byAction"]

@@ -11,8 +11,9 @@ const DEC_FILL = (a: string) => `var(--dec-${a}-bg)`;
 const DEC_INK = (a: string) => `var(--dec-${a}-fg)`;
 
 export function Overview() {
-  const { asOf } = useApp();
-  const { data, error, loading, reload } = useData(() => api.daySummary(asOf), [asOf.time, asOf.labelDelayDays]);
+  const info = useData(() => (api.info ? api.info() : Promise.resolve(null)), []);
+  const { asOf, whatIfActive } = useApp();
+  const { data, error, loading, reload } = useData(() => api.daySummary(asOf), [asOf.time, asOf.labelDelayDays, whatIfActive]);
 
   return (
     <div className="page">
@@ -61,6 +62,10 @@ export function Overview() {
               </div>
               <div className="pane-body">
                 <StackedBar parts={ACTIONS.map((a) => ({ label: ACTION_LABEL[a], value: data.byAction[a], fill: DEC_FILL(a), ink: DEC_INK(a) }))} />
+                {info.data?.noBlockNote && data.byAction.block === 0 && !data.whatIf && (
+                  <p className="muted xs" style={{ marginTop: 8 }}>{info.data.noBlockNote}</p>
+                )}
+                {data.whatIf && <p className="muted xs" style={{ marginTop: 8 }}>What-if cost mode: illustrative, not the evaluated system.</p>}
               </div>
             </section>
             <section className="pane" aria-labelledby="cost-h">
@@ -79,7 +84,11 @@ export function Overview() {
                     { label: "Step-ups", value: data.cost.stepUps, text: fmtMoney(data.cost.stepUps) },
                   ]}
                 />
-                <p className="muted xs">C_FP $10, review $5, OTP $0.50, step-up stops 90% of fraud, $1 friction per legit customer (D43, D45, D46).</p>
+                <p className="muted xs">
+                  {data.whatIf
+                    ? "What-if costs from Settings (illustrative, not the evaluated system)."
+                    : "C_FP $10, review $5, OTP $0.50, step-up stops 90% of fraud, $1 friction per legit customer (D43, D45, D46)."}
+                </p>
               </div>
             </section>
           </div>

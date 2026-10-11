@@ -1,7 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { api } from "../api";
 import type { AsOf, Role } from "../api/types";
 import { DAY } from "../lib/format";
 
+// the mock covers the validation period; the real-data backend reports its own range (test period)
 const FIRST = 128 * DAY;
 const LAST = 151 * DAY - 1;
 const PREFS_KEY = "evidence-room-prefs-v1";
@@ -29,6 +31,9 @@ interface AppState {
   setPaletteOpen: (open: boolean) => void;
   helpOpen: boolean;
   setHelpOpen: (open: boolean) => void;
+  /** the what-if cost mode is on (real-data backend) */
+  whatIfActive: boolean;
+  setWhatIfActive: (on: boolean) => void;
 }
 
 const Ctx = createContext<AppState | null>(null);
@@ -66,6 +71,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [range, setRange] = useState({ first: FIRST, last: LAST });
+  const [whatIfActive, setWhatIfActive] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    api
+      .range()
+      .then((r) => {
+        if (!live) return;
+        setRange(r);
+        // a remembered time outside the data's range moves to the first day, 14:00
+        setTime((t) => (t < r.first || t > r.last ? Math.floor(r.first / DAY) * DAY + 14 * 3600 : t));
+      })
+      .catch(() => {
+        /* keep the default range */
+      });
+    api.whatIf?.().then((w) => live && setWhatIfActive(w.active)).catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -90,9 +116,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value: AppState = {
     asOf: { time, labelDelayDays },
-    setAsOfTime: (t) => setTime(Math.min(LAST, Math.max(FIRST, Math.round(t)))),
+    setAsOfTime: (t) => setTime(Math.min(range.last, Math.max(range.first, Math.round(t)))),
     setLabelDelay: setLabelDelayDays,
-    range: { first: FIRST, last: LAST },
+    range,
     theme,
     setTheme,
     role,
@@ -104,6 +130,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPaletteOpen,
     helpOpen,
     setHelpOpen,
+    whatIfActive,
+    setWhatIfActive,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

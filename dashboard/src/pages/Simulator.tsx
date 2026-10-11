@@ -36,7 +36,8 @@ export function Simulator() {
     <div className="page">
       <div className="page-head">
         <h1>Scenario simulator</h1>
-        <p className="muted small">Change one thing at a time and watch the risk, the braid and the reasons. Scored by the mock model.</p>
+        <p className="muted small">Change one thing at a time and watch the risk, the braid and the reasons.</p>
+        <p className="mock-note xs" style={{ display: "inline-block" }}>Illustrative model, not the evaluated system</p>
       </div>
       <div className="grid-sim">
         <section className="pane" aria-label="Inputs">

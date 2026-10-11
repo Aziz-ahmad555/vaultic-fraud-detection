@@ -89,6 +89,8 @@ export interface DecisionRecord {
   expected_loss: number; // p x amount
   conformal_set: ConformalSet;
   disagreement: number;
+  /** true when made under the what-if cost mode (illustrative, not the evaluated system) */
+  whatIf?: boolean;
 }
 
 export interface Reason {
@@ -156,6 +158,8 @@ export interface DaySummary {
   cost: { missedFraud: number; falsePositives: number; reviews: number; stepUps: number };
   riskByHour: { hour: number; count: number; meanRisk: number }[];
   viewAvailability: Record<View, number>; // share of transactions with the view
+  /** true when the decisions and costs come from the what-if cost mode */
+  whatIf?: boolean;
 }
 
 export interface NetworkNode {
@@ -259,6 +263,23 @@ export interface AuditEntry {
 }
 export type Feedback = "fraud" | "legit" | "unsure";
 
+/** What-if cost mode (D122): thresholds re-chosen on the calibration days for other costs. */
+export interface WhatIf {
+  active: boolean;
+  available: boolean;
+  cost: CostModel;
+  thresholds: Thresholds | null;
+  note: string;
+}
+
+/** About the data source (real-data backend only). */
+export interface SourceInfo {
+  source: string;
+  /** why the decisions contain no Block (cost model), or null */
+  noBlockNote: string | null;
+  whatIfAvailable: boolean;
+}
+
 export interface Api {
   /** dataset clock range covered by the data */
   range(): Promise<{ first: number; last: number }>;
@@ -278,4 +299,9 @@ export interface Api {
   saveThresholds(t: Thresholds, role: Role): Promise<void>;
   feedback(id: number, label: Feedback, role: Role): Promise<void>;
   auditLog(): Promise<AuditEntry[]>;
+  /** optional (real-data backend): data-source notes */
+  info?(): Promise<SourceInfo>;
+  /** optional (real-data backend): the what-if cost mode */
+  whatIf?(): Promise<WhatIf>;
+  setWhatIf?(cost: CostModel | null, role: Role): Promise<WhatIf>;
 }

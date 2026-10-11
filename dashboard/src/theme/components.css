@@ -50,6 +50,14 @@
   display: flex;
   gap: var(--s-2);
 }
+.whatif-strip {
+  margin: 0 0 var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border: 1px dashed var(--graphite);
+  border-radius: var(--radius);
+  background: var(--sheet);
+  color: var(--ink);
+}
 .mock-note {
   padding: 2px var(--s-2);
   border: 1px dashed var(--graphite);

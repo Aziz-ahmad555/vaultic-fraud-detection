@@ -118,7 +118,7 @@ function Help() {
 }
 
 export function Shell({ children }: { children: ReactNode }) {
-  const { theme, setTheme, setPaletteOpen, setHelpOpen, asOf, setAsOfTime } = useApp();
+  const { theme, setTheme, setPaletteOpen, setHelpOpen, asOf, setAsOfTime, whatIfActive } = useApp();
   const navigate = useNavigate();
   const pendingG = useRef(false);
 
@@ -217,6 +217,13 @@ export function Shell({ children }: { children: ReactNode }) {
         </dl>
       </nav>
       <main id="main" className="main" tabIndex={-1}>
+        {whatIfActive && (
+          <p className="whatif-strip small" role="status">
+            <strong>What-if cost mode: illustrative, not the evaluated system.</strong> Decisions and costs use thresholds re-chosen on the
+            calibration days for your cost settings; the evaluated system is the frozen decision engine of the final run.{" "}
+            <NavLink to="/settings">Change or switch back in Settings</NavLink>
+          </p>
+        )}
         {children}
       </main>
       <Toasts />

@@ -74,7 +74,15 @@ The dashboard can read the EXP-200-final test period instead of the mock (labell
 3. Start the dashboard with `VITE_DATA_SOURCE=http` (optional `VITE_API_URL`, default
    `http://127.0.0.1:8000`): `VITE_DATA_SOURCE=http npm run dev`.
 
-Without `VITE_DATA_SOURCE=http` the synthetic mock is used, as before. Reasons are view-level
+Without `VITE_DATA_SOURCE=http` the synthetic mock is used, as before.
+
+Demo notes (D122): the Overview explains why no Block decisions appear (in the cost model a Block
+costs a review plus the false-positive penalty, a Hold only the review, so Block is never cheaper);
+Settings has an optional **what-if cost mode** that re-chooses the thresholds on the calibration days
+(147-150) for other costs and applies them to the test period, labelled on every page as
+"illustrative, not the evaluated system" (needs `demo_final_calibration.parquet` next to the bundle);
+the scenario simulator is labelled "Illustrative model, not the evaluated system". The as-of clock
+takes its range from the data source (test days 151-182 with the backend). Reasons are view-level
 (MVAF gate weight x view logit), not feature-level SHAP. The what-if simulator keeps the mock's
 illustrative model, because the final-run models score recorded transactions only. Threshold
 changes, feedback and the audit log live in the backend's memory for the session; drift alarms,

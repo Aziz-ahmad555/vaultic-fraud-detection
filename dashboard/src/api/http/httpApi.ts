@@ -22,12 +22,14 @@ import type {
   Role,
   ScoreInput,
   ScoreResult,
+  SourceInfo,
   Thresholds,
   Transaction,
+  WhatIf,
 } from "../types";
 
 export const HTTP_SOURCE_LABEL = "IEEE-CIS test period, final run";
-export const SCORE_SOURCE = "Simulator: illustrative model (the final-run models score recorded transactions only)";
+export const SCORE_SOURCE = "Simulator: illustrative model, not the evaluated system (the final-run models score recorded transactions only)";
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -80,5 +82,14 @@ export function createHttpApi(baseUrl = "http://127.0.0.1:8000", fetchImpl: Fetc
       await request(`/api/feedback/${id}`, { method: "POST", body: JSON.stringify({ label, role }) });
     },
     auditLog: () => request<AuditEntry[]>("/api/audit"),
+    info: async (): Promise<SourceInfo> => {
+      const m = await request<{ source: string; no_block_note: string | null; whatif_available: boolean }>("/api/meta");
+      return { source: m.source, noBlockNote: m.no_block_note, whatIfAvailable: m.whatif_available };
+    },
+    whatIf: () => request<WhatIf>("/api/whatif"),
+    setWhatIf: (cost: CostModel | null, role: Role) =>
+      cost === null
+        ? request<WhatIf>(`/api/whatif?role=${role}`, { method: "DELETE" })
+        : request<WhatIf>("/api/whatif", { method: "PUT", body: JSON.stringify({ cost, role }) }),
   };
 }

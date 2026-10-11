@@ -14,13 +14,21 @@ IEEE-CIS competition, not bank data. Threshold changes, feedback and the audit l
 memory for the demo session only; nothing is written back.
 
 POST /api/score is not available: the final-run models score recorded transactions only, so the
-dashboard's what-if simulator keeps its illustrative model (the HTTP adapter says so).
+dashboard's what-if simulator keeps its illustrative model (labelled "illustrative model, not the
+evaluated system").
+
+What-if cost mode (PUT / DELETE /api/whatif, D122): for cost settings chosen in the dashboard, the
+decision thresholds are re-chosen on the calibrate_fused rows (days 147-150, from
+demo_final_calibration.parquet) with the research pipeline's own choose_thresholds, and applied to
+the test period; every decision and day summary served while it is on carries whatIf = true. It is
+illustrative, not the evaluated system (the evaluated system is the frozen E12 decisions).
 """
 
 from __future__ import annotations
 
 import json
 import os
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -34,6 +42,14 @@ DAY = 86400
 VIEWS = ("tabular", "behavioral", "temporal", "graph", "anomaly")
 ACTIONS = ("allow", "monitor", "step_up", "hold", "block")
 POLICIES = ("R1", "R2", "R3", "R4")
+NO_BLOCK_NOTE = (
+    "No Block decisions, by the cost model (D43): a Block costs an analyst review ($5) plus $10 "
+    "for a legitimate customer wrongly blocked, while a Hold costs the same review, also stops "
+    "the fraud and releases a legitimate customer at no extra cost. A Block can therefore never "
+    "cost less than a Hold, so the cost-optimal Block threshold is 'never' and high-risk cases "
+    "are held or stepped up instead."
+)
+WHATIF_NOTE = "What-if cost mode: illustrative, not the evaluated system"
 DEFAULT_BUNDLE = (
     Path(os.environ.get("VAULTIC_DATA_DIR", "data")) / "interim" / "demo_final_bundle.parquet"
 )
@@ -49,6 +65,19 @@ class ThresholdsIn(BaseModel):
 
 class SaveThresholds(BaseModel):
     thresholds: ThresholdsIn
+    role: str
+
+
+class CostIn(BaseModel):
+    c_fp: float
+    c_rev: float
+    c_step: float
+    step_up_success_rate: float
+    legit_step_up_friction: float
+
+
+class WhatIfIn(BaseModel):
+    cost: CostIn
     role: str
 
 
@@ -70,7 +99,11 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
     # t_dis = inf (disagreement rule off) on the Python side is null in the contract
     thresholds = {k: _none(float(v)) if v is not None else None
                   for k, v in meta["thresholds"].items()}  # fmt: skip
-    state = {"thresholds": thresholds, "feedback": {}, "audit": []}
+    state = {"thresholds": thresholds, "feedback": {}, "audit": [], "whatif": None}
+    base_actions = df["action"].to_numpy().astype(object)
+    actions = base_actions.copy()  # the served actions: the frozen E12 ones unless what-if is on
+    cal_path = bundle_path.with_name("demo_final_calibration.parquet")
+    cal = pd.read_parquet(cal_path) if cal_path.exists() else None
     cost = meta["cost_model"]
 
     app = FastAPI(title="Vaultic demo backend", version="0.1")
@@ -100,9 +133,10 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
             "entities": {"uid": str(r["uid"]), "card": str(r["card"]), "email": _none(r["email"]),
                          "address": _none(r["address"]), "device": _none(r["device"])},
             "weights": {v: float(np.nan_to_num(r[f"w_{v}"])) for v in VIEWS},
-            "decision": {"action": str(r["action"]), "p": p, "expected_loss": p * amount,
+            "decision": {"action": str(actions[i]), "p": p, "expected_loss": p * amount,
                          "conformal_set": str(r["conformal_set"]),
-                         "disagreement": float(r["disagreement"])},
+                         "disagreement": float(r["disagreement"]),
+                         "whatIf": state["whatif"] is not None},
             "reasons": json.loads(r["reasons"]),
             "inputs": {"amount": amount, "usualAmount": None, "deviceKnown": _none(r["device"]) is not None,
                        "velocity24h": 0, "sharedEntities": 0,
@@ -121,8 +155,13 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
 
     @app.get("/api/meta")
     def get_meta():
-        return {k: meta[k] for k in ("source", "run", "generated", "rows", "label_delay_days",
-                                     "reasons_note")}  # fmt: skip
+        out = {k: meta[k] for k in ("source", "run", "generated", "rows", "label_delay_days",
+                                    "reasons_note")}  # fmt: skip
+        out["no_block_note"] = (
+            NO_BLOCK_NOTE if meta["thresholds"].get("t_block") in (None, float("inf")) else None
+        )
+        out["whatif_available"] = cal is not None
+        return out
 
     @app.get("/api/range")
     def get_range():
@@ -132,8 +171,10 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
     def day_summary(time: float, L: int = 30):
         idx = day_rows(time)
         sub = df.iloc[idx]
-        by_action = {a: int((sub["action"] == a).sum()) for a in ACTIONS}
-        p, amt, act = sub["p"].to_numpy(), sub["amount"].to_numpy(), sub["action"].to_numpy()
+        act = actions[idx]
+        by_action = {a: int((act == a).sum()) for a in ACTIONS}
+        p, amt = sub["p"].to_numpy(), sub["amount"].to_numpy()
+        cost = state["whatif"]["cost"] if state["whatif"] else meta["cost_model"]
         el = p * amt
         low = np.isin(act, ["allow", "monitor"])
         step = act == "step_up"
@@ -159,7 +200,8 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
                 "queue": by_action["step_up"] + by_action["hold"], "byAction": by_action,
                 "expectedFraudStopped": stopped, "expectedLoss": float(el[low].sum()),
                 "cost": costs, "riskByHour": hours,
-                "viewAvailability": {v: float(sub[f"p_{v}"].notna().sum() / n) for v in VIEWS}}  # fmt: skip
+                "viewAvailability": {v: float(sub[f"p_{v}"].notna().sum() / n) for v in VIEWS},
+                "whatIf": state["whatif"] is not None}  # fmt: skip
 
     @app.get("/api/stream")
     def stream(time: float, start: float, end: float, L: int = 30):
@@ -176,7 +218,7 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
 
     @app.get("/api/alerts")
     def alerts(time: float, L: int = 30):
-        idx = [i for i in day_rows(time) if df.at[i, "action"] in ("step_up", "hold", "block")]
+        idx = [i for i in day_rows(time) if actions[i] in ("step_up", "hold", "block")]
         idx.sort(key=lambda i: -df.at[i, "p"])
         return [transaction(i, time, L) for i in idx]
 
@@ -196,8 +238,8 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
                 hit |= sub[col].astype(str).to_numpy() == focus
             sub = sub[hit]
         else:
-            sub = sub.iloc[day_rows(time)]
-            sub = sub[sub["action"].isin(["hold", "block"])].nlargest(40, "p")
+            rows = day_rows(time)
+            sub = sub.iloc[rows][np.isin(actions[rows], ["hold", "block"])].nlargest(40, "p")
         nodes, edges = {}, {}
         for _, r in sub.iterrows():
             known = int(r["label"] == 1 and matured(r["TransactionDT"], time, L))
@@ -333,6 +375,56 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
         audit(body.role, f"Marked transaction {tid} as {body.label}",
               f"was {before}" if before else "first label")  # fmt: skip
         return {"ok": True}
+
+    def whatif_status():
+        w = state["whatif"]
+        return {"active": w is not None, "available": cal is not None,
+                "cost": w["cost"] if w else meta["cost_model"],
+                "thresholds": w["thresholds"] if w else None, "note": WHATIF_NOTE}  # fmt: skip
+
+    @app.get("/api/whatif")
+    def get_whatif():
+        return whatif_status()
+
+    @app.put("/api/whatif")
+    def set_whatif(body: WhatIfIn):
+        nonlocal actions
+        if cal is None:
+            raise HTTPException(501, "The what-if cost mode needs demo_final_calibration.parquet.")
+        c = body.cost
+        if not (0 <= c.step_up_success_rate <= 1) or min(c.c_fp, c.c_rev, c.c_step,
+                                                         c.legit_step_up_friction) < 0:  # fmt: skip
+            raise HTTPException(
+                422, "Costs must be at least 0 and the step-up success rate between 0 and 1."
+            )
+        src = Path(__file__).resolve().parents[2] / "src"
+        if str(src) not in sys.path:
+            sys.path.insert(0, str(src))
+        from vaultic.trust.decision import ACTIONS as CODES
+        from vaultic.trust.decision import CostModel, choose_thresholds, decide
+
+        cm = CostModel(c.c_fp, c.c_rev, c.c_step, c.step_up_success_rate, c.legit_step_up_friction)
+        th, _ = choose_thresholds(cal["p"].to_numpy(), cal["amount"].to_numpy(),
+                                  cal["label"].to_numpy(), cal["conformal_set"].to_numpy(object),
+                                  cal["disagreement"].to_numpy(), cost=cm)  # fmt: skip
+        codes = decide(df["p"].to_numpy(), df["amount"].to_numpy(), th,
+                       df["conformal_set"].to_numpy(object), df["disagreement"].to_numpy())  # fmt: skip
+        actions = np.asarray([CODES[k] for k in codes], dtype=object)
+        state["whatif"] = {"cost": c.model_dump(),
+                           "thresholds": {k: _none(float(v)) for k, v in th.__dict__.items()}}  # fmt: skip
+        audit(
+            body.role, "Turned on the what-if cost mode (illustrative)", json.dumps(c.model_dump())
+        )
+        return whatif_status()
+
+    @app.delete("/api/whatif")
+    def clear_whatif(role: str = "analyst"):
+        nonlocal actions
+        actions = base_actions.copy()
+        if state["whatif"] is not None:
+            audit(role, "Turned off the what-if cost mode", "back to the evaluated system")
+        state["whatif"] = None
+        return whatif_status()
 
     @app.get("/api/audit")
     def audit_log():
