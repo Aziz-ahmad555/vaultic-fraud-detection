@@ -13,8 +13,8 @@ but did not save per row, and checks it against what it did save:
     thresholds chosen on calibrate_fused, actions on the test rows; the default-cost total must
     equal E12's (else it stops)
 plus amount, product, entities and the uid from the data files. Writes
-<data>/interim/demo_final_bundle.parquet and demo_final_bundle.json (data stay on drive E; not
-committed). Every row is labelled "IEEE-CIS test period, final run".
+<data>/interim/demo_final_bundle.parquet, demo_final_bundle.json and demo_final_calibration.parquet
+(the calibrate_fused rows, for the what-if cost mode; data stay on drive E, not committed). Every row is labelled "IEEE-CIS test period, final run".
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ from vaultic.paths import INTERIM_DIR, MERGED_PATH, RESEARCH_DIR
 
 BUNDLE = INTERIM_DIR / "demo_final_bundle.parquet"
 META = INTERIM_DIR / "demo_final_bundle.json"
+CALIBRATION = INTERIM_DIR / "demo_final_calibration.parquet"  # for the what-if cost mode
 SOURCE_LABEL = "IEEE-CIS test period, final run"
 ACTIONS = ("allow", "monitor", "step_up", "hold", "block")
 
@@ -144,6 +145,9 @@ def main() -> None:
         "source": SOURCE_LABEL,
     })  # fmt: skip
     out.sort_values("TransactionDT").to_parquet(BUNDLE, index=False)
+    # calibrate_fused rows (147-150): the demo's what-if cost mode re-chooses thresholds on them
+    pd.DataFrame({"p": pc, "amount": amt_cal, "conformal_set": sets_cal,
+                  "disagreement": dis_cal, "label": d["cal_y"]}).to_parquet(CALIBRATION, index=False)  # fmt: skip
     final = json.loads((RESEARCH_DIR / "tables" / "final_results.json").read_text("utf-8"))
     META.write_text(json.dumps({
         "source": SOURCE_LABEL, "run": "experiments/runs/EXP-200-final/20261011-002400-202994",
