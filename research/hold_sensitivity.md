@@ -2,15 +2,15 @@
 
 **POST-HOC / EXPLORATORY (D124), motivated by D123.** Not pre-registered; E12 and every pre-registered number stand as reported. In the D43 cost model a Hold always stops the fraud, so it weakly dominates Block and Block is never chosen. Here a held fraud is stopped only with probability hold_success_rate (1.0 = D43). Generated 2026-10-11 by `python -m vaultic.trust.hold_sensitivity`.
 
-MVAF on the test period (92,427 rows, 3,213 frauds); thresholds re-chosen on the calibration days (147-150) for each of the 135 D46 cost settings and each hold_success_rate. Inputs reproduce E12's default cost ($99,263.19). Cost change: test total cost minus the same setting with hold_success_rate = 1.0, each under its own cost model (a leakier Hold makes every held fraud dearer, so costs rise). Saving from Block: test cost with Block forbidden (thresholds otherwise the same) minus the cost with the chosen thresholds.
+MVAF on the test period (92,427 rows, 3,213 frauds); thresholds re-chosen on the calibration days (147-150) for each of the 135 D46 cost settings and each hold_success_rate. Inputs reproduce E12's default cost ($99,263.19). Cost change: test total cost minus the same setting with hold_success_rate = 1.0, each under its own cost model (a leakier Hold makes every held fraud dearer, so costs rise). Saving from Block: test cost of the policy re-chosen on the calibration days with Block disabled (D145) minus the test cost of the chosen policy; negative where the re-chosen policy without Block does better on the test period.
 
 | hold_success_rate | settings where Block is reachable | mean share of test rows blocked | max share blocked | mean cost change vs 1.0 ($) | mean saving from Block ($) |
 |---|---|---|---|---|---|
 | 1.00 | 0 of 135 | 0.00% | 0.00% | +0 | 0 |
-| 0.95 | 95 of 135 | 0.58% | 5.20% | +9,639 | 2,080 |
-| 0.90 | 91 of 135 | 0.99% | 5.20% | +14,633 | 6,294 |
-| 0.80 | 90 of 135 | 1.40% | 8.65% | +21,300 | 16,439 |
-| 0.70 | 90 of 135 | 1.44% | 8.65% | +24,197 | 27,042 |
+| 0.95 | 95 of 135 | 0.58% | 5.20% | +9,639 | 2,103 |
+| 0.90 | 91 of 135 | 0.99% | 5.20% | +14,633 | 5,745 |
+| 0.80 | 90 of 135 | 1.40% | 8.65% | +21,300 | 14,072 |
+| 0.70 | 90 of 135 | 1.44% | 8.65% | +24,197 | 17,575 |
 
 ## Default costs (C_FP $10, review $5, OTP $0.50, step-up 90%, friction $1)
 
@@ -36,9 +36,11 @@ POST-HOC / EXPLORATORY (D124); E12 and every pre-registered number stand as repo
   started in E12): 59 test transactions are blocked, 36 of them fraud. The test cost rises by
   only $304-337 against the perfect-Hold model, because at these costs Holds are rare to begin
   with (step-up does most of the work).
-- **What Block is worth grows with Hold's failure rate:** forbidding Block (other thresholds
-  unchanged) would cost on average $2.1k more at 0.95 and $27k more at 0.7, against total costs
-  that themselves rise by $10k-24k as held fraud gets dearer.
+- **What Block is worth grows with Hold's failure rate:** the policy re-chosen on the calibration
+  days with Block disabled (D145) costs on average $2.1k more on the test period at 0.95, $5.7k at
+  0.9, $14.1k at 0.8 and $17.6k at 0.7, against total costs that themselves rise by $10k-24k as
+  held fraud gets dearer. (The first version of this report forced t_block to never with the other
+  thresholds unchanged, which overstated Block's value at 0.7-0.8: $27k and $16k.)
 - For Paper 2 (D123): E12's "never block" follows from the assumption that a review always stops
   the fraud. Under a mildly imperfect review, the same pipeline blocks a small, high-risk slice.
   This is a sensitivity of the cost model, not a result on detection quality, and these numbers

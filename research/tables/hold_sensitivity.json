@@ -21,7 +21,7 @@
    "mean_share_blocked": 0.005779856695714617,
    "max_share_blocked": 0.05204107025003516,
    "mean_cost_change_vs_hold_1": 9638.500217407414,
-   "mean_saving_from_block": 2080.3654244444397
+   "mean_saving_from_block": 2102.7352307407364
   },
   {
    "hold_success_rate": 0.9,
@@ -30,7 +30,7 @@
    "mean_share_blocked": 0.009949313351998714,
    "max_share_blocked": 0.05204107025003516,
    "mean_cost_change_vs_hold_1": 14633.22987259259,
-   "mean_saving_from_block": 6293.83995555555
+   "mean_saving_from_block": 5744.852268148141
   },
   {
    "hold_success_rate": 0.8,
@@ -39,7 +39,7 @@
    "mean_share_blocked": 0.014010736801696153,
    "max_share_blocked": 0.08646823980005842,
    "mean_cost_change_vs_hold_1": 21300.305520740738,
-   "mean_saving_from_block": 16438.571570370364
+   "mean_saving_from_block": 14072.067816296294
   },
   {
    "hold_success_rate": 0.7,
@@ -48,7 +48,7 @@
    "mean_share_blocked": 0.0143914977545843,
    "max_share_blocked": 0.08646823980005842,
    "mean_cost_change_vs_hold_1": 24196.93057333333,
-   "mean_saving_from_block": 27041.885016296306
+   "mean_saving_from_block": 17575.347234074077
   }
  ],
  "default_costs": [
@@ -94,7 +94,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 99600.1904,
-   "test_cost_if_never_block": 103244.38940000001,
+   "test_cost_if_never_block": 103001.88940000001,
    "cost_change_vs_hold_1": 336.9967000000179
   },
   {
@@ -109,7 +109,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 99600.1904,
-   "test_cost_if_never_block": 107118.58839999998,
+   "test_cost_if_never_block": 103001.88940000001,
    "cost_change_vs_hold_1": 336.9967000000179
   },
   {
@@ -124,7 +124,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 99600.1904,
-   "test_cost_if_never_block": 110992.7874,
+   "test_cost_if_never_block": 103001.88940000001,
    "cost_change_vs_hold_1": 336.9967000000179
   }
  ],
@@ -2376,7 +2376,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 122477.8125,
-   "test_cost_if_never_block": 134000.6177,
+   "test_cost_if_never_block": 137020.54155000002,
    "cost_change_vs_hold_1": 7787.96650000001
   },
   {
@@ -4326,7 +4326,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 52523.15629999999,
-   "test_cost_if_never_block": 56351.35529999998,
+   "test_cost_if_never_block": 56062.25529999999,
    "cost_change_vs_hold_1": 149.39669999999023
   },
   {
@@ -4341,7 +4341,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 78320.19039999998,
-   "test_cost_if_never_block": 82148.38940000001,
+   "test_cost_if_never_block": 81882.88940000001,
    "cost_change_vs_hold_1": 152.99669999998878
   },
   {
@@ -4356,7 +4356,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 114080.1904,
-   "test_cost_if_never_block": 117908.38939999999,
+   "test_cost_if_never_block": 117731.38939999999,
    "cost_change_vs_hold_1": 15965.344400000002
   },
   {
@@ -4371,7 +4371,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 89880.1904,
-   "test_cost_if_never_block": 93708.38939999999,
+   "test_cost_if_never_block": 93442.28939999998,
    "cost_change_vs_hold_1": 149.39670000001206
   },
   {
@@ -4386,7 +4386,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 99416.1904,
-   "test_cost_if_never_block": 103244.38940000001,
+   "test_cost_if_never_block": 103001.88940000001,
    "cost_change_vs_hold_1": 152.99670000001788
   },
   {
@@ -4401,7 +4401,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 124149.77900000002,
-   "test_cost_if_never_block": 153311.3894,
+   "test_cost_if_never_block": 138850.3894,
    "cost_change_vs_hold_1": 9459.933000000034
   },
   {
@@ -4416,7 +4416,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 149895.4389,
-   "test_cost_if_never_block": 179057.04929999998,
+   "test_cost_if_never_block": 170735.54929999996,
    "cost_change_vs_hold_1": 12884.8119
   },
   {
@@ -4431,7 +4431,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 154891.1389,
-   "test_cost_if_never_block": 184052.74929999997,
+   "test_cost_if_never_block": 178814.74929999997,
    "cost_change_vs_hold_1": 14918.911899999977
   },
   {
@@ -4581,7 +4581,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 167607.13940000001,
-   "test_cost_if_never_block": 196768.7498,
+   "test_cost_if_never_block": 163878.81199999998,
    "cost_change_vs_hold_1": 16797.838400000008
   },
   {
@@ -4731,7 +4731,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 52592.15629999999,
-   "test_cost_if_never_block": 56351.35529999998,
+   "test_cost_if_never_block": 56062.25529999999,
    "cost_change_vs_hold_1": 218.39669999999023
   },
   {
@@ -4746,7 +4746,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 78389.19039999998,
-   "test_cost_if_never_block": 82148.38940000001,
+   "test_cost_if_never_block": 81882.88940000001,
    "cost_change_vs_hold_1": 221.99669999998878
   },
   {
@@ -4761,7 +4761,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 114149.1904,
-   "test_cost_if_never_block": 117908.38939999999,
+   "test_cost_if_never_block": 117731.38939999999,
    "cost_change_vs_hold_1": 16034.344400000002
   },
   {
@@ -4776,7 +4776,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 89949.1904,
-   "test_cost_if_never_block": 93708.38939999999,
+   "test_cost_if_never_block": 93442.28939999998,
    "cost_change_vs_hold_1": 218.39670000001206
   },
   {
@@ -4791,7 +4791,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 99485.1904,
-   "test_cost_if_never_block": 103244.38940000001,
+   "test_cost_if_never_block": 103001.88940000001,
    "cost_change_vs_hold_1": 221.99670000001788
   },
   {
@@ -4806,7 +4806,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 135245.19040000002,
-   "test_cost_if_never_block": 139004.3894,
+   "test_cost_if_never_block": 138850.3894,
    "cost_change_vs_hold_1": 20555.34440000003
   },
   {
@@ -4821,7 +4821,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 167150.45029999997,
-   "test_cost_if_never_block": 170909.64929999996,
+   "test_cost_if_never_block": 170735.54929999996,
    "cost_change_vs_hold_1": 30139.82329999996
   },
   {
@@ -4836,7 +4836,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 164065.1389,
-   "test_cost_if_never_block": 184052.74929999997,
+   "test_cost_if_never_block": 178814.74929999997,
    "cost_change_vs_hold_1": 24092.911899999977
   },
   {
@@ -5136,7 +5136,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 52707.15629999999,
-   "test_cost_if_never_block": 56351.35529999998,
+   "test_cost_if_never_block": 56062.25529999999,
    "cost_change_vs_hold_1": 333.39669999999023
   },
   {
@@ -5151,7 +5151,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 78504.19039999998,
-   "test_cost_if_never_block": 82148.38940000001,
+   "test_cost_if_never_block": 81882.88940000001,
    "cost_change_vs_hold_1": 336.9966999999888
   },
   {
@@ -5166,7 +5166,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 114264.1904,
-   "test_cost_if_never_block": 117908.38939999999,
+   "test_cost_if_never_block": 117731.38939999999,
    "cost_change_vs_hold_1": 16149.344400000002
   },
   {
@@ -5181,7 +5181,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 90064.1904,
-   "test_cost_if_never_block": 93708.38939999999,
+   "test_cost_if_never_block": 93442.28939999998,
    "cost_change_vs_hold_1": 333.39670000001206
   },
   {
@@ -5196,7 +5196,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 99600.1904,
-   "test_cost_if_never_block": 103244.38940000001,
+   "test_cost_if_never_block": 103001.88940000001,
    "cost_change_vs_hold_1": 336.9967000000179
   },
   {
@@ -5211,7 +5211,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 135360.19040000002,
-   "test_cost_if_never_block": 139004.3894,
+   "test_cost_if_never_block": 138850.3894,
    "cost_change_vs_hold_1": 20670.34440000003
   },
   {
@@ -5226,7 +5226,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 167265.45029999997,
-   "test_cost_if_never_block": 170909.64929999996,
+   "test_cost_if_never_block": 170735.54929999996,
    "cost_change_vs_hold_1": 30254.82329999996
   },
   {
@@ -5241,7 +5241,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 175321.05029999994,
-   "test_cost_if_never_block": 178965.24929999997,
+   "test_cost_if_never_block": 178814.74929999997,
    "cost_change_vs_hold_1": 35348.82329999993
   },
   {
@@ -5541,7 +5541,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 52937.15629999999,
-   "test_cost_if_never_block": 56351.35529999998,
+   "test_cost_if_never_block": 56062.25529999999,
    "cost_change_vs_hold_1": 563.3966999999902
   },
   {
@@ -5556,7 +5556,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 78734.19039999998,
-   "test_cost_if_never_block": 82148.38940000001,
+   "test_cost_if_never_block": 81882.88940000001,
    "cost_change_vs_hold_1": 566.9966999999888
   },
   {
@@ -5571,7 +5571,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 114494.1904,
-   "test_cost_if_never_block": 117908.38939999999,
+   "test_cost_if_never_block": 117731.38939999999,
    "cost_change_vs_hold_1": 16379.344400000002
   },
   {
@@ -5586,7 +5586,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 90294.1904,
-   "test_cost_if_never_block": 93708.38939999999,
+   "test_cost_if_never_block": 93442.28939999998,
    "cost_change_vs_hold_1": 563.3967000000121
   },
   {
@@ -5601,7 +5601,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 99830.1904,
-   "test_cost_if_never_block": 103244.38940000001,
+   "test_cost_if_never_block": 103001.88940000001,
    "cost_change_vs_hold_1": 566.9967000000179
   },
   {
@@ -5616,7 +5616,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 135590.19040000002,
-   "test_cost_if_never_block": 139004.3894,
+   "test_cost_if_never_block": 138850.3894,
    "cost_change_vs_hold_1": 20900.34440000003
   },
   {
@@ -5631,7 +5631,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 167495.45029999997,
-   "test_cost_if_never_block": 170909.64929999996,
+   "test_cost_if_never_block": 170735.54929999996,
    "cost_change_vs_hold_1": 30484.82329999996
   },
   {
@@ -5646,7 +5646,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 175551.05029999994,
-   "test_cost_if_never_block": 178965.24929999997,
+   "test_cost_if_never_block": 178814.74929999997,
    "cost_change_vs_hold_1": 35578.82329999993
   },
   {
@@ -5946,7 +5946,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 53627.15629999999,
-   "test_cost_if_never_block": 56351.35529999998,
+   "test_cost_if_never_block": 56062.25529999999,
    "cost_change_vs_hold_1": 1253.3966999999902
   },
   {
@@ -5961,7 +5961,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 79424.19039999998,
-   "test_cost_if_never_block": 82148.38940000001,
+   "test_cost_if_never_block": 81882.88940000001,
    "cost_change_vs_hold_1": 1256.9966999999888
   },
   {
@@ -5976,7 +5976,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 115184.1904,
-   "test_cost_if_never_block": 117908.38939999999,
+   "test_cost_if_never_block": 117731.38939999999,
    "cost_change_vs_hold_1": 17069.3444
   },
   {
@@ -5991,7 +5991,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 90984.1904,
-   "test_cost_if_never_block": 93708.38939999999,
+   "test_cost_if_never_block": 93442.28939999998,
    "cost_change_vs_hold_1": 1253.396700000012
   },
   {
@@ -6006,7 +6006,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 100520.1904,
-   "test_cost_if_never_block": 103244.38940000001,
+   "test_cost_if_never_block": 103001.88940000001,
    "cost_change_vs_hold_1": 1256.9967000000179
   },
   {
@@ -6021,7 +6021,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 136280.19040000002,
-   "test_cost_if_never_block": 139004.3894,
+   "test_cost_if_never_block": 138850.3894,
    "cost_change_vs_hold_1": 21590.34440000003
   },
   {
@@ -6036,7 +6036,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 168185.45029999997,
-   "test_cost_if_never_block": 170909.64929999996,
+   "test_cost_if_never_block": 170735.54929999996,
    "cost_change_vs_hold_1": 31174.82329999996
   },
   {
@@ -6051,7 +6051,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 176241.05029999994,
-   "test_cost_if_never_block": 178965.24929999997,
+   "test_cost_if_never_block": 178814.74929999997,
    "cost_change_vs_hold_1": 36268.82329999993
   },
   {
@@ -6216,7 +6216,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 81343.0397,
-   "test_cost_if_never_block": 145782.26049999997,
+   "test_cost_if_never_block": 149673.80820000006,
    "cost_change_vs_hold_1": 12803.865999999995
   },
   {
@@ -6231,7 +6231,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 100113.80200000001,
-   "test_cost_if_never_block": 164553.0228,
+   "test_cost_if_never_block": 170951.37050000002,
    "cost_change_vs_hold_1": 12803.866000000009
   },
   {
@@ -6261,7 +6261,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 109663.202,
-   "test_cost_if_never_block": 174102.42279999997,
+   "test_cost_if_never_block": 182514.97050000005,
    "cost_change_vs_hold_1": 12803.865999999995
   },
   {
@@ -6276,7 +6276,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 116688.80200000001,
-   "test_cost_if_never_block": 181128.0228,
+   "test_cost_if_never_block": 192047.37050000002,
    "cost_change_vs_hold_1": 12803.866000000024
   },
   {
@@ -6351,7 +6351,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 52523.15629999999,
-   "test_cost_if_never_block": 60225.55429999999,
+   "test_cost_if_never_block": 56062.25529999999,
    "cost_change_vs_hold_1": 149.39669999999023
   },
   {
@@ -6366,7 +6366,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 78320.19039999998,
-   "test_cost_if_never_block": 86022.58840000001,
+   "test_cost_if_never_block": 81882.88940000001,
    "cost_change_vs_hold_1": 152.99669999998878
   },
   {
@@ -6381,7 +6381,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 114080.1904,
-   "test_cost_if_never_block": 121782.58839999998,
+   "test_cost_if_never_block": 117731.38939999999,
    "cost_change_vs_hold_1": 15965.344400000002
   },
   {
@@ -6396,7 +6396,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 89880.1904,
-   "test_cost_if_never_block": 97582.5884,
+   "test_cost_if_never_block": 93442.28939999998,
    "cost_change_vs_hold_1": 149.39670000001206
   },
   {
@@ -6411,7 +6411,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 99416.1904,
-   "test_cost_if_never_block": 107118.58839999998,
+   "test_cost_if_never_block": 103001.88940000001,
    "cost_change_vs_hold_1": 152.99670000001788
   },
   {
@@ -6426,7 +6426,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 127493.712,
-   "test_cost_if_never_block": 191932.9328,
+   "test_cost_if_never_block": 138850.3894,
    "cost_change_vs_hold_1": 12803.866000000009
   },
   {
@@ -6441,7 +6441,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 153239.3719,
-   "test_cost_if_never_block": 217678.59269999998,
+   "test_cost_if_never_block": 170735.54929999996,
    "cost_change_vs_hold_1": 16228.74489999999
   },
   {
@@ -6456,7 +6456,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 158784.57189999998,
-   "test_cost_if_never_block": 223223.79269999996,
+   "test_cost_if_never_block": 178814.74929999997,
    "cost_change_vs_hold_1": 18812.344899999967
   },
   {
@@ -6471,7 +6471,7 @@
    "n_blocked": 7992,
    "frauds_blocked": 2226,
    "test_cost": 173742.7534,
-   "test_cost_if_never_block": 239239.2716,
+   "test_cost_if_never_block": 209111.74930000002,
    "cost_change_vs_hold_1": 22500.812799999985
   },
   {
@@ -6621,7 +6621,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 90517.03970000001,
-   "test_cost_if_never_block": 145782.26049999997,
+   "test_cost_if_never_block": 149673.80820000006,
    "cost_change_vs_hold_1": 21977.86600000001
   },
   {
@@ -6636,7 +6636,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 109287.80200000001,
-   "test_cost_if_never_block": 164553.0228,
+   "test_cost_if_never_block": 170951.37050000002,
    "cost_change_vs_hold_1": 21977.86600000001
   },
   {
@@ -6666,7 +6666,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 118837.202,
-   "test_cost_if_never_block": 174102.42279999997,
+   "test_cost_if_never_block": 182514.97050000005,
    "cost_change_vs_hold_1": 21977.865999999995
   },
   {
@@ -6681,7 +6681,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 125862.80200000001,
-   "test_cost_if_never_block": 181128.0228,
+   "test_cost_if_never_block": 192047.37050000002,
    "cost_change_vs_hold_1": 21977.866000000024
   },
   {
@@ -6756,7 +6756,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 52592.15629999999,
-   "test_cost_if_never_block": 60225.55429999999,
+   "test_cost_if_never_block": 56062.25529999999,
    "cost_change_vs_hold_1": 218.39669999999023
   },
   {
@@ -6771,7 +6771,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 78389.19039999998,
-   "test_cost_if_never_block": 86022.58840000001,
+   "test_cost_if_never_block": 81882.88940000001,
    "cost_change_vs_hold_1": 221.99669999998878
   },
   {
@@ -6786,7 +6786,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 114149.1904,
-   "test_cost_if_never_block": 121782.58839999998,
+   "test_cost_if_never_block": 117731.38939999999,
    "cost_change_vs_hold_1": 16034.344400000002
   },
   {
@@ -6801,7 +6801,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 89949.1904,
-   "test_cost_if_never_block": 97582.5884,
+   "test_cost_if_never_block": 93442.28939999998,
    "cost_change_vs_hold_1": 218.39670000001206
   },
   {
@@ -6816,7 +6816,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 99485.1904,
-   "test_cost_if_never_block": 107118.58839999998,
+   "test_cost_if_never_block": 103001.88940000001,
    "cost_change_vs_hold_1": 221.99670000001788
   },
   {
@@ -6831,7 +6831,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 135245.19040000002,
-   "test_cost_if_never_block": 142878.58839999998,
+   "test_cost_if_never_block": 138850.3894,
    "cost_change_vs_hold_1": 20555.34440000003
   },
   {
@@ -6846,7 +6846,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 167150.45029999997,
-   "test_cost_if_never_block": 174783.84829999998,
+   "test_cost_if_never_block": 170735.54929999996,
    "cost_change_vs_hold_1": 30139.82329999996
   },
   {
@@ -6861,7 +6861,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 167958.57189999998,
-   "test_cost_if_never_block": 223223.79269999996,
+   "test_cost_if_never_block": 178814.74929999997,
    "cost_change_vs_hold_1": 27986.344899999967
   },
   {
@@ -6876,7 +6876,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 183974.0508,
-   "test_cost_if_never_block": 239239.2716,
+   "test_cost_if_never_block": 209111.74930000002,
    "cost_change_vs_hold_1": 32732.110199999996
   },
   {
@@ -7026,7 +7026,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 105807.03970000001,
-   "test_cost_if_never_block": 145782.26049999997,
+   "test_cost_if_never_block": 149673.80820000006,
    "cost_change_vs_hold_1": 37267.86600000001
   },
   {
@@ -7041,7 +7041,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 124577.80200000001,
-   "test_cost_if_never_block": 164553.0228,
+   "test_cost_if_never_block": 170951.37050000002,
    "cost_change_vs_hold_1": 37267.86600000001
   },
   {
@@ -7071,7 +7071,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 134127.202,
-   "test_cost_if_never_block": 174102.42279999997,
+   "test_cost_if_never_block": 182514.97050000005,
    "cost_change_vs_hold_1": 37267.86599999998
   },
   {
@@ -7086,7 +7086,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 141152.80200000003,
-   "test_cost_if_never_block": 181128.0228,
+   "test_cost_if_never_block": 192047.37050000002,
    "cost_change_vs_hold_1": 37267.86600000004
   },
   {
@@ -7161,7 +7161,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 52707.15629999999,
-   "test_cost_if_never_block": 60225.55429999999,
+   "test_cost_if_never_block": 56062.25529999999,
    "cost_change_vs_hold_1": 333.39669999999023
   },
   {
@@ -7176,7 +7176,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 78504.19039999998,
-   "test_cost_if_never_block": 86022.58840000001,
+   "test_cost_if_never_block": 81882.88940000001,
    "cost_change_vs_hold_1": 336.9966999999888
   },
   {
@@ -7191,7 +7191,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 114264.1904,
-   "test_cost_if_never_block": 121782.58839999998,
+   "test_cost_if_never_block": 117731.38939999999,
    "cost_change_vs_hold_1": 16149.344400000002
   },
   {
@@ -7206,7 +7206,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 90064.1904,
-   "test_cost_if_never_block": 97582.5884,
+   "test_cost_if_never_block": 93442.28939999998,
    "cost_change_vs_hold_1": 333.39670000001206
   },
   {
@@ -7221,7 +7221,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 99600.1904,
-   "test_cost_if_never_block": 107118.58839999998,
+   "test_cost_if_never_block": 103001.88940000001,
    "cost_change_vs_hold_1": 336.9967000000179
   },
   {
@@ -7236,7 +7236,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 135360.19040000002,
-   "test_cost_if_never_block": 142878.58839999998,
+   "test_cost_if_never_block": 138850.3894,
    "cost_change_vs_hold_1": 20670.34440000003
   },
   {
@@ -7251,7 +7251,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 167265.45029999997,
-   "test_cost_if_never_block": 174783.84829999998,
+   "test_cost_if_never_block": 170735.54929999996,
    "cost_change_vs_hold_1": 30254.82329999996
   },
   {
@@ -7266,7 +7266,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 175321.05029999994,
-   "test_cost_if_never_block": 182839.44829999996,
+   "test_cost_if_never_block": 178814.74929999997,
    "cost_change_vs_hold_1": 35348.82329999993
   },
   {
@@ -7281,7 +7281,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 205529.55029999994,
-   "test_cost_if_never_block": 213047.9483,
+   "test_cost_if_never_block": 209111.74930000002,
    "cost_change_vs_hold_1": 54287.60969999994
   },
   {
@@ -7566,7 +7566,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 52937.15629999999,
-   "test_cost_if_never_block": 60225.55429999999,
+   "test_cost_if_never_block": 56062.25529999999,
    "cost_change_vs_hold_1": 563.3966999999902
   },
   {
@@ -7581,7 +7581,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 78734.19039999998,
-   "test_cost_if_never_block": 86022.58840000001,
+   "test_cost_if_never_block": 81882.88940000001,
    "cost_change_vs_hold_1": 566.9966999999888
   },
   {
@@ -7596,7 +7596,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 114494.1904,
-   "test_cost_if_never_block": 121782.58839999998,
+   "test_cost_if_never_block": 117731.38939999999,
    "cost_change_vs_hold_1": 16379.344400000002
   },
   {
@@ -7611,7 +7611,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 90294.1904,
-   "test_cost_if_never_block": 97582.5884,
+   "test_cost_if_never_block": 93442.28939999998,
    "cost_change_vs_hold_1": 563.3967000000121
   },
   {
@@ -7626,7 +7626,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 99830.1904,
-   "test_cost_if_never_block": 107118.58839999998,
+   "test_cost_if_never_block": 103001.88940000001,
    "cost_change_vs_hold_1": 566.9967000000179
   },
   {
@@ -7641,7 +7641,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 135590.19040000002,
-   "test_cost_if_never_block": 142878.58839999998,
+   "test_cost_if_never_block": 138850.3894,
    "cost_change_vs_hold_1": 20900.34440000003
   },
   {
@@ -7656,7 +7656,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 167495.45029999997,
-   "test_cost_if_never_block": 174783.84829999998,
+   "test_cost_if_never_block": 170735.54929999996,
    "cost_change_vs_hold_1": 30484.82329999996
   },
   {
@@ -7671,7 +7671,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 175551.05029999994,
-   "test_cost_if_never_block": 182839.44829999996,
+   "test_cost_if_never_block": 178814.74929999997,
    "cost_change_vs_hold_1": 35578.82329999993
   },
   {
@@ -7686,7 +7686,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 205759.55029999994,
-   "test_cost_if_never_block": 213047.9483,
+   "test_cost_if_never_block": 209111.74930000002,
    "cost_change_vs_hold_1": 54517.60969999994
   },
   {
@@ -7971,7 +7971,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 53627.15629999999,
-   "test_cost_if_never_block": 60225.55429999999,
+   "test_cost_if_never_block": 56062.25529999999,
    "cost_change_vs_hold_1": 1253.3966999999902
   },
   {
@@ -7986,7 +7986,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 79424.19039999998,
-   "test_cost_if_never_block": 86022.58840000001,
+   "test_cost_if_never_block": 81882.88940000001,
    "cost_change_vs_hold_1": 1256.9966999999888
   },
   {
@@ -8001,7 +8001,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 115184.1904,
-   "test_cost_if_never_block": 121782.58839999998,
+   "test_cost_if_never_block": 117731.38939999999,
    "cost_change_vs_hold_1": 17069.3444
   },
   {
@@ -8016,7 +8016,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 90984.1904,
-   "test_cost_if_never_block": 97582.5884,
+   "test_cost_if_never_block": 93442.28939999998,
    "cost_change_vs_hold_1": 1253.396700000012
   },
   {
@@ -8031,7 +8031,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 100520.1904,
-   "test_cost_if_never_block": 107118.58839999998,
+   "test_cost_if_never_block": 103001.88940000001,
    "cost_change_vs_hold_1": 1256.9967000000179
   },
   {
@@ -8046,7 +8046,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 136280.19040000002,
-   "test_cost_if_never_block": 142878.58839999998,
+   "test_cost_if_never_block": 138850.3894,
    "cost_change_vs_hold_1": 21590.34440000003
   },
   {
@@ -8061,7 +8061,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 168185.45029999997,
-   "test_cost_if_never_block": 174783.84829999998,
+   "test_cost_if_never_block": 170735.54929999996,
    "cost_change_vs_hold_1": 31174.82329999996
   },
   {
@@ -8076,7 +8076,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 176241.05029999994,
-   "test_cost_if_never_block": 182839.44829999996,
+   "test_cost_if_never_block": 178814.74929999997,
    "cost_change_vs_hold_1": 36268.82329999993
   },
   {
@@ -8091,7 +8091,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 206449.55029999994,
-   "test_cost_if_never_block": 213047.9483,
+   "test_cost_if_never_block": 209111.74930000002,
    "cost_change_vs_hold_1": 55207.60969999994
   },
   {
@@ -8241,7 +8241,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 84686.9727,
-   "test_cost_if_never_block": 184403.80390000006,
+   "test_cost_if_never_block": 153362.30390000003,
    "cost_change_vs_hold_1": 16147.798999999999
   },
   {
@@ -8256,7 +8256,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 103457.73499999999,
-   "test_cost_if_never_block": 203174.56619999997,
+   "test_cost_if_never_block": 174667.06620000003,
    "cost_change_vs_hold_1": 16147.798999999985
   },
   {
@@ -8271,7 +8271,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 129803.73499999999,
-   "test_cost_if_never_block": 229520.56620000003,
+   "test_cost_if_never_block": 210515.56620000003,
    "cost_change_vs_hold_1": 13147.735700000005
   },
   {
@@ -8286,7 +8286,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 113007.13500000001,
-   "test_cost_if_never_block": 212723.96620000005,
+   "test_cost_if_never_block": 186226.46620000002,
    "cost_change_vs_hold_1": 16147.798999999999
   },
   {
@@ -8301,7 +8301,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 120032.73499999999,
-   "test_cost_if_never_block": 219749.56620000003,
+   "test_cost_if_never_block": 195786.06620000003,
    "cost_change_vs_hold_1": 16147.798999999999
   },
   {
@@ -8316,7 +8316,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 146378.735,
-   "test_cost_if_never_block": 246095.56620000003,
+   "test_cost_if_never_block": 231634.56620000003,
    "cost_change_vs_hold_1": 19070.735700000005
   },
   {
@@ -8331,7 +8331,7 @@
    "n_blocked": 7992,
    "frauds_blocked": 2226,
    "test_cost": 167546.2466,
-   "test_cost_if_never_block": 271557.02390000003,
+   "test_cost_if_never_block": 261201.42390000002,
    "cost_change_vs_hold_1": 23426.6268
   },
   {
@@ -8346,7 +8346,7 @@
    "n_blocked": 7992,
    "frauds_blocked": 2226,
    "test_cost": 170507.84660000002,
-   "test_cost_if_never_block": 274518.6239,
+   "test_cost_if_never_block": 269280.6239,
    "cost_change_vs_hold_1": 24706.6268
   },
   {
@@ -8376,7 +8376,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 52523.15629999999,
-   "test_cost_if_never_block": 64099.75329999999,
+   "test_cost_if_never_block": 56062.25529999999,
    "cost_change_vs_hold_1": 149.39669999999023
   },
   {
@@ -8391,7 +8391,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 78320.19039999998,
-   "test_cost_if_never_block": 89896.7874,
+   "test_cost_if_never_block": 81882.88940000001,
    "cost_change_vs_hold_1": 152.99669999998878
   },
   {
@@ -8406,7 +8406,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 114080.1904,
-   "test_cost_if_never_block": 125656.78740000002,
+   "test_cost_if_never_block": 117731.38939999999,
    "cost_change_vs_hold_1": 15965.344400000002
   },
   {
@@ -8421,7 +8421,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 89880.1904,
-   "test_cost_if_never_block": 101456.78739999999,
+   "test_cost_if_never_block": 93442.28939999998,
    "cost_change_vs_hold_1": 149.39670000001206
   },
   {
@@ -8436,7 +8436,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 99416.1904,
-   "test_cost_if_never_block": 110992.7874,
+   "test_cost_if_never_block": 103001.88940000001,
    "cost_change_vs_hold_1": 152.99670000001788
   },
   {
@@ -8451,7 +8451,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 130837.64499999999,
-   "test_cost_if_never_block": 230554.4762,
+   "test_cost_if_never_block": 138850.3894,
    "cost_change_vs_hold_1": 16147.798999999999
   },
   {
@@ -8466,7 +8466,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 156583.30490000002,
-   "test_cost_if_never_block": 256300.1361,
+   "test_cost_if_never_block": 170735.54929999996,
    "cost_change_vs_hold_1": 19572.67790000001
   },
   {
@@ -8481,7 +8481,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 162128.5049,
-   "test_cost_if_never_block": 261845.33610000004,
+   "test_cost_if_never_block": 178814.74929999997,
    "cost_change_vs_hold_1": 22156.277899999986
   },
   {
@@ -8496,7 +8496,7 @@
    "n_blocked": 7992,
    "frauds_blocked": 2226,
    "test_cost": 179309.01659999997,
-   "test_cost_if_never_block": 283319.79390000005,
+   "test_cost_if_never_block": 209111.74930000002,
    "cost_change_vs_hold_1": 28067.075999999972
   },
   {
@@ -8646,7 +8646,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 93860.9727,
-   "test_cost_if_never_block": 184403.80390000006,
+   "test_cost_if_never_block": 153362.30390000003,
    "cost_change_vs_hold_1": 25321.799
   },
   {
@@ -8661,7 +8661,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 112631.73499999999,
-   "test_cost_if_never_block": 203174.56619999997,
+   "test_cost_if_never_block": 174667.06620000003,
    "cost_change_vs_hold_1": 25321.798999999985
   },
   {
@@ -8676,7 +8676,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 138977.735,
-   "test_cost_if_never_block": 229520.56620000003,
+   "test_cost_if_never_block": 210515.56620000003,
    "cost_change_vs_hold_1": 22321.735700000005
   },
   {
@@ -8691,7 +8691,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 122181.13500000001,
-   "test_cost_if_never_block": 212723.96620000005,
+   "test_cost_if_never_block": 186226.46620000002,
    "cost_change_vs_hold_1": 25321.799
   },
   {
@@ -8706,7 +8706,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 129206.73499999999,
-   "test_cost_if_never_block": 219749.56620000003,
+   "test_cost_if_never_block": 195786.06620000003,
    "cost_change_vs_hold_1": 25321.799
   },
   {
@@ -8721,7 +8721,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 155552.73500000002,
-   "test_cost_if_never_block": 246095.56620000003,
+   "test_cost_if_never_block": 231634.56620000003,
    "cost_change_vs_hold_1": 28244.735700000034
   },
   {
@@ -8736,7 +8736,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 178980.09269999998,
-   "test_cost_if_never_block": 269522.9239,
+   "test_cost_if_never_block": 261201.42390000002,
    "cost_change_vs_hold_1": 34860.472899999964
   },
   {
@@ -8751,7 +8751,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 183975.7927,
-   "test_cost_if_never_block": 274518.6239,
+   "test_cost_if_never_block": 269280.6239,
    "cost_change_vs_hold_1": 38174.57289999997
   },
   {
@@ -8781,7 +8781,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 52592.15629999999,
-   "test_cost_if_never_block": 64099.75329999999,
+   "test_cost_if_never_block": 56062.25529999999,
    "cost_change_vs_hold_1": 218.39669999999023
   },
   {
@@ -8796,7 +8796,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 78389.19039999998,
-   "test_cost_if_never_block": 89896.7874,
+   "test_cost_if_never_block": 81882.88940000001,
    "cost_change_vs_hold_1": 221.99669999998878
   },
   {
@@ -8811,7 +8811,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 114149.1904,
-   "test_cost_if_never_block": 125656.78740000002,
+   "test_cost_if_never_block": 117731.38939999999,
    "cost_change_vs_hold_1": 16034.344400000002
   },
   {
@@ -8826,7 +8826,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 89949.1904,
-   "test_cost_if_never_block": 101456.78739999999,
+   "test_cost_if_never_block": 93442.28939999998,
    "cost_change_vs_hold_1": 218.39670000001206
   },
   {
@@ -8841,7 +8841,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 99485.1904,
-   "test_cost_if_never_block": 110992.7874,
+   "test_cost_if_never_block": 103001.88940000001,
    "cost_change_vs_hold_1": 221.99670000001788
   },
   {
@@ -8856,7 +8856,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 135245.19040000002,
-   "test_cost_if_never_block": 146752.7874,
+   "test_cost_if_never_block": 138850.3894,
    "cost_change_vs_hold_1": 20555.34440000003
   },
   {
@@ -8871,7 +8871,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 167150.45029999997,
-   "test_cost_if_never_block": 178658.0473,
+   "test_cost_if_never_block": 170735.54929999996,
    "cost_change_vs_hold_1": 30139.82329999996
   },
   {
@@ -8886,7 +8886,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 171302.50490000003,
-   "test_cost_if_never_block": 261845.33610000004,
+   "test_cost_if_never_block": 178814.74929999997,
    "cost_change_vs_hold_1": 31330.277900000016
   },
   {
@@ -8901,7 +8901,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 192097.0049,
-   "test_cost_if_never_block": 282639.8361,
+   "test_cost_if_never_block": 209111.74930000002,
    "cost_change_vs_hold_1": 40855.0643
   },
   {
@@ -9051,7 +9051,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 109150.97270000001,
-   "test_cost_if_never_block": 184403.80390000006,
+   "test_cost_if_never_block": 153362.30390000003,
    "cost_change_vs_hold_1": 40611.79900000001
   },
   {
@@ -9066,7 +9066,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 127921.73499999999,
-   "test_cost_if_never_block": 203174.56619999997,
+   "test_cost_if_never_block": 174667.06620000003,
    "cost_change_vs_hold_1": 40611.798999999985
   },
   {
@@ -9081,7 +9081,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 154267.73500000002,
-   "test_cost_if_never_block": 229520.56620000003,
+   "test_cost_if_never_block": 210515.56620000003,
    "cost_change_vs_hold_1": 37611.735700000034
   },
   {
@@ -9096,7 +9096,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 137471.13499999998,
-   "test_cost_if_never_block": 212723.96620000005,
+   "test_cost_if_never_block": 186226.46620000002,
    "cost_change_vs_hold_1": 40611.79899999997
   },
   {
@@ -9111,7 +9111,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 144496.735,
-   "test_cost_if_never_block": 219749.56620000003,
+   "test_cost_if_never_block": 195786.06620000003,
    "cost_change_vs_hold_1": 40611.799
   },
   {
@@ -9126,7 +9126,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 170842.73500000002,
-   "test_cost_if_never_block": 246095.56620000003,
+   "test_cost_if_never_block": 231634.56620000003,
    "cost_change_vs_hold_1": 43534.735700000034
   },
   {
@@ -9141,7 +9141,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 194270.0927,
-   "test_cost_if_never_block": 269522.9239,
+   "test_cost_if_never_block": 261201.42390000002,
    "cost_change_vs_hold_1": 50150.47289999999
   },
   {
@@ -9156,7 +9156,7 @@
    "n_blocked": 4810,
    "frauds_blocked": 1752,
    "test_cost": 199265.79269999996,
-   "test_cost_if_never_block": 274518.6239,
+   "test_cost_if_never_block": 269280.6239,
    "cost_change_vs_hold_1": 53464.57289999994
   },
   {
@@ -9186,7 +9186,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 52707.15629999999,
-   "test_cost_if_never_block": 64099.75329999999,
+   "test_cost_if_never_block": 56062.25529999999,
    "cost_change_vs_hold_1": 333.39669999999023
   },
   {
@@ -9201,7 +9201,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 78504.19039999998,
-   "test_cost_if_never_block": 89896.7874,
+   "test_cost_if_never_block": 81882.88940000001,
    "cost_change_vs_hold_1": 336.9966999999888
   },
   {
@@ -9216,7 +9216,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 114264.1904,
-   "test_cost_if_never_block": 125656.78740000002,
+   "test_cost_if_never_block": 117731.38939999999,
    "cost_change_vs_hold_1": 16149.344400000002
   },
   {
@@ -9231,7 +9231,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 90064.1904,
-   "test_cost_if_never_block": 101456.78739999999,
+   "test_cost_if_never_block": 93442.28939999998,
    "cost_change_vs_hold_1": 333.39670000001206
   },
   {
@@ -9246,7 +9246,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 99600.1904,
-   "test_cost_if_never_block": 110992.7874,
+   "test_cost_if_never_block": 103001.88940000001,
    "cost_change_vs_hold_1": 336.9967000000179
   },
   {
@@ -9261,7 +9261,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 135360.19040000002,
-   "test_cost_if_never_block": 146752.7874,
+   "test_cost_if_never_block": 138850.3894,
    "cost_change_vs_hold_1": 20670.34440000003
   },
   {
@@ -9276,7 +9276,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 167265.45029999997,
-   "test_cost_if_never_block": 178658.0473,
+   "test_cost_if_never_block": 170735.54929999996,
    "cost_change_vs_hold_1": 30254.82329999996
   },
   {
@@ -9291,7 +9291,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 175321.05029999994,
-   "test_cost_if_never_block": 186713.6473,
+   "test_cost_if_never_block": 178814.74929999997,
    "cost_change_vs_hold_1": 35348.82329999993
   },
   {
@@ -9306,7 +9306,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 205529.55029999994,
-   "test_cost_if_never_block": 216922.1473,
+   "test_cost_if_never_block": 209111.74930000002,
    "cost_change_vs_hold_1": 54287.60969999994
   },
   {
@@ -9456,7 +9456,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 142488.80690000003,
-   "test_cost_if_never_block": 153651.4039,
+   "test_cost_if_never_block": 153362.30390000003,
    "cost_change_vs_hold_1": 73949.63320000003
   },
   {
@@ -9471,7 +9471,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 163769.96920000002,
-   "test_cost_if_never_block": 174932.56620000003,
+   "test_cost_if_never_block": 174667.06620000003,
    "cost_change_vs_hold_1": 76460.03320000002
   },
   {
@@ -9486,7 +9486,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 199529.96920000002,
-   "test_cost_if_never_block": 210692.56620000003,
+   "test_cost_if_never_block": 210515.56620000003,
    "cost_change_vs_hold_1": 82873.96990000004
   },
   {
@@ -9501,7 +9501,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 175329.9692,
-   "test_cost_if_never_block": 186492.5662,
+   "test_cost_if_never_block": 186226.46620000002,
    "cost_change_vs_hold_1": 78470.63319999998
   },
   {
@@ -9516,7 +9516,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 184865.96920000002,
-   "test_cost_if_never_block": 196028.56620000003,
+   "test_cost_if_never_block": 195786.06620000003,
    "cost_change_vs_hold_1": 80981.03320000003
   },
   {
@@ -9531,7 +9531,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 220625.96920000002,
-   "test_cost_if_never_block": 231788.56620000003,
+   "test_cost_if_never_block": 231634.56620000003,
    "cost_change_vs_hold_1": 93317.96990000004
   },
   {
@@ -9546,7 +9546,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 250212.92690000002,
-   "test_cost_if_never_block": 261375.5239,
+   "test_cost_if_never_block": 261201.42390000002,
    "cost_change_vs_hold_1": 106093.3071
   },
   {
@@ -9561,7 +9561,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 258268.52690000006,
-   "test_cost_if_never_block": 269431.1239,
+   "test_cost_if_never_block": 269280.6239,
    "cost_change_vs_hold_1": 112467.30710000003
   },
   {
@@ -9591,7 +9591,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 52937.15629999999,
-   "test_cost_if_never_block": 64099.75329999999,
+   "test_cost_if_never_block": 56062.25529999999,
    "cost_change_vs_hold_1": 563.3966999999902
   },
   {
@@ -9606,7 +9606,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 78734.19039999998,
-   "test_cost_if_never_block": 89896.7874,
+   "test_cost_if_never_block": 81882.88940000001,
    "cost_change_vs_hold_1": 566.9966999999888
   },
   {
@@ -9621,7 +9621,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 114494.1904,
-   "test_cost_if_never_block": 125656.78740000002,
+   "test_cost_if_never_block": 117731.38939999999,
    "cost_change_vs_hold_1": 16379.344400000002
   },
   {
@@ -9636,7 +9636,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 90294.1904,
-   "test_cost_if_never_block": 101456.78739999999,
+   "test_cost_if_never_block": 93442.28939999998,
    "cost_change_vs_hold_1": 563.3967000000121
   },
   {
@@ -9651,7 +9651,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 99830.1904,
-   "test_cost_if_never_block": 110992.7874,
+   "test_cost_if_never_block": 103001.88940000001,
    "cost_change_vs_hold_1": 566.9967000000179
   },
   {
@@ -9666,7 +9666,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 135590.19040000002,
-   "test_cost_if_never_block": 146752.7874,
+   "test_cost_if_never_block": 138850.3894,
    "cost_change_vs_hold_1": 20900.34440000003
   },
   {
@@ -9681,7 +9681,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 167495.45029999997,
-   "test_cost_if_never_block": 178658.0473,
+   "test_cost_if_never_block": 170735.54929999996,
    "cost_change_vs_hold_1": 30484.82329999996
   },
   {
@@ -9696,7 +9696,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 175551.05029999994,
-   "test_cost_if_never_block": 186713.6473,
+   "test_cost_if_never_block": 178814.74929999997,
    "cost_change_vs_hold_1": 35578.82329999993
   },
   {
@@ -9711,7 +9711,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 205759.55029999994,
-   "test_cost_if_never_block": 216922.1473,
+   "test_cost_if_never_block": 209111.74930000002,
    "cost_change_vs_hold_1": 54517.60969999994
   },
   {
@@ -9861,7 +9861,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 143178.80690000003,
-   "test_cost_if_never_block": 153651.4039,
+   "test_cost_if_never_block": 153362.30390000003,
    "cost_change_vs_hold_1": 74639.63320000003
   },
   {
@@ -9876,7 +9876,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 164459.96920000002,
-   "test_cost_if_never_block": 174932.56620000003,
+   "test_cost_if_never_block": 174667.06620000003,
    "cost_change_vs_hold_1": 77150.03320000002
   },
   {
@@ -9891,7 +9891,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 200219.96920000002,
-   "test_cost_if_never_block": 210692.56620000003,
+   "test_cost_if_never_block": 210515.56620000003,
    "cost_change_vs_hold_1": 83563.96990000004
   },
   {
@@ -9906,7 +9906,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 176019.9692,
-   "test_cost_if_never_block": 186492.5662,
+   "test_cost_if_never_block": 186226.46620000002,
    "cost_change_vs_hold_1": 79160.63319999998
   },
   {
@@ -9921,7 +9921,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 185555.96920000002,
-   "test_cost_if_never_block": 196028.56620000003,
+   "test_cost_if_never_block": 195786.06620000003,
    "cost_change_vs_hold_1": 81671.03320000003
   },
   {
@@ -9936,7 +9936,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 221315.96920000002,
-   "test_cost_if_never_block": 231788.56620000003,
+   "test_cost_if_never_block": 231634.56620000003,
    "cost_change_vs_hold_1": 94007.96990000004
   },
   {
@@ -9951,7 +9951,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 250902.92690000002,
-   "test_cost_if_never_block": 261375.5239,
+   "test_cost_if_never_block": 261201.42390000002,
    "cost_change_vs_hold_1": 106783.3071
   },
   {
@@ -9966,7 +9966,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 258958.52690000006,
-   "test_cost_if_never_block": 269431.1239,
+   "test_cost_if_never_block": 269280.6239,
    "cost_change_vs_hold_1": 113157.30710000003
   },
   {
@@ -9996,7 +9996,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 53627.15629999999,
-   "test_cost_if_never_block": 64099.75329999999,
+   "test_cost_if_never_block": 56062.25529999999,
    "cost_change_vs_hold_1": 1253.3966999999902
   },
   {
@@ -10011,7 +10011,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 79424.19039999998,
-   "test_cost_if_never_block": 89896.7874,
+   "test_cost_if_never_block": 81882.88940000001,
    "cost_change_vs_hold_1": 1256.9966999999888
   },
   {
@@ -10026,7 +10026,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 115184.1904,
-   "test_cost_if_never_block": 125656.78740000002,
+   "test_cost_if_never_block": 117731.38939999999,
    "cost_change_vs_hold_1": 17069.3444
   },
   {
@@ -10041,7 +10041,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 90984.1904,
-   "test_cost_if_never_block": 101456.78739999999,
+   "test_cost_if_never_block": 93442.28939999998,
    "cost_change_vs_hold_1": 1253.396700000012
   },
   {
@@ -10056,7 +10056,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 100520.1904,
-   "test_cost_if_never_block": 110992.7874,
+   "test_cost_if_never_block": 103001.88940000001,
    "cost_change_vs_hold_1": 1256.9967000000179
   },
   {
@@ -10071,7 +10071,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 136280.19040000002,
-   "test_cost_if_never_block": 146752.7874,
+   "test_cost_if_never_block": 138850.3894,
    "cost_change_vs_hold_1": 21590.34440000003
   },
   {
@@ -10086,7 +10086,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 168185.45029999997,
-   "test_cost_if_never_block": 178658.0473,
+   "test_cost_if_never_block": 170735.54929999996,
    "cost_change_vs_hold_1": 31174.82329999996
   },
   {
@@ -10101,7 +10101,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 176241.05029999994,
-   "test_cost_if_never_block": 186713.6473,
+   "test_cost_if_never_block": 178814.74929999997,
    "cost_change_vs_hold_1": 36268.82329999993
   },
   {
@@ -10116,7 +10116,7 @@
    "n_blocked": 59,
    "frauds_blocked": 36,
    "test_cost": 206449.55029999994,
-   "test_cost_if_never_block": 216922.1473,
+   "test_cost_if_never_block": 209111.74930000002,
    "cost_change_vs_hold_1": 55207.60969999994
   },
   {
