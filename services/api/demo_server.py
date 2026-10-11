@@ -206,9 +206,39 @@ def bundle_inputs(df: pd.DataFrame) -> pd.DataFrame:
                          "sharedEntities": shared}, index=df.index)  # fmt: skip
 
 
-def create_app(bundle_path: Path | None = None) -> FastAPI:
+RUNS_DIR = Path(__file__).resolve().parents[2] / "experiments" / "runs"
+
+
+def check_bundle_marker(bundle_path: Path, runs_dir: Path = RUNS_DIR) -> dict:
+    """D154: the bundle holds test-period rows, so it is served only if the guarded export
+    (vaultic.reports.demo_export, which runs the post-hoc guard, D144) marked it: the sidecar
+    <bundle>.TEST_DATA.json names the final run it comes from. When the run folders are present,
+    that run must also be a completed final run. Returns the marker."""
+    side = bundle_path.with_name(bundle_path.name + ".TEST_DATA.json")
+    if not side.exists():
+        raise RuntimeError(f"{bundle_path} has no test-data marker ({side.name}); write the bundle "
+                           "with the guarded export (python -m vaultic.reports.demo_export, D144)")  # fmt: skip
+    marker = json.loads(side.read_text("utf-8"))
+    if marker.get("contains_test_period") is not True or not marker.get("final_run"):
+        raise RuntimeError(f"{side.name} is not a test-data marker written by the guarded export")
+    if runs_dir.exists():
+        metrics = (
+            runs_dir
+            / marker.get("experiment", "EXP-200-final")
+            / marker["final_run"]
+            / "metrics.json"
+        )
+        meta = json.loads(metrics.read_text("utf-8")) if metrics.exists() else {}
+        if meta.get("mode") != "final" or meta.get("status") != "completed":
+            raise RuntimeError(f"the bundle comes from final run {marker['final_run']}, which is not a "
+                               "completed final run in experiments/runs (D154)")  # fmt: skip
+    return marker
+
+
+def create_app(bundle_path: Path | None = None, runs_dir: Path = RUNS_DIR) -> FastAPI:
     bundle_path = Path(bundle_path or os.environ.get("VAULTIC_DEMO_BUNDLE") or DEFAULT_BUNDLE)
     meta = json.loads(bundle_path.with_suffix(".json").read_text("utf-8"))
+    check_bundle_marker(bundle_path, runs_dir)  # D154: before any test-period row is read
     df = pd.read_parquet(bundle_path).sort_values("TransactionDT").reset_index(drop=True)
     dt = df["TransactionDT"].to_numpy()
     by_id = {int(t): i for i, t in enumerate(df["TransactionID"].to_numpy())}
@@ -272,7 +302,7 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
             whatif_cache[key] = out
         return out
 
-    def transaction(i: int, time: float, L: int, actions: np.ndarray, whatif: bool) -> dict:
+    def transaction(i: int, time: float, L: int, actions: np.ndarray, whatif: dict | None) -> dict:
         r, x = df.iloc[i], inputs.iloc[i]
         views = {v: _none(float(r[f"p_{v}"])) for v in VIEWS}
         row = {"TransactionID": int(r["TransactionID"]), "TransactionDT": float(r["TransactionDT"]),
@@ -295,8 +325,10 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
             "decision": {"action": str(actions[i]), "p": p, "expected_loss": p * amount,
                          "conformal_set": str(r["conformal_set"]),
                          "disagreement": float(r["disagreement"]),
-                         "whatIf": whatif},
+                         "whatIf": whatif is not None},
             "reasons": json.loads(r["reasons"]),
+            # D155: the what-if costs that produced this decision (None: the evaluated system)
+            "whatIfCost": whatif,
             "inputs": {"amount": amount, "usualAmount": _none(float(x["usualAmount"])),
                        "deviceKnown": x["deviceKnown"],
                        "velocity24h": _int_or_none(x["velocity24h"]),
@@ -368,7 +400,9 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
                 "expectedFraudStopped": stopped, "expectedLoss": missed,
                 "cost": costs, "riskByHour": hours,
                 "viewAvailability": {v: float(sub[f"p_{v}"].notna().sum() / n) for v in VIEWS},
-                "whatIf": w is not None}  # fmt: skip
+                "whatIf": w is not None,
+                # D155: the costs and thresholds that produced these figures
+                "whatIfCost": w, "whatIfThresholds": decisions(w)[1]}  # fmt: skip
 
     @app.get("/api/stream")
     def stream(time: float, start: float, end: float, L: LabelDelay,
@@ -376,7 +410,7 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
         stop = min(end, time)
         lo, hi = int(np.searchsorted(dt, start, side="right")), up_to(stop)
         act = decisions(w)[0]
-        return [transaction(i, stop, L, act, w is not None) for i in range(lo, hi)]
+        return [transaction(i, stop, L, act, w) for i in range(lo, hi)]
 
     @app.get("/api/transactions/{tid}")
     def get_transaction(tid: int, time: float, L: LabelDelay,
@@ -384,21 +418,21 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
         i = by_id.get(tid)
         if i is None or dt[i] > time:
             return None
-        return transaction(i, time, L, decisions(w)[0], w is not None)
+        return transaction(i, time, L, decisions(w)[0], w)
 
     @app.get("/api/alerts")
     def alerts(time: float, L: LabelDelay, w: WhatIfDep):
         act = decisions(w)[0]
         idx = [i for i in day_rows(time) if act[i] in ("step_up", "hold", "block")]
         idx.sort(key=lambda i: -df.at[i, "p"])
-        return [transaction(i, time, L, act, w is not None) for i in idx]
+        return [transaction(i, time, L, act, w) for i in idx]
 
     @app.get("/api/customers/{uid}/history")
     def history(uid: str, time: float, L: LabelDelay, w: WhatIfDep):
         n = up_to(time)
         idx = np.flatnonzero(df["uid"].to_numpy()[:n] == uid)
         act = decisions(w)[0]
-        return [transaction(int(i), time, L, act, w is not None) for i in idx]
+        return [transaction(int(i), time, L, act, w) for i in idx]
 
     def node_rows(kind: str, value, n: int) -> np.ndarray:
         idx = rows_of[kind].get(value)
@@ -522,7 +556,7 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
             rev = past.iloc[np.argsort(-priority(policy, past, k), kind="stable")[:k]]
             caught = rev[rev["label"] == 1]
             out.append({"policy": policy, "day": int(time // DAY),
-                        "cases": [transaction(by_id[int(t)], time, L, act, w is not None)
+                        "cases": [transaction(by_id[int(t)], time, L, act, w)
                                   for t in top["TransactionID"]],
                         "matured": {"day": known_day,
                                     "fraudValueCaught": float(caught["amount"].sum()),

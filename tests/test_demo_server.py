@@ -32,6 +32,27 @@ def _load_module():
     return mod
 
 
+FINAL_RUN = "20261011-000000-000000"
+
+
+def _mark(bundle: Path, runs: Path, status: str = "completed") -> Path:
+    """The guarded export's test-data marker (D144) and a final run with `status` (D154)."""
+    side = bundle.with_name(bundle.name + ".TEST_DATA.json")
+    side.write_text(json.dumps({"contains_test_period": True, "final_run": FINAL_RUN,
+                                "experiment": "EXP-200-final"}))  # fmt: skip
+    run = runs / "EXP-200-final" / FINAL_RUN
+    run.mkdir(parents=True, exist_ok=True)
+    (run / "metrics.json").write_text(json.dumps({"mode": "final", "status": status}))
+    return runs
+
+
+def _app(mod, bundle: Path):
+    runs = bundle.parent / "runs"
+    if not bundle.with_name(bundle.name + ".TEST_DATA.json").exists():
+        _mark(bundle, runs)
+    return mod.create_app(bundle, runs_dir=runs)
+
+
 def _bundle(tmp_path: Path) -> Path:
     rng = np.random.default_rng(0)
     n = 60
@@ -100,7 +121,7 @@ def _serve(app):
 
 @pytest.fixture(scope="module")
 def server(tmp_path_factory):
-    with _serve(_load_module().create_app(_bundle(tmp_path_factory.mktemp("bundle")))) as base:
+    with _serve(_app(_load_module(), _bundle(tmp_path_factory.mktemp("bundle")))) as base:
         yield base
 
 
@@ -386,7 +407,7 @@ def test_drift_never_uses_anything_after_the_as_of_time(tmp_path):
     cal = full.with_name("demo_final_calibration.parquet")
     (cut / cal.name).write_bytes(cal.read_bytes())
     mod = _load_module()
-    with _serve(mod.create_app(full)) as a, _serve(mod.create_app(cut / full.name)) as b:
+    with _serve(_app(mod, full)) as a, _serve(_app(mod, cut / full.name)) as b:
         da, db = (_get(x, f"/api/drift?time={AS_OF}") for x in (a, b))
     assert da == db and da["scorePsi"] and da["featurePsi"]
 
@@ -456,7 +477,7 @@ def test_concurrent_feedback_keeps_labels_and_audit_consistent(tmp_path):
     mod.datetime = SlowClock
     tid, labels = 1001, ["fraud", "legit", "unsure"]
     errors = []
-    with _serve(mod.create_app(_bundle(tmp_path))) as base:
+    with _serve(_app(mod, _bundle(tmp_path))) as base:
 
         def post(i):
             code, _ = _send(base, f"/api/feedback/{tid}",
@@ -487,3 +508,22 @@ def test_day_summary_has_one_loss_definition(server, hold):
     total = sum(t["decision"]["p"] * t["amount"] for t in rows)
     assert s["expectedLoss"] == pytest.approx(s["cost"]["missedFraud"])
     assert s["expectedFraudStopped"] + s["expectedLoss"] == pytest.approx(total)
+
+
+def test_backend_refuses_an_unmarked_bundle_or_an_unfinished_run(tmp_path):
+    """D154: the bundle is read only if the guarded export marked it, and (when the run folders
+    are present) only if the final run it names is completed."""
+    mod = _load_module()
+    bundle = _bundle(tmp_path)
+    runs = tmp_path / "runs"
+    with pytest.raises(RuntimeError, match="no test-data marker"):
+        mod.create_app(bundle, runs_dir=runs)
+    _mark(bundle, runs, status="started")
+    with pytest.raises(RuntimeError, match="not a completed final run"):
+        mod.create_app(bundle, runs_dir=runs)
+    _mark(bundle, runs, status="completed")
+    assert mod.create_app(bundle, runs_dir=runs) is not None
+    side = bundle.with_name(bundle.name + ".TEST_DATA.json")
+    side.write_text(json.dumps({"final_run": FINAL_RUN}))  # not written by the export
+    with pytest.raises(RuntimeError, match="not a test-data marker"):
+        mod.create_app(bundle, runs_dir=runs)
