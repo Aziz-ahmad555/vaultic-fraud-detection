@@ -480,3 +480,19 @@
 *::-webkit-scrollbar-thumb:hover {
   background-color: var(--graphite);
 }
+
+/* what-if label in printable reports (D132): visible on screen and on paper */
+.whatif-report-note {
+  margin: 0 0 var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 1px dashed var(--graphite);
+  border-radius: var(--radius);
+  color: var(--ink);
+}
+@media print {
+  .whatif-report-note {
+    display: block !important;
+    border-color: #000;
+    color: #000;
+  }
+}

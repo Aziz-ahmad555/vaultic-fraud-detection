@@ -1,4 +1,4 @@
-import type { Action, ConformalSet, View } from "../api/types";
+import type { Action, ConformalSet, CostModel, View } from "../api/types";
 import { ACTION_LABEL, VIEW_LABEL } from "../api/types";
 import { VIEW_VAR, riskInk, riskStep, riskVar } from "../lib/colors";
 import { risk } from "../lib/format";
@@ -59,5 +59,22 @@ export function LockIcon({ title = "Locked" }: { title?: string }) {
       <rect x="1" y="6" width="10" height="7.5" rx="1" fill="none" stroke="currentColor" strokeWidth="1.4" />
       <path d="M3.5 6V4.2a2.5 2.5 0 0 1 5 0V6" fill="none" stroke="currentColor" strokeWidth="1.4" />
     </svg>
+  );
+}
+
+/**
+ * The what-if label inside a printable report (D132): shown, and printed, whenever the report's
+ * figures came back with whatIf = true, so a printout can never pass for the evaluated system.
+ */
+export function WhatIfReportNote({ cost }: { cost?: CostModel | null }) {
+  return (
+    <p className="whatif-report-note small" role="note">
+      <strong>What-if cost mode: illustrative, not the evaluated system.</strong> Decisions and costs use thresholds re-chosen on the calibration days
+      for other costs
+      {cost
+        ? ` (false positive $${cost.c_fp}, review $${cost.c_rev}, OTP $${cost.c_step}, step-up stops ${Math.round(100 * cost.step_up_success_rate)}%, friction $${cost.legit_step_up_friction}, hold stops ${Math.round(100 * (cost.hold_success_rate ?? 1))}%)`
+        : ""}
+      .
+    </p>
   );
 }

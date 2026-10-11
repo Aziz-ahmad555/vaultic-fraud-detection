@@ -3,7 +3,7 @@ import { HTTP_SOURCE_LABEL } from "../api/http/httpApi";
 import { api, DATA_SOURCE } from "../api";
 import type { Thresholds } from "../api/types";
 import { ACTION_LABEL } from "../api/types";
-import { LockIcon } from "../components/Badges";
+import { LockIcon, WhatIfReportNote } from "../components/Badges";
 import { WhatIfPanel } from "../components/WhatIfPanel";
 import { ErrorState, Loading } from "../components/States";
 import { fmtClock, fmtInt, fmtMoney } from "../lib/format";
@@ -54,6 +54,7 @@ export function Settings() {
           <div className="pane-body print-region">
             {summary.data ? (
               <>
+                {summary.data.whatIf && <WhatIfReportNote cost={asOf.whatIf} />}
                 <p className="small">
                   Day {summary.data.day}, up to {fmtClock(asOf.time, false)}: {fmtInt(summary.data.transactions)} transactions, {fmtInt(summary.data.alerts)} alerts,
                   expected fraud value stopped {fmtMoney(summary.data.expectedFraudStopped)}, estimated loss {fmtMoney(summary.data.expectedLoss)}. {DATA_SOURCE === "http" ? `${HTTP_SOURCE_LABEL}.` : "Synthetic mock data."}

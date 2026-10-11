@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, DATA_SOURCE } from "../api";
 import type { Feedback, ScoreInput, ScoreResult, Transaction } from "../api/types";
 import { ACTION_LABEL, VIEWS, VIEW_LABEL } from "../api/types";
-import { DecisionBadge, LockIcon, RiskCell, labelText, setText } from "../components/Badges";
+import { DecisionBadge, LockIcon, RiskCell, WhatIfReportNote, labelText, setText } from "../components/Badges";
 import { Braid } from "../components/Braid";
 import { NetworkGraph } from "../components/NetworkGraph";
 import { ReasonList } from "../components/Reasons";
@@ -300,6 +300,7 @@ export function Case() {
                 entities.
               </p>
             )}
+            {t.decision.whatIf && <WhatIfReportNote cost={asOf.whatIf} />}
             <header className="section case-head">
               <div className="case-title">
                 <h1>Case {t.row.TransactionID}</h1>
