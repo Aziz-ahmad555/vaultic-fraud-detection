@@ -97,6 +97,8 @@ STEPS: tuple[Step, ...] = (
             "research/f3_log_sensitivity.md"),
     _render("e5-drift", "E5 graph-feature drift (post-hoc, validation only, D120)",
             "research/e5_graph_drift.md"),
+    _render("hold-sensitivity", "Block with an imperfect Hold (post-hoc, D124)",
+            "research/hold_sensitivity.md"),
 )  # fmt: skip
 
 

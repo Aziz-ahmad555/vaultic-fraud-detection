@@ -6,6 +6,7 @@ Run:  python -m vaultic.reports.render_saved final           E10-E12 (research/t
       python -m vaultic.reports.render_saved f3-diagnosis    research/f3_collapse_diagnosis.md
       python -m vaultic.reports.render_saved f3-sensitivity  research/f3_log_sensitivity.md
       python -m vaultic.reports.render_saved e5-drift        research/e5_graph_drift.md
+      python -m vaultic.reports.render_saved hold-sensitivity research/hold_sensitivity.md
 
 Each report is rebuilt by the same writer that made it, from the JSON that run saved next to it.
 A section whose heading ends "(added by hand, not generated)" is kept as it is in the current
@@ -98,7 +99,7 @@ def _render_with(module, out_md: Path, out_json: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("report", choices=["final", "d95", "f3-diagnosis", "f3-sensitivity",
-                                           "e5-drift"])  # fmt: skip
+                                           "e5-drift", "hold-sensitivity"])  # fmt: skip
     args = parser.parse_args()
     if args.report == "final":
         render_final()
@@ -110,6 +111,10 @@ def main() -> None:
         _render_with(m, m.OUT_MD, m.OUT_JSON)
     elif args.report == "f3-sensitivity":
         from vaultic.fusion import f3_sensitivity as m
+
+        _render_with(m, m.OUT_MD, m.OUT_JSON)
+    elif args.report == "hold-sensitivity":
+        from vaultic.trust import hold_sensitivity as m
 
         _render_with(m, m.OUT_MD, m.OUT_JSON)
     else:

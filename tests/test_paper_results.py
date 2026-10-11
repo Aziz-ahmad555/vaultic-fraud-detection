@@ -14,7 +14,14 @@ def test_registry_wires_every_paper_table():
     assert gains >= {"b5_drop_labels", "e3_tuned", "e5_tuned", "e8_tuned", "e25_L7", "e25_L30",
                      "e25_L60", "holdout_R_b5", "holdout_R_anomaly"}  # fmt: skip
     rendered = {s.args[-1] for s in STEPS if s.args[1] == "vaultic.reports.render_saved"}
-    assert rendered == {"d95", "final", "f3-diagnosis", "f3-sensitivity", "e5-drift"}
+    assert rendered == {
+        "d95",
+        "final",
+        "f3-diagnosis",
+        "f3-sensitivity",
+        "e5-drift",
+        "hold-sensitivity",
+    }
     assert any(s.args[1:] == ("vaultic.reports.emerging", "report") for s in STEPS)
     for s in STEPS:  # every run a step reads exists
         for a in s.args:
