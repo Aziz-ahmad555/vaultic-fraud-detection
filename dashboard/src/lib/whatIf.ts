@@ -45,7 +45,12 @@ export function noteServed(key: string, flag: boolean) {
   for (const l of listeners) l();
 }
 
-/** The whatIf flags carried by a response body (decisions, summaries, networks, queues). */
+/**
+ * The whatIf flags of the DECISIONS a response carries (D151): a transaction's decision, the
+ * cases of a queue, or a day summary (whose counts and costs are decisions). A response without
+ * decisions (a focused network, a drift report, an empty list) returns no flag, so it can never
+ * clear or set the banner.
+ */
 export function flagsIn(body: unknown): boolean[] {
   const out: boolean[] = [];
   const visit = (x: unknown, depth: number) => {
@@ -55,8 +60,9 @@ export function flagsIn(body: unknown): boolean[] {
       return;
     }
     const o = x as Record<string, unknown>;
-    if (typeof o.whatIf === "boolean") out.push(o.whatIf);
-    if (o.decision) visit(o.decision, depth + 1);
+    const decision = o.decision as Record<string, unknown> | undefined;
+    if (decision && typeof decision.whatIf === "boolean") out.push(decision.whatIf);
+    if ("byAction" in o && typeof o.whatIf === "boolean") out.push(o.whatIf); // a day summary
     if (Array.isArray(o.cases)) visit(o.cases, depth + 1);
   };
   visit(body, 0);
