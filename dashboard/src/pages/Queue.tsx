@@ -10,6 +10,7 @@ import { DataTable, type Col } from "../components/DataTable";
 import { Empty, ErrorState, Loading } from "../components/States";
 import { fmtInt, fmtMoney, fmtMoney2 } from "../lib/format";
 import { useData } from "../lib/useData";
+import { asOfKey } from "../lib/whatIf";
 import { useApp } from "../state/app";
 import { viewScores } from "./Live";
 
@@ -17,7 +18,7 @@ const columns: Col<Transaction>[] = [
   { id: "id", header: "Transaction", accessorFn: (t) => t.row.TransactionID },
   { id: "amount", header: "Amount", accessorFn: (t) => t.amount, cell: (c) => fmtMoney2(c.getValue() as number), meta: { num: true } },
   { id: "risk", header: "Risk", accessorFn: (t) => t.decision.p, cell: (c) => <RiskCell p={c.getValue() as number} />, meta: { num: true } },
-  { id: "decision", header: "Decision", accessorFn: (t) => t.decision.action, cell: (c) => <DecisionBadge action={c.row.original.decision.action} /> },
+  { id: "decision", header: "Decision", accessorFn: (t) => t.decision.action, cell: (c) => <DecisionBadge action={c.row.original.decision.action} whatIf={c.row.original.decision.whatIf} /> },
   { id: "braid", header: "Evidence", enableSorting: false, cell: (c) => <Braid weights={c.row.original.weights} scores={viewScores(c.row.original)} /> },
 ];
 
@@ -26,7 +27,7 @@ export function Queue() {
   const navigate = useNavigate();
   const [k, setK] = useState(50);
   const [shown, setShown] = useState<Policy[]>(["R1", "R3"]);
-  const q = useData(() => api.queues(asOf, k), [asOf.time, asOf.labelDelayDays, k]);
+  const q = useData(() => api.queues(asOf, k), [asOfKey(asOf), k]);
 
   const toggle = (p: Policy) => setShown((s) => (s.includes(p) ? (s.length > 1 ? s.filter((x) => x !== p) : s) : [...s, p].sort()));
   const byPolicy = (p: Policy) => q.data?.find((x) => x.policy === p) as PolicyQueue;

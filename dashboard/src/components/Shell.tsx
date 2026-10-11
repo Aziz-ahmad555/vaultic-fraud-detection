@@ -4,6 +4,7 @@ import { DATA_SOURCE } from "../api";
 import { LABEL_DELAYS } from "../api/types";
 import { HTTP_SOURCE_LABEL, SCORE_SOURCE } from "../api/http/httpApi";
 import { DAY, fmtClock } from "../lib/format";
+import { useServedWhatIf } from "../lib/whatIf";
 import { isTyping, useApp } from "../state/app";
 import { CommandPalette } from "./CommandPalette";
 
@@ -119,7 +120,9 @@ function Help() {
 }
 
 export function Shell({ children }: { children: ReactNode }) {
-  const { theme, setTheme, setPaletteOpen, setHelpOpen, asOf, setAsOfTime, whatIfActive } = useApp();
+  const { theme, setTheme, setPaletteOpen, setHelpOpen, asOf, setAsOfTime, whatIf } = useApp();
+  // the banner follows what the backend SERVED for the current setting, not the setting alone
+  const servedWhatIf = useServedWhatIf(whatIf);
   const navigate = useNavigate();
   const pendingG = useRef(false);
 
@@ -218,7 +221,7 @@ export function Shell({ children }: { children: ReactNode }) {
         </dl>
       </nav>
       <main id="main" className="main" tabIndex={-1}>
-        {whatIfActive && (
+        {servedWhatIf && (
           <p className="whatif-strip small" role="status">
             <strong>What-if cost mode: illustrative, not the evaluated system.</strong> Decisions and costs use thresholds re-chosen on the
             calibration days for your cost settings; the evaluated system is the frozen decision engine of the final run.{" "}

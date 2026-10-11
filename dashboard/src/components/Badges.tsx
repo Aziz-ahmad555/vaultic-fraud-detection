@@ -3,8 +3,23 @@ import { ACTION_LABEL, VIEW_LABEL } from "../api/types";
 import { VIEW_VAR, riskInk, riskStep, riskVar } from "../lib/colors";
 import { risk } from "../lib/format";
 
-export function DecisionBadge({ action }: { action: Action }) {
-  return <span className={`badge dec-${action}`}>{ACTION_LABEL[action]}</span>;
+/** A decision; `whatIf` (from the response, D128) adds a what-if badge: not the evaluated system. */
+export function DecisionBadge({ action, whatIf = false }: { action: Action; whatIf?: boolean }) {
+  return (
+    <>
+      <span className={`badge dec-${action}`}>{ACTION_LABEL[action]}</span>
+      {whatIf && <WhatIfBadge />}
+    </>
+  );
+}
+
+/** Marks figures made under the what-if cost mode: illustrative, not the evaluated system. */
+export function WhatIfBadge() {
+  return (
+    <span className="badge badge-whatif" title="What-if cost mode: illustrative, not the evaluated system">
+      What-if
+    </span>
+  );
 }
 
 const SET_TEXT: Record<ConformalSet, string> = {

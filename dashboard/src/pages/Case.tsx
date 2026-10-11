@@ -10,6 +10,7 @@ import { ReasonList } from "../components/Reasons";
 import { Empty, ErrorState, Loading } from "../components/States";
 import { DAY, fmtClock, fmtMoney2, fmtPct, fmtPoints, risk } from "../lib/format";
 import { useData } from "../lib/useData";
+import { asOfKey } from "../lib/whatIf";
 import { isTyping, useApp } from "../state/app";
 import { viewScores } from "./Live";
 
@@ -212,15 +213,15 @@ export function Case() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { asOf, role, toast } = useApp();
-  const alerts = useData(() => api.alerts(asOf), [asOf.time, asOf.labelDelayDays]);
+  const alerts = useData(() => api.alerts(asOf), [asOfKey(asOf)]);
   const dayStart = Math.floor(asOf.time / DAY) * DAY;
-  const today = useData(() => (id ? Promise.resolve([]) : api.stream(asOf, dayStart, asOf.time)), [id, asOf.time, asOf.labelDelayDays]);
+  const today = useData(() => (id ? Promise.resolve([]) : api.stream(asOf, dayStart, asOf.time)), [id, asOfKey(asOf)]);
   const pick = id ? null : defaultCase(alerts.data ?? [], today.data ?? []);
   const caseId = id ? Number(id) : (pick?.id ?? null);
-  const tx = useData(() => (caseId ? api.transaction(caseId, asOf) : Promise.resolve(null)), [caseId, asOf.time, asOf.labelDelayDays]);
+  const tx = useData(() => (caseId ? api.transaction(caseId, asOf) : Promise.resolve(null)), [caseId, asOfKey(asOf)]);
   const t = tx.data;
-  const history = useData(() => (t ? api.customerHistory(t.entities.uid, asOf) : Promise.resolve([])), [t?.entities.uid, asOf.time, asOf.labelDelayDays]);
-  const net = useData(() => (t ? api.network(asOf, `uid:${t.entities.uid}`) : Promise.resolve(null)), [t?.entities.uid, asOf.time, asOf.labelDelayDays]);
+  const history = useData(() => (t ? api.customerHistory(t.entities.uid, asOf) : Promise.resolve([])), [t?.entities.uid, asOfKey(asOf)]);
+  const net = useData(() => (t ? api.network(asOf, `uid:${t.entities.uid}`) : Promise.resolve(null)), [t?.entities.uid, asOfKey(asOf)]);
   const [cfText, setCfText] = useState<string | null>(null);
   const [mine, setMine] = useState<Feedback | null>(null);
 
@@ -276,7 +277,7 @@ export function Case() {
                   </span>
                 </span>
                 <RiskCell p={a.decision.p} />
-                <DecisionBadge action={a.decision.action} />
+                <DecisionBadge action={a.decision.action} whatIf={a.decision.whatIf} />
               </Link>
             </li>
           ))}
@@ -302,7 +303,7 @@ export function Case() {
             <header className="section case-head">
               <div className="case-title">
                 <h1>Case {t.row.TransactionID}</h1>
-                <DecisionBadge action={t.decision.action} />
+                <DecisionBadge action={t.decision.action} whatIf={t.decision.whatIf} />
               </div>
               <div className="case-key">
                 <span className="case-amount num">{fmtMoney2(t.amount)}</span>

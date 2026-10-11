@@ -17,11 +17,14 @@ POST /api/score is not available: the final-run models score recorded transactio
 dashboard's what-if simulator keeps its illustrative model (labelled "illustrative model, not the
 evaluated system").
 
-What-if cost mode (PUT / DELETE /api/whatif, D122): for cost settings chosen in the dashboard, the
-decision thresholds are re-chosen on the calibrate_fused rows (days 147-150, from
-demo_final_calibration.parquet) with the research pipeline's own choose_thresholds, and applied to
-the test period; every decision and day summary served while it is on carries whatIf = true. It is
-illustrative, not the evaluated system (the evaluated system is the frozen E12 decisions).
+What-if cost mode (D122, stateless since D128): a request that carries the what-if cost parameters
+(c_fp, c_rev, c_step, step_up_success_rate, legit_step_up_friction and optionally
+hold_success_rate, as query parameters) is answered with decisions under thresholds re-chosen for
+those costs on the calibrate_fused rows (days 147-150, demo_final_calibration.parquet) with the
+research pipeline's own choose_thresholds; every decision, day summary and network in such a
+response carries whatIf = true. A request without them gets the frozen E12 decisions. Nothing is
+stored between requests: two dashboards can never see each other's what-if settings. It is
+illustrative, not the evaluated system.
 """
 
 from __future__ import annotations
@@ -29,8 +32,10 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Annotated
 
 import numpy as np
 import pandas as pd
@@ -79,11 +84,6 @@ class CostIn(BaseModel):
     hold_success_rate: float = 1.0  # share of held fraud stopped (D124); 1.0 = the evaluated system
 
 
-class WhatIfIn(BaseModel):
-    cost: CostIn
-    role: str
-
-
 class FeedbackIn(BaseModel):
     label: str
     role: str
@@ -106,12 +106,45 @@ def label_delay(L: int = 30) -> int:
     return L
 
 
+LabelDelay = Annotated[int, Depends(label_delay)]
+
+
 def matured_day(time: float, L: int, first_day: int) -> int | None:
     """The latest day ALL of whose labels are known at `time` (every transaction of day D has
     its_time + L days <= time, i.e. (D + 1) * DAY - 1 + L * DAY <= time), and always before the
     as-of day itself (D125); None when no such day is in the data."""
     last = min(int((time - L * DAY + 1) // DAY) - 1, int(time // DAY) - 1)
     return last if last >= first_day else None
+
+
+def whatif_params(
+    c_fp: float | None = None,
+    c_rev: float | None = None,
+    c_step: float | None = None,
+    step_up_success_rate: float | None = None,
+    legit_step_up_friction: float | None = None,
+    hold_success_rate: float | None = None,
+) -> dict | None:
+    """The what-if cost parameters a request carries (D128), or None (the evaluated system).
+    All five costs are needed; hold_success_rate is optional (1.0 = the evaluated system)."""
+    given = {"c_fp": c_fp, "c_rev": c_rev, "c_step": c_step,
+             "step_up_success_rate": step_up_success_rate,
+             "legit_step_up_friction": legit_step_up_friction}  # fmt: skip
+    if all(v is None for v in given.values()) and hold_success_rate is None:
+        return None
+    if any(v is None for v in given.values()):
+        missing = ", ".join(k for k, v in given.items() if v is None)
+        raise HTTPException(422, f"What-if cost parameters are incomplete: {missing} missing.")
+    c = {**given, "hold_success_rate": 1.0 if hold_success_rate is None else hold_success_rate}
+    rates = (c["step_up_success_rate"], c["hold_success_rate"])
+    money = (c["c_fp"], c["c_rev"], c["c_step"], c["legit_step_up_friction"])
+    ok = all(np.isfinite(list(c.values()))) and all(0 <= r <= 1 for r in rates)
+    if not ok or min(money) < 0:
+        raise HTTPException(422, "Costs must be at least 0 and the success rates between 0 and 1.")
+    return c
+
+
+WhatIfDep = Annotated[dict | None, Depends(whatif_params)]
 
 
 SHARED_WINDOW_DAYS = 7
@@ -190,9 +223,10 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
     # t_dis = inf (disagreement rule off) on the Python side is null in the contract
     thresholds = {k: _none(float(v)) if v is not None else None
                   for k, v in meta["thresholds"].items()}  # fmt: skip
-    state = {"thresholds": thresholds, "feedback": {}, "audit": [], "whatif": None}
-    base_actions = df["action"].to_numpy().astype(object)
-    actions = base_actions.copy()  # the served actions: the frozen E12 ones unless what-if is on
+    state = {"thresholds": thresholds, "feedback": {}, "audit": []}
+    base_actions = df["action"].to_numpy().astype(object)  # the frozen E12 decisions
+    whatif_cache: dict = {}  # cost settings -> (actions, thresholds); a cache, not session state
+    cache_lock = threading.Lock()
     cal_path = bundle_path.with_name("demo_final_calibration.parquet")
     cal = pd.read_parquet(cal_path) if cal_path.exists() else None
     cost = {
@@ -207,7 +241,38 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
     def matured(t: float, time: float, L: int) -> bool:
         return t + L * DAY <= time
 
-    def transaction(i: int, time: float, L: int) -> dict:
+    def decisions(w: dict | None) -> tuple[np.ndarray, dict | None]:
+        """The actions served for a request: the frozen E12 ones, or those of its what-if costs."""
+        if w is None:
+            return base_actions, None
+        if cal is None:
+            raise HTTPException(501, "The what-if cost mode needs demo_final_calibration.parquet.")
+        key = tuple(sorted(w.items()))
+        with cache_lock:
+            if key in whatif_cache:
+                return whatif_cache[key]
+        src = Path(__file__).resolve().parents[2] / "src"
+        if str(src) not in sys.path:
+            sys.path.insert(0, str(src))
+        from vaultic.trust.decision import ACTIONS as CODES
+        from vaultic.trust.decision import CostModel, choose_thresholds, decide
+
+        cm = CostModel(w["c_fp"], w["c_rev"], w["c_step"], w["step_up_success_rate"],
+                       w["legit_step_up_friction"], hold_success_rate=w["hold_success_rate"])  # fmt: skip
+        th, _ = choose_thresholds(cal["p"].to_numpy(), cal["amount"].to_numpy(),
+                                  cal["label"].to_numpy(), cal["conformal_set"].to_numpy(object),
+                                  cal["disagreement"].to_numpy(), cost=cm)  # fmt: skip
+        codes = decide(df["p"].to_numpy(), df["amount"].to_numpy(), th,
+                       df["conformal_set"].to_numpy(object), df["disagreement"].to_numpy())  # fmt: skip
+        out = (np.asarray([CODES[k] for k in codes], dtype=object),
+               {k: _none(float(v)) for k, v in th.__dict__.items()})  # fmt: skip
+        with cache_lock:
+            if len(whatif_cache) >= 32:
+                whatif_cache.pop(next(iter(whatif_cache)))
+            whatif_cache[key] = out
+        return out
+
+    def transaction(i: int, time: float, L: int, actions: np.ndarray, whatif: bool) -> dict:
         r, x = df.iloc[i], inputs.iloc[i]
         views = {v: _none(float(r[f"p_{v}"])) for v in VIEWS}
         row = {"TransactionID": int(r["TransactionID"]), "TransactionDT": float(r["TransactionDT"]),
@@ -230,7 +295,7 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
             "decision": {"action": str(actions[i]), "p": p, "expected_loss": p * amount,
                          "conformal_set": str(r["conformal_set"]),
                          "disagreement": float(r["disagreement"]),
-                         "whatIf": state["whatif"] is not None},
+                         "whatIf": whatif},
             "reasons": json.loads(r["reasons"]),
             "inputs": {"amount": amount, "usualAmount": _none(float(x["usualAmount"])),
                        "deviceKnown": x["deviceKnown"],
@@ -265,13 +330,13 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
         return {"first": float(dt.min()), "last": float(dt.max())}
 
     @app.get("/api/day-summary")
-    def day_summary(time: float, L: int = Depends(label_delay)):
+    def day_summary(time: float, L: LabelDelay, w: WhatIfDep):
         idx = day_rows(time)
         sub = df.iloc[idx]
-        act = actions[idx]
+        act = decisions(w)[0][idx]
         by_action = {a: int((act == a).sum()) for a in ACTIONS}
         p, amt = sub["p"].to_numpy(), sub["amount"].to_numpy()
-        cost = state["whatif"]["cost"] if state["whatif"] else meta["cost_model"]
+        cost = w if w is not None else meta["cost_model"]
         hold_rate = cost.get("hold_success_rate", 1.0)
         held = act == "hold"
         el = p * amt
@@ -301,35 +366,41 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
                 "expectedFraudStopped": stopped, "expectedLoss": float(el[low].sum()),
                 "cost": costs, "riskByHour": hours,
                 "viewAvailability": {v: float(sub[f"p_{v}"].notna().sum() / n) for v in VIEWS},
-                "whatIf": state["whatif"] is not None}  # fmt: skip
+                "whatIf": w is not None}  # fmt: skip
 
     @app.get("/api/stream")
-    def stream(time: float, start: float, end: float, L: int = Depends(label_delay)):
+    def stream(time: float, start: float, end: float, L: LabelDelay,
+               w: WhatIfDep):  # fmt: skip
         stop = min(end, time)
         lo, hi = int(np.searchsorted(dt, start, side="right")), up_to(stop)
-        return [transaction(i, stop, L) for i in range(lo, hi)]
+        act = decisions(w)[0]
+        return [transaction(i, stop, L, act, w is not None) for i in range(lo, hi)]
 
     @app.get("/api/transactions/{tid}")
-    def get_transaction(tid: int, time: float, L: int = Depends(label_delay)):
+    def get_transaction(tid: int, time: float, L: LabelDelay,
+                        w: WhatIfDep):  # fmt: skip
         i = by_id.get(tid)
         if i is None or dt[i] > time:
             return None
-        return transaction(i, time, L)
+        return transaction(i, time, L, decisions(w)[0], w is not None)
 
     @app.get("/api/alerts")
-    def alerts(time: float, L: int = Depends(label_delay)):
-        idx = [i for i in day_rows(time) if actions[i] in ("step_up", "hold", "block")]
+    def alerts(time: float, L: LabelDelay, w: WhatIfDep):
+        act = decisions(w)[0]
+        idx = [i for i in day_rows(time) if act[i] in ("step_up", "hold", "block")]
         idx.sort(key=lambda i: -df.at[i, "p"])
-        return [transaction(i, time, L) for i in idx]
+        return [transaction(i, time, L, act, w is not None) for i in idx]
 
     @app.get("/api/customers/{uid}/history")
-    def history(uid: str, time: float, L: int = Depends(label_delay)):
+    def history(uid: str, time: float, L: LabelDelay, w: WhatIfDep):
         n = up_to(time)
         idx = np.flatnonzero(df["uid"].to_numpy()[:n] == uid)
-        return [transaction(int(i), time, L) for i in idx]
+        act = decisions(w)[0]
+        return [transaction(int(i), time, L, act, w is not None) for i in idx]
 
     @app.get("/api/network")
-    def network(time: float, L: int = Depends(label_delay), focus: str | None = None):
+    def network(time: float, L: LabelDelay, w: WhatIfDep, focus: str | None = None):
+        actions = decisions(w)[0]
         n = up_to(time)
         sub = df.iloc[:n]
         if focus:
@@ -358,7 +429,9 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
                 eid = f"{ids[0]}|{other}"
                 edges.setdefault(eid, {"id": eid, "source": ids[0], "target": other,
                                        "time": float(r["TransactionDT"])})  # fmt: skip
-        return {"nodes": list(nodes.values()), "edges": list(edges.values()), "rings": []}
+        # without a focus the entities come from today's holds and blocks: what-if decisions
+        return {"nodes": list(nodes.values()), "edges": list(edges.values()), "rings": [],
+                "whatIf": w is not None and not focus}  # fmt: skip
 
     def lambdas(k: int) -> dict:
         keys = sorted(int(x) for x in meta["routing_lambdas"])
@@ -379,7 +452,8 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
         return el + lu * u * amt + (ld * d * amt if policy == "R4" else 0)
 
     @app.get("/api/queues")
-    def queues(time: float, k: int = 50, L: int = Depends(label_delay)):
+    def queues(time: float, L: LabelDelay, w: WhatIfDep, k: int = 50):
+        act = decisions(w)[0]
         today = df.iloc[day_rows(time)]
         known_day = matured_day(time, L, int(df["day"].min()))
         past = df[df["day"] == known_day] if known_day is not None else df.iloc[0:0]
@@ -392,14 +466,15 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
             rev = past.iloc[np.argsort(-priority(policy, past, k), kind="stable")[:k]]
             caught = rev[rev["label"] == 1]
             out.append({"policy": policy, "day": int(time // DAY),
-                        "cases": [transaction(by_id[int(t)], time, L) for t in top["TransactionID"]],
+                        "cases": [transaction(by_id[int(t)], time, L, act, w is not None)
+                                  for t in top["TransactionID"]],
                         "matured": {"day": known_day,
                                     "fraudValueCaught": float(caught["amount"].sum()),
                                     "fraudCaught": int(len(caught)), "reviews": int(len(rev))}})  # fmt: skip
         return out
 
     @app.get("/api/drift")
-    def drift(time: float, L: int = Depends(label_delay)):
+    def drift(time: float, L: LabelDelay):
         sub = df.iloc[: up_to(time)]
         first = int(df["day"].min())
         ref = df[df["day"] < first + 7]
@@ -477,56 +552,12 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
               f"was {before}" if before else "first label")  # fmt: skip
         return {"ok": True}
 
-    def whatif_status():
-        w = state["whatif"]
-        return {"active": w is not None, "available": cal is not None,
-                "cost": w["cost"] if w else cost,
-                "thresholds": w["thresholds"] if w else None, "note": WHATIF_NOTE}  # fmt: skip
-
     @app.get("/api/whatif")
-    def get_whatif():
-        return whatif_status()
-
-    @app.put("/api/whatif")
-    def set_whatif(body: WhatIfIn):
-        nonlocal actions
-        if cal is None:
-            raise HTTPException(501, "The what-if cost mode needs demo_final_calibration.parquet.")
-        c = body.cost
-        if not (0 <= c.step_up_success_rate <= 1) or not (0 <= c.hold_success_rate <= 1) or min(c.c_fp, c.c_rev, c.c_step,
-                                                         c.legit_step_up_friction) < 0:  # fmt: skip
-            raise HTTPException(
-                422, "Costs must be at least 0 and the success rates between 0 and 1."
-            )
-        src = Path(__file__).resolve().parents[2] / "src"
-        if str(src) not in sys.path:
-            sys.path.insert(0, str(src))
-        from vaultic.trust.decision import ACTIONS as CODES
-        from vaultic.trust.decision import CostModel, choose_thresholds, decide
-
-        cm = CostModel(c.c_fp, c.c_rev, c.c_step, c.step_up_success_rate, c.legit_step_up_friction,
-                       hold_success_rate=c.hold_success_rate)  # fmt: skip
-        th, _ = choose_thresholds(cal["p"].to_numpy(), cal["amount"].to_numpy(),
-                                  cal["label"].to_numpy(), cal["conformal_set"].to_numpy(object),
-                                  cal["disagreement"].to_numpy(), cost=cm)  # fmt: skip
-        codes = decide(df["p"].to_numpy(), df["amount"].to_numpy(), th,
-                       df["conformal_set"].to_numpy(object), df["disagreement"].to_numpy())  # fmt: skip
-        actions = np.asarray([CODES[k] for k in codes], dtype=object)
-        state["whatif"] = {"cost": c.model_dump(),
-                           "thresholds": {k: _none(float(v)) for k, v in th.__dict__.items()}}  # fmt: skip
-        audit(
-            body.role, "Turned on the what-if cost mode (illustrative)", json.dumps(c.model_dump())
-        )
-        return whatif_status()
-
-    @app.delete("/api/whatif")
-    def clear_whatif(role: str = "analyst"):
-        nonlocal actions
-        actions = base_actions.copy()
-        if state["whatif"] is not None:
-            audit(role, "Turned off the what-if cost mode", "back to the evaluated system")
-        state["whatif"] = None
-        return whatif_status()
+    def get_whatif(w: WhatIfDep):
+        """Status of the what-if cost mode for the parameters sent (none: the evaluated system)."""
+        return {"active": w is not None, "available": cal is not None,
+                "cost": w if w is not None else cost, "thresholds": decisions(w)[1],
+                "note": WHATIF_NOTE}  # fmt: skip
 
     @app.get("/api/audit")
     def audit_log():

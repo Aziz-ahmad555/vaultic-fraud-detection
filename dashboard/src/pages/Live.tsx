@@ -43,13 +43,13 @@ export function Live() {
         setPlaying(false);
         toast("Replay reached the end of the mock data (day 150)");
       }
-      const txs = await api.stream({ time: to, labelDelayDays: asOf.labelDelayDays }, from, to);
+      const txs = await api.stream({ ...asOf, time: to }, from, to);
       setClock(to);
       if (txs.length)
         setRows((prev) => [...txs.reverse().map((t) => ({ ...t, fresh: true })), ...prev.map((t) => ({ ...t, fresh: false }))].slice(0, KEEP));
     }, TICK_MS);
     return () => window.clearInterval(id);
-  }, [playing, speed, asOf.labelDelayDays, range.last, toast]);
+  }, [playing, speed, asOf, range.last, toast]);
 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -145,7 +145,7 @@ export function Live() {
                       {setText(t.decision.conformal_set)}
                     </td>
                     <td>
-                      <DecisionBadge action={t.decision.action} />
+                      <DecisionBadge action={t.decision.action} whatIf={t.decision.whatIf} />
                     </td>
                     <td className="reason-cell">{topReason(t.reasons)}</td>
                     <td>

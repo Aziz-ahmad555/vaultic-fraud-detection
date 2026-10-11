@@ -5,6 +5,7 @@ import { Empty, ErrorState, Loading } from "../components/States";
 import { VIEW_VAR, riskVar } from "../lib/colors";
 import { fmtClock, fmtInt, fmtMoney, fmtPct, risk } from "../lib/format";
 import { useData } from "../lib/useData";
+import { asOfKey } from "../lib/whatIf";
 import { useApp } from "../state/app";
 
 const DEC_FILL = (a: string) => `var(--dec-${a}-bg)`;
@@ -12,8 +13,8 @@ const DEC_INK = (a: string) => `var(--dec-${a}-fg)`;
 
 export function Overview() {
   const info = useData(() => (api.info ? api.info() : Promise.resolve(null)), []);
-  const { asOf, whatIfActive } = useApp();
-  const { data, error, loading, reload } = useData(() => api.daySummary(asOf), [asOf.time, asOf.labelDelayDays, whatIfActive]);
+  const { asOf } = useApp();
+  const { data, error, loading, reload } = useData(() => api.daySummary(asOf), [asOfKey(asOf)]);
 
   return (
     <div className="page">

@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import type { NetworkNode } from "../api/types";
+import { WhatIfBadge } from "../components/Badges";
 import { NetworkGraph } from "../components/NetworkGraph";
 import { Empty, ErrorState, Loading } from "../components/States";
 import { fmtClock } from "../lib/format";
 import { useData } from "../lib/useData";
+import { asOfKey } from "../lib/whatIf";
 import { useApp } from "../state/app";
 
 const TYPE_LABEL: Record<NetworkNode["type"], string> = {
@@ -23,7 +25,7 @@ export function Network() {
   const [selected, setSelected] = useState<string | null>(null);
   const [until, setUntil] = useState(asOf.time);
   useEffect(() => setUntil(asOf.time), [asOf.time]);
-  const net = useData(() => api.network(asOf, focus ?? undefined), [asOf.time, asOf.labelDelayDays, focus]);
+  const net = useData(() => api.network(asOf, focus ?? undefined), [asOfKey(asOf), focus]);
   const node = useMemo(() => net.data?.nodes.find((n) => n.id === selected) ?? null, [net.data, selected]);
   const shownEdges = net.data?.edges.filter((e) => e.time <= until).length ?? 0;
 
@@ -37,6 +39,7 @@ export function Network() {
         </p>
       </div>
       <div className="toolbar">
+        {net.data?.whatIf && <WhatIfBadge />}
         {focus ? (
           <>
             <button type="button" className="btn" onClick={() => { setFocus(null); setSelected(null); }}>

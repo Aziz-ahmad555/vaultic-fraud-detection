@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -176,48 +177,6 @@ def test_drift_lab_score_thresholds_feedback_audit(server):
     assert log[0]["action"] == "Marked transaction 1000 as fraud" and len(log) == 2
 
 
-def test_no_block_note_and_whatif_cost_mode(server):
-    meta = _get(server, "/api/meta")
-    assert meta["whatif_available"] is True
-    assert "No Block decisions" in meta["no_block_note"]  # t_block = inf in the bundle
-    w = _get(server, "/api/whatif")
-    assert w["active"] is False and "not the evaluated system" in w["note"]
-    assert w["cost"]["hold_success_rate"] == 1.0  # the evaluated system
-    before = _get(server, f"/api/day-summary?time={AS_OF}")
-    assert before["whatIf"] is False
-    cost = {"c_fp": 2.0, "c_rev": 1.0, "c_step": 0.1, "step_up_success_rate": 0.9,
-            "legit_step_up_friction": 0.0}  # fmt: skip
-    code, w = _send(server, "/api/whatif", {"cost": cost, "role": "analyst"}, "PUT")
-    assert code == 200 and w["active"] is True and w["thresholds"]["t_monitor"] is not None
-    after = _get(server, f"/api/day-summary?time={AS_OF}")
-    assert after["whatIf"] is True and after["transactions"] == before["transactions"]
-    rows = _get(server, f"/api/stream?time={AS_OF}&start=0&end={AS_OF}")
-    assert all(t["decision"]["whatIf"] is True for t in rows)
-    assert _get(server, "/api/audit")[0]["action"].startswith("Turned on the what-if cost mode")
-    code, w = _send(
-        server,
-        "/api/whatif",
-        {"cost": {**cost, "hold_success_rate": 0.7}, "role": "analyst"},
-        "PUT",
-    )
-    assert code == 200 and w["cost"]["hold_success_rate"] == 0.7  # imperfect Hold (D124)
-    code, _ = _send(
-        server,
-        "/api/whatif",
-        {"cost": {**cost, "hold_success_rate": 1.2}, "role": "analyst"},
-        "PUT",
-    )
-    assert code == 422
-    bad = {**cost, "step_up_success_rate": 1.5}
-    code, _ = _send(server, "/api/whatif", {"cost": bad, "role": "analyst"}, "PUT")
-    assert code == 422
-    req = urllib.request.Request(server + "/api/whatif?role=analyst", method="DELETE")
-    with urllib.request.urlopen(req) as r:
-        assert json.loads(r.read())["active"] is False
-    back = _get(server, f"/api/day-summary?time={AS_OF}")
-    assert back["whatIf"] is False and back["byAction"] == before["byAction"]
-
-
 AS_OF_ENDPOINTS = ("/api/day-summary?time={t}", "/api/stream?time={t}&start=0&end={t}",
                    "/api/transactions/1000?time={t}", "/api/alerts?time={t}",
                    "/api/customers/u1/history?time={t}", "/api/network?time={t}",
@@ -329,3 +288,71 @@ def test_served_inputs_never_invent_a_value(server):
     assert all(r["inputs"]["deviceKnown"] is None for r in rows)  # the bundle has no devices
     late = [r for r in rows if r["row"]["day"] == 190]
     assert late and all(isinstance(r["inputs"]["sharedEntities"], int) for r in late)
+
+
+WHATIF = {"c_fp": 2.0, "c_rev": 1.0, "c_step": 0.1, "step_up_success_rate": 0.9,
+          "legit_step_up_friction": 0.0}  # fmt: skip
+
+
+def _q(params: dict) -> str:
+    return "&" + urllib.parse.urlencode(params)
+
+
+def test_no_block_note_and_whatif_cost_mode(server):
+    meta = _get(server, "/api/meta")
+    assert meta["whatif_available"] is True
+    assert "No Block decisions" in meta["no_block_note"]  # t_block = inf in the bundle
+    w = _get(server, "/api/whatif")
+    assert w["active"] is False and "not the evaluated system" in w["note"]
+    assert w["cost"]["hold_success_rate"] == 1.0 and w["thresholds"] is None
+    before = _get(server, f"/api/day-summary?time={AS_OF}")
+    assert before["whatIf"] is False
+    w = _get(server, "/api/whatif?" + urllib.parse.urlencode(WHATIF))
+    assert w["active"] is True and w["thresholds"]["t_monitor"] is not None
+    after = _get(server, f"/api/day-summary?time={AS_OF}" + _q(WHATIF))
+    assert after["whatIf"] is True and after["transactions"] == before["transactions"]
+    rows = _get(server, f"/api/stream?time={AS_OF}&start=0&end={AS_OF}" + _q(WHATIF))
+    assert rows and all(t["decision"]["whatIf"] is True for t in rows)
+    w = _get(server, "/api/whatif?" + urllib.parse.urlencode({**WHATIF, "hold_success_rate": 0.7}))
+    assert w["cost"]["hold_success_rate"] == 0.7  # imperfect Hold (D124)
+    for bad in ({**WHATIF, "hold_success_rate": 1.2}, {**WHATIF, "step_up_success_rate": 1.5},
+                {**WHATIF, "c_fp": -1}, {"c_fp": 2.0}):  # fmt: skip
+        code, _ = _status(server, f"/api/day-summary?time={AS_OF}" + _q(bad))
+        assert code == 422, bad
+
+
+def test_whatif_is_stateless_every_response_says_which_it_is(server):
+    """D128: what-if lives in the request, never in the server; flags on every response."""
+    plain = _get(server, f"/api/day-summary?time={AS_OF}")
+    _get(server, f"/api/day-summary?time={AS_OF}" + _q(WHATIF))  # another client's what-if
+    again = _get(server, f"/api/day-summary?time={AS_OF}")
+    assert again == plain and again["whatIf"] is False  # it leaked nothing
+    for path in AS_OF_ENDPOINTS:
+        if "drift" in path:
+            continue  # no decisions in drift
+        for params, flag in (({}, False), (WHATIF, True)):
+            body = _get(server, path.format(t=AS_OF) + (_q(params) if params else ""))
+            decisions = []
+            if isinstance(body, list):
+                for x in body:
+                    decisions += (
+                        [c["decision"] for c in x["cases"]] if "cases" in x else [x["decision"]]
+                    )
+            elif body and "decision" in body:
+                decisions = [body["decision"]]
+            elif body and "whatIf" in body:
+                assert body["whatIf"] is flag, path
+            assert all(d["whatIf"] is flag for d in decisions), path
+    net = _get(server, f"/api/network?time={AS_OF}" + _q(WHATIF))
+    assert net["whatIf"] is True  # the unfocused network is picked from what-if holds and blocks
+    # the old session endpoints are gone
+    assert _send(server, "/api/whatif", {"cost": WHATIF, "role": "analyst"}, "PUT")[0] == 405
+
+
+def test_whatif_changes_decisions_but_not_scores(server):
+    plain = _get(server, f"/api/stream?time={190 * DAY + 3600}&start=0&end={190 * DAY + 3600}")
+    what = _get(server, f"/api/stream?time={190 * DAY + 3600}&start=0&end={190 * DAY + 3600}"
+                + _q({**WHATIF, "c_fp": 50.0, "hold_success_rate": 0.7}))  # fmt: skip
+    assert [t["row"]["TransactionID"] for t in plain] == [t["row"]["TransactionID"] for t in what]
+    assert [t["decision"]["p"] for t in plain] == [t["decision"]["p"] for t in what]
+    assert [t["decision"]["action"] for t in plain] != [t["decision"]["action"] for t in what]

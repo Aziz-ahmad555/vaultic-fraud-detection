@@ -154,6 +154,11 @@ export const LABEL_DELAYS = [0, 7, 30, 60] as const;
 export interface AsOf {
   time: number; // seconds on the dataset clock
   labelDelayDays: number;
+  /**
+   * What-if cost parameters sent with the request (D128); null / absent = the evaluated system.
+   * The server keeps no what-if state: every response says whether it is what-if (whatIf flags).
+   */
+  whatIf?: CostModel | null;
 }
 
 export interface DaySummary {
@@ -194,6 +199,8 @@ export interface Network {
   nodes: NetworkNode[];
   edges: NetworkEdge[];
   rings: Ring[];
+  /** true when the entities were picked from what-if decisions (today's holds and blocks) */
+  whatIf?: boolean;
 }
 
 export const POLICIES = ["R1", "R2", "R3", "R4"] as const;
@@ -272,7 +279,7 @@ export interface AuditEntry {
 }
 export type Feedback = "fraud" | "legit" | "unsure";
 
-/** What-if cost mode (D122): thresholds re-chosen on the calibration days for other costs. */
+/** What-if cost mode (D122, D128): thresholds re-chosen on the calibration days for other costs. */
 export interface WhatIf {
   active: boolean;
   available: boolean;
@@ -310,7 +317,6 @@ export interface Api {
   auditLog(): Promise<AuditEntry[]>;
   /** optional (real-data backend): data-source notes */
   info?(): Promise<SourceInfo>;
-  /** optional (real-data backend): the what-if cost mode */
-  whatIf?(): Promise<WhatIf>;
-  setWhatIf?(cost: CostModel | null, role: Role): Promise<WhatIf>;
+  /** optional (real-data backend): what-if status for a cost setting (null = the evaluated system) */
+  whatIf?(cost: CostModel | null): Promise<WhatIf>;
 }

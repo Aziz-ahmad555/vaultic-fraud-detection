@@ -4,11 +4,12 @@ import { HBars, Legend, Lines } from "../components/Charts";
 import { Empty, ErrorState, Loading } from "../components/States";
 import { fmtMoney } from "../lib/format";
 import { useData } from "../lib/useData";
+import { asOfKey } from "../lib/whatIf";
 import { useApp } from "../state/app";
 
 export function Drift() {
   const { asOf, setLabelDelay } = useApp();
-  const d = useData(() => api.drift(asOf), [asOf.time, asOf.labelDelayDays]);
+  const d = useData(() => api.drift(asOf), [asOfKey(asOf)]);
   const today = Math.floor(asOf.time / 86400);
 
   return (

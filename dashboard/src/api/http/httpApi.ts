@@ -27,6 +27,7 @@ import type {
   Transaction,
   WhatIf,
 } from "../types";
+import { flagsIn, noteServed, whatIfKey, whatIfParams } from "../../lib/whatIf";
 
 export const HTTP_SOURCE_LABEL = "IEEE-CIS test period, final run";
 export const SCORE_SOURCE = "Simulator: illustrative model, not the evaluated system (the final-run models score recorded transactions only)";
@@ -57,20 +58,28 @@ export function createHttpApi(baseUrl = "http://127.0.0.1:8000", fetchImpl: Fetc
 
   const q = (asOf: AsOf, extra: Record<string, string | number | undefined> = {}) => {
     const params = new URLSearchParams({ time: String(asOf.time), L: String(asOf.labelDelayDays) });
-    for (const [k, v] of Object.entries(extra)) if (v !== undefined) params.set(k, String(v));
+    // the what-if setting travels with every as-of request (D128); the server keeps none
+    for (const [k, v] of Object.entries({ ...whatIfParams(asOf.whatIf), ...extra })) if (v !== undefined) params.set(k, String(v));
     return params.toString();
   };
 
+  /** An as-of request whose response flags are reported for the banner (D128). */
+  async function asOfRequest<T>(asOf: AsOf, path: string, extra: Record<string, string | number | undefined> = {}): Promise<T> {
+    const body = await request<T>(`${path}?${q(asOf, extra)}`);
+    const flags = flagsIn(body);
+    if (flags.length) noteServed(whatIfKey(asOf.whatIf), flags.some(Boolean));
+    return body;
+  }
+
   return {
     range: () => request<{ first: number; last: number }>("/api/range"),
-    daySummary: (asOf) => request<DaySummary>(`/api/day-summary?${q(asOf)}`),
-    stream: (asOf, from, to) => request<Transaction[]>(`/api/stream?${q(asOf, { start: from, end: to })}`),
-    transaction: (id, asOf) => request<Transaction | null>(`/api/transactions/${id}?${q(asOf)}`),
-    alerts: (asOf) => request<Transaction[]>(`/api/alerts?${q(asOf)}`),
-    customerHistory: (uid, asOf) =>
-      request<Transaction[]>(`/api/customers/${encodeURIComponent(uid)}/history?${q(asOf)}`),
-    network: (asOf, focus) => request<Network>(`/api/network?${q(asOf, { focus })}`),
-    queues: (asOf, k) => request<PolicyQueue[]>(`/api/queues?${q(asOf, { k })}`),
+    daySummary: (asOf) => asOfRequest<DaySummary>(asOf, "/api/day-summary"),
+    stream: (asOf, from, to) => asOfRequest<Transaction[]>(asOf, "/api/stream", { start: from, end: to }),
+    transaction: (id, asOf) => asOfRequest<Transaction | null>(asOf, `/api/transactions/${id}`),
+    alerts: (asOf) => asOfRequest<Transaction[]>(asOf, "/api/alerts"),
+    customerHistory: (uid, asOf) => asOfRequest<Transaction[]>(asOf, `/api/customers/${encodeURIComponent(uid)}/history`),
+    network: (asOf, focus) => asOfRequest<Network>(asOf, "/api/network", { focus }),
+    queues: (asOf, k) => asOfRequest<PolicyQueue[]>(asOf, "/api/queues", { k }),
     drift: (asOf) => request<DriftReport>(`/api/drift?${q(asOf)}`),
     lab: () => request<Lab>("/api/lab"),
     score: (input: ScoreInput): Promise<ScoreResult> => illustrative.score(input),
@@ -86,10 +95,9 @@ export function createHttpApi(baseUrl = "http://127.0.0.1:8000", fetchImpl: Fetc
       const m = await request<{ source: string; no_block_note: string | null; whatif_available: boolean }>("/api/meta");
       return { source: m.source, noBlockNote: m.no_block_note, whatIfAvailable: m.whatif_available };
     },
-    whatIf: () => request<WhatIf>("/api/whatif"),
-    setWhatIf: (cost: CostModel | null, role: Role) =>
-      cost === null
-        ? request<WhatIf>(`/api/whatif?role=${role}`, { method: "DELETE" })
-        : request<WhatIf>("/api/whatif", { method: "PUT", body: JSON.stringify({ cost, role }) }),
+    whatIf: (cost: CostModel | null) => {
+      const params = new URLSearchParams(Object.entries(whatIfParams(cost)).map(([k, v]) => [k, String(v)]));
+      return request<WhatIf>(`/api/whatif${cost ? `?${params}` : ""}`);
+    },
   };
 }

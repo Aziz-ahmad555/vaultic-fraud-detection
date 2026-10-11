@@ -58,6 +58,14 @@
   background: var(--sheet);
   color: var(--ink);
 }
+/* what-if decisions (D128): dashed like the what-if strip, so it reads as "not the evaluated system" */
+.badge-whatif {
+  margin-left: var(--s-1);
+  border: 1px dashed var(--graphite);
+  background: var(--sheet);
+  color: var(--ink);
+  font-size: var(--fs-xs, 11px);
+}
 .mock-note {
   padding: 2px var(--s-2);
   border: 1px dashed var(--graphite);

@@ -1,4 +1,6 @@
+import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { asOfKey, resetServed, useServedWhatIf } from "../../lib/whatIf";
 import { createHttpApi } from "./httpApi";
 
 type Call = { url: string; init?: RequestInit };
@@ -87,17 +89,57 @@ describe("createHttpApi: data-source notes and the what-if cost mode", () => {
     expect(info).toEqual({ source: "IEEE-CIS test period, final run", noBlockNote: "No Block decisions: ...", whatIfAvailable: true });
   });
 
-  it("turns the what-if cost mode on with PUT and off with DELETE", async () => {
+  it("sends the what-if setting with every as-of request and nothing without it (D128)", async () => {
     const calls: Call[] = [];
-    const status = { active: true, available: true, cost: {}, thresholds: null, note: "illustrative" };
     const api = createHttpApi(
       "http://api.test",
-      fakeFetch({ "PUT /api/whatif": { body: status }, "DELETE /api/whatif": { body: { ...status, active: false } } }, calls),
+      fakeFetch({ "GET /api/alerts": { body: [] }, "GET /api/queues": { body: [] }, "GET /api/whatif": { body: { active: true } } }, calls),
     );
-    const cost = { c_fp: 2, c_rev: 1, c_step: 0.1, step_up_success_rate: 0.9, legit_step_up_friction: 0 };
-    expect((await api.setWhatIf!(cost, "analyst")).active).toBe(true);
-    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ cost, role: "analyst" });
-    expect((await api.setWhatIf!(null, "analyst")).active).toBe(false);
-    expect(calls[1].init?.method).toBe("DELETE");
+    const cost = { c_fp: 2, c_rev: 1, c_step: 0.1, step_up_success_rate: 0.9, legit_step_up_friction: 0, hold_success_rate: 0.8 };
+    await api.alerts(asOf);
+    await api.alerts({ ...asOf, whatIf: cost });
+    await api.queues({ ...asOf, whatIf: cost }, 50);
+    await api.whatIf!(cost);
+    const plain = new URL(calls[0].url).searchParams;
+    expect(plain.has("c_fp")).toBe(false);
+    for (const call of calls.slice(1)) {
+      const sp = new URL(call.url).searchParams;
+      for (const [k, v] of Object.entries(cost)) expect(sp.get(k)).toBe(String(v));
+      expect(call.init?.method ?? "GET").toBe("GET"); // no server-side state is set
+    }
   });
+
+  it("reports the whatIf flags the backend served, per setting (drives the banner)", async () => {
+    resetServed();
+    const cost = { c_fp: 2, c_rev: 1, c_step: 0.1, step_up_success_rate: 0.9, legit_step_up_friction: 0 };
+    const tx = (whatIf: boolean) => ({ decision: { action: "hold", whatIf } });
+    let flag = true;
+    const api = createHttpApi("http://api.test", async () => new Response(JSON.stringify([tx(flag)]), { status: 200 }));
+    function Banner() {
+      return <p>{useServedWhatIf(cost) ? "what-if served" : "evaluated system"}</p>;
+    }
+    render(<Banner />);
+    expect(screen.getByText("evaluated system")).toBeTruthy();
+    await act(async () => {
+      await api.alerts({ ...asOf, whatIf: cost });
+    });
+    expect(screen.getByText("what-if served")).toBeTruthy();
+    flag = false; // the backend answers without what-if: the banner follows the response
+    await act(async () => {
+      await api.alerts({ ...asOf, whatIf: cost });
+    });
+    expect(screen.getByText("evaluated system")).toBeTruthy();
+  });
+});
+
+describe("what-if request keys", () => {
+  it("a change of what-if setting changes the refetch key; the same setting does not", () => {
+    const cost = { c_fp: 2, c_rev: 1, c_step: 0.1, step_up_success_rate: 0.9, legit_step_up_friction: 0 };
+    expect(asOfKey({ ...asOf, whatIf: cost })).not.toBe(asOfKey(asOf));
+    expect(asOfKey({ ...asOf, whatIf: { ...cost } })).toBe(asOfKey({ ...asOf, whatIf: cost }));
+    expect(asOfKey({ ...asOf, whatIf: { ...cost, hold_success_rate: 1 } })).toBe(asOfKey({ ...asOf, whatIf: cost }));
+    expect(asOfKey({ ...asOf, whatIf: { ...cost, hold_success_rate: 0.7 } })).not.toBe(asOfKey({ ...asOf, whatIf: cost }));
+    expect(asOfKey({ ...asOf, whatIf: null })).toBe(asOfKey(asOf));
+  });
+
 });

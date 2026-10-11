@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../api";
-import type { AsOf, Role } from "../api/types";
+import type { AsOf, CostModel, Role } from "../api/types";
 import { LABEL_DELAYS } from "../api/types";
 import { DAY } from "../lib/format";
 
@@ -32,9 +32,12 @@ interface AppState {
   setPaletteOpen: (open: boolean) => void;
   helpOpen: boolean;
   setHelpOpen: (open: boolean) => void;
-  /** the what-if cost mode is on (real-data backend) */
-  whatIfActive: boolean;
-  setWhatIfActive: (on: boolean) => void;
+  /**
+   * The what-if cost setting sent with every request (real-data backend, D128); null = the
+   * evaluated system. Kept in memory only: a reload always starts on the evaluated system.
+   */
+  whatIf: CostModel | null;
+  setWhatIf: (cost: CostModel | null) => void;
 }
 
 const Ctx = createContext<AppState | null>(null);
@@ -79,7 +82,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [range, setRange] = useState({ first: FIRST, last: LAST });
-  const [whatIfActive, setWhatIfActive] = useState(false);
+  const [whatIf, setWhatIf] = useState<CostModel | null>(null);
+  // one object per (time, delay, what-if): pages refetch when any of them changes, and only then
+  const asOf = useMemo<AsOf>(() => ({ time, labelDelayDays, whatIf }), [time, labelDelayDays, whatIf]);
 
   useEffect(() => {
     let live = true;
@@ -94,7 +99,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .catch(() => {
         /* keep the default range */
       });
-    api.whatIf?.().then((w) => live && setWhatIfActive(w.active)).catch(() => undefined);
     return () => {
       live = false;
     };
@@ -122,7 +126,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const value: AppState = {
-    asOf: { time, labelDelayDays },
+    asOf,
     setAsOfTime: (t) => setTime(Math.min(range.last, Math.max(range.first, Math.round(t)))),
     setLabelDelay: (days) => setLabelDelayDays(validDelay(days)),
     range,
@@ -137,8 +141,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPaletteOpen,
     helpOpen,
     setHelpOpen,
-    whatIfActive,
-    setWhatIfActive,
+    whatIf,
+    setWhatIf,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

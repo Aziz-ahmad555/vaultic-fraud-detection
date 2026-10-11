@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { CostModel } from "../api/types";
 import { useData } from "../lib/useData";
+import { whatIfKey } from "../lib/whatIf";
 import { useApp } from "../state/app";
 
 const FIELDS: { key: keyof CostModel; label: string; step: number; max?: number }[] = [
@@ -16,29 +17,30 @@ const FIELDS: { key: keyof CostModel; label: string; step: number; max?: number 
 /**
  * What-if cost mode (D122, real-data backend only): re-chooses the decision thresholds on the
  * calibration days for other cost settings and applies them to the test period. Illustrative,
- * never the evaluated system; every decision made in this mode is marked, and the top bar says so.
+ * never the evaluated system. Stateless (D128): the setting lives in this client and is sent with
+ * every request; each response says whether it is what-if, and every page refetches on a change.
  */
-export function WhatIfPanel({ onChange }: { onChange?: () => void }) {
-  const { role, toast, setWhatIfActive, whatIfActive } = useApp();
-  const status = useData(() => (api.whatIf ? api.whatIf() : Promise.resolve(null)), [whatIfActive]);
+export function WhatIfPanel() {
+  const { toast, whatIf, setWhatIf } = useApp();
+  // the status of the CURRENT setting: frozen costs for the evaluated system, else the re-chosen thresholds
+  const status = useData(() => (api.whatIf ? api.whatIf(whatIf) : Promise.resolve(null)), [whatIfKey(whatIf)]);
   const [draft, setDraft] = useState<CostModel | null>(null);
   useEffect(() => {
-    if (status.data) setDraft(status.data.cost);
-  }, [status.data]);
+    if (status.data && !draft) setDraft(status.data.cost);
+  }, [status.data, draft]);
 
-  if (!api.setWhatIf || !status.data?.available) return null;
-  const set = api.setWhatIf;
+  if (!api.whatIf || !status.data?.available) return null;
 
   const apply = async (cost: CostModel | null) => {
     try {
-      const w = await set(cost, role);
-      setWhatIfActive(w.active);
-      toast(w.active ? "What-if cost mode on (illustrative)" : "Back to the evaluated system");
-      onChange?.();
+      if (cost) await api.whatIf!(cost); // validated by the backend before the pages use it
+      setWhatIf(cost);
+      toast(cost ? "What-if cost mode on (illustrative)" : "Back to the evaluated system");
     } catch (e) {
-      toast(`Couldn't change the what-if cost mode. ${(e as Error).message}`, "error");
+      toast(`Couldn't use these what-if costs. ${(e as Error).message}`, "error");
     }
   };
+  const th = whatIf ? status.data.thresholds : null;
 
   return (
     <section className="pane">
@@ -51,7 +53,7 @@ export function WhatIfPanel({ onChange }: { onChange?: () => void }) {
           Choose other costs: the decision thresholds are re-chosen on the calibration days (147–150) by minimising total cost, as in the research
           pipeline, and applied to the test period. The evaluated system is the frozen decision engine of the final run; switch back at any time.
           With a Hold that always stops the fraud (share 1) a Block can never cost less than a Hold, so Block appears only when held fraud can slip
-          through (D123, D124).
+          through (D123, D124). The setting is kept in this browser tab only and sent with each request.
         </p>
         {draft && (
           <form
@@ -76,7 +78,7 @@ export function WhatIfPanel({ onChange }: { onChange?: () => void }) {
             ))}
             <div className="actions" style={{ alignSelf: "end" }}>
               <button type="submit" className="btn btn-primary">Apply what-if costs</button>
-              {status.data.active && (
+              {whatIf && (
                 <button type="button" className="btn" onClick={() => apply(null)}>
                   Back to the evaluated system
                 </button>
@@ -84,10 +86,10 @@ export function WhatIfPanel({ onChange }: { onChange?: () => void }) {
             </div>
           </form>
         )}
-        {status.data.active && status.data.thresholds && (
+        {th && (
           <p className="muted xs" style={{ marginTop: 8 }}>
-            What-if thresholds (expected loss, $): monitor {status.data.thresholds.t_monitor.toFixed(2)}, step-up {status.data.thresholds.t_step.toFixed(2)},
-            hold {status.data.thresholds.t_hold.toFixed(2)}, block {status.data.thresholds.t_block === null ? "never" : status.data.thresholds.t_block.toFixed(2)}.
+            What-if thresholds (expected loss, $): monitor {th.t_monitor.toFixed(2)}, step-up {th.t_step.toFixed(2)}, hold {th.t_hold.toFixed(2)}, block{" "}
+            {th.t_block === null ? "never" : th.t_block.toFixed(2)}.
           </p>
         )}
       </div>

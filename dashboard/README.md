@@ -80,7 +80,12 @@ Demo notes (D122): the Overview explains why no Block decisions appear (in the c
 costs a review plus the false-positive penalty, a Hold only the review, so Block is never cheaper);
 Settings has an optional **what-if cost mode** that re-chooses the thresholds on the calibration days
 (147-150) for other costs and applies them to the test period, labelled on every page as
-"illustrative, not the evaluated system" (needs `demo_final_calibration.parquet` next to the bundle);
+"illustrative, not the evaluated system" (needs `demo_final_calibration.parquet` next to the bundle).
+The what-if mode is stateless (D128): the setting lives in the browser tab and is sent as query
+parameters (`c_fp`, `c_rev`, `c_step`, `step_up_success_rate`, `legit_step_up_friction`,
+`hold_success_rate`) with every request; every decision, day summary and network in the response
+carries a `whatIf` flag, decisions show a What-if badge, and the banner appears only when what-if
+figures were served;
 the scenario simulator is labelled "Illustrative model, not the evaluated system". The as-of clock
 takes its range from the data source (test days 151-182 with the backend). Reasons are view-level
 (MVAF gate weight x view logit), not feature-level SHAP. The what-if simulator keeps the mock's
