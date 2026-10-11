@@ -111,10 +111,11 @@ export function decide(
   th: Thresholds,
 ): Action {
   const el = p * amount;
-  if (th.t_block !== null && el >= th.t_block && set === "fraud") return "block";
-  if (el >= th.t_hold || (th.t_dis !== null && disagreement >= th.t_dis)) return "hold";
-  if (el >= th.t_step || set === "uncertain" || set === "empty") return "step_up";
-  if (el >= th.t_monitor) return "monitor";
+  const at = (t: number | null) => t !== null && el >= t; // null = never (D134)
+  if (at(th.t_block) && set === "fraud") return "block";
+  if (at(th.t_hold) || (th.t_dis !== null && disagreement >= th.t_dis)) return "hold";
+  if (at(th.t_step) || set === "uncertain" || set === "empty") return "step_up";
+  if (at(th.t_monitor)) return "monitor";
   return "allow";
 }
 

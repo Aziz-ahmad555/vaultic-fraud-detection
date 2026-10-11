@@ -76,12 +76,17 @@ export interface CostModel {
   hold_success_rate?: number;
 }
 
+/**
+ * Decision thresholds (expected loss in $, disagreement for t_dis). null = never (inf on the
+ * Python side): cost may choose never to block, never to hold or step up by expected loss, or no
+ * disagreement rule; every page renders null as "never" (D134).
+ */
 export interface Thresholds {
-  t_monitor: number;
-  t_step: number;
-  t_hold: number;
-  t_block: number | null; // null = never block (inf on the Python side: cost chose no blocking)
-  t_dis: number | null; // null = disagreement rule off (inf on the Python side)
+  t_monitor: number | null;
+  t_step: number | null;
+  t_hold: number | null;
+  t_block: number | null;
+  t_dis: number | null;
 }
 
 /** Decision engine output for one transaction (D43). */

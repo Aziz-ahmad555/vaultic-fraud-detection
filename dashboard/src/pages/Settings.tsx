@@ -113,7 +113,8 @@ export function Settings() {
                     type="number"
                     min={0}
                     step={1}
-                    value={draft[f.key] ?? 0}
+                    placeholder="never"
+                    value={draft[f.key] ?? ""}
                     disabled={!editable}
                     onChange={(e) => setDraft({ ...draft, [f.key]: Number(e.target.value) })}
                   />
@@ -125,7 +126,7 @@ export function Settings() {
               </label>
               <label className="field">
                 <span>Hold when view disagreement is at least</span>
-                <input type="number" min={0} max={1} step={0.05} value={draft.t_dis ?? ""} disabled={!editable} onChange={(e) => setDraft({ ...draft, t_dis: e.target.value === "" ? null : Number(e.target.value) })} />
+                <input type="number" min={0} max={1} step={0.05} placeholder="never" value={draft.t_dis ?? ""} disabled={!editable} onChange={(e) => setDraft({ ...draft, t_dis: e.target.value === "" ? null : Number(e.target.value) })} />
               </label>
               {!frozen && (
                 <div className="actions" style={{ alignSelf: "end" }}>

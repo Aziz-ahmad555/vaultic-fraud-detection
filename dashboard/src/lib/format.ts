@@ -24,3 +24,6 @@ export function fmtClock(t: number, withDay = true) {
   return withDay ? `Day ${day}, ${hh}:${mm}` : `${hh}:${mm}`;
 }
 export const dayOf = (t: number) => Math.floor(t / DAY);
+
+/** A decision threshold: null (inf on the Python side) is "never" (D134). */
+export const fmtThreshold = (t: number | null | undefined, digits = 2) => (t === null || t === undefined ? "never" : t.toFixed(digits));

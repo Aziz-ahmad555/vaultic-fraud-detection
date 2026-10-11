@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { CostModel } from "../api/types";
+import { fmtThreshold } from "../lib/format";
 import { useData } from "../lib/useData";
 import { whatIfKey } from "../lib/whatIf";
 import { useApp } from "../state/app";
@@ -88,8 +89,8 @@ export function WhatIfPanel() {
         )}
         {th && (
           <p className="muted xs" style={{ marginTop: 8 }}>
-            What-if thresholds (expected loss, $): monitor {th.t_monitor.toFixed(2)}, step-up {th.t_step.toFixed(2)}, hold {th.t_hold.toFixed(2)}, block{" "}
-            {th.t_block === null ? "never" : th.t_block.toFixed(2)}.
+            What-if thresholds (expected loss, $): monitor {fmtThreshold(th.t_monitor)}, step-up {fmtThreshold(th.t_step)}, hold {fmtThreshold(th.t_hold)},
+            block {fmtThreshold(th.t_block)}; hold on view disagreement from {fmtThreshold(th.t_dis)}.
           </p>
         )}
       </div>
