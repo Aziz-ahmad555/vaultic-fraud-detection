@@ -478,10 +478,10 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
         return {"nodes": list(nodes.values()), "edges": list(edges.values()), "rings": [],
                 "whatIf": w is not None}  # fmt: skip
 
+    budgets = sorted(int(x) for x in meta["routing_lambdas"])  # the frozen K (D133)
+
     def lambdas(k: int) -> dict:
-        keys = sorted(int(x) for x in meta["routing_lambdas"])
-        best = min(keys, key=lambda x: abs(x - k))
-        return meta["routing_lambdas"][str(best)]
+        return meta["routing_lambdas"][str(k)]
 
     def priority(policy: str, sub: pd.DataFrame, k: int) -> np.ndarray:
         p, amt = sub["p"].to_numpy(), sub["amount"].to_numpy()
@@ -498,6 +498,12 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
 
     @app.get("/api/queues")
     def queues(time: float, L: LabelDelay, w: WhatIfDep, k: int = 50):
+        if k not in budgets:
+            raise HTTPException(
+                422,
+                f"Cases per day (K) must be one of the frozen budgets {', '.join(map(str, budgets))}"
+                f", not {k}: the routing weights were chosen for those only.",
+            )
         act = decisions(w)[0]
         today = df.iloc[day_rows(time)]
         known_day = matured_day(time, L, int(df["day"].min()))

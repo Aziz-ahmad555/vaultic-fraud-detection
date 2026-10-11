@@ -102,4 +102,10 @@ describe("mock API as-of rules", () => {
     expect(validDelay("7")).toBe(30);
     for (const L of [0, 7, 30, 60]) expect(validDelay(L)).toBe(L);
   });
+
+  it("offers only the frozen review budgets (D133)", async () => {
+    const a = asOf(141, 14, 0);
+    for (const k of [50, 100, 200, 500]) expect((await api.queues(a, k))[0].cases.length).toBeLessThanOrEqual(k);
+    for (const k of [10, 25, 49, 1000]) await expect(api.queues(a, k)).rejects.toThrow(/frozen budgets/);
+  });
 });

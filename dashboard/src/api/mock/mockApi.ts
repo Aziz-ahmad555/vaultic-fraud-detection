@@ -29,7 +29,7 @@ import type {
   Transaction,
   View,
 } from "../types";
-import { ACTIONS, LABEL_DELAYS, POLICIES, VIEWS } from "../types";
+import { ACTIONS, LABEL_DELAYS, POLICIES, ROUTING_BUDGETS, VIEWS } from "../types";
 import { DAY, FIRST_DAY, LAST_DAY, generate, type Dataset } from "./generate";
 import { MOCK_THRESHOLDS, decide, score } from "./model";
 
@@ -230,6 +230,9 @@ export function createMockApi(seed = 7): Api {
 
     async queues(asOf, k) {
       checkDelay(asOf);
+      if (!(ROUTING_BUDGETS as readonly number[]).includes(k)) {
+        throw new Error(`Cases per day (K) must be one of the frozen budgets ${ROUTING_BUDGETS.join(", ")}, not ${k}.`);
+      }
       const today = dayRows(asOf);
       const known = maturedDay(asOf, FIRST_DAY);
       const past =

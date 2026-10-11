@@ -152,9 +152,9 @@ def test_day_summary_alerts_queues_history_network(server):
     assert ps == sorted(ps, reverse=True) and all(
         a["decision"]["action"] != "allow" for a in alerts
     )
-    q = _get(server, f"/api/queues?time={AS_OF}&k=5")
+    q = _get(server, f"/api/queues?time={AS_OF}&k=50")
     assert [x["policy"] for x in q] == ["R1", "R2", "R3", "R4"] and all(
-        len(x["cases"]) <= 5 for x in q
+        len(x["cases"]) <= 50 for x in q
     )
     assert q[0]["matured"]["day"] is None  # no labelled day yet at as-of
     h = _get(server, f"/api/customers/u1/history?time={AS_OF}")
@@ -429,3 +429,11 @@ def test_network_focus_matches_its_column_only_and_expands_two_hops(server, tmp_
     # a customer reaches other customers through a shared card (two hops) ...
     u1 = {n["id"] for n in _get(server, f"/api/network?time={AS_OF}&focus=uid:u1")["nodes"]}
     assert any(i.startswith("uid:") and i != "uid:u1" for i in u1)
+
+
+def test_queues_offer_only_the_frozen_budgets(server):
+    # the synthetic bundle's routing weights exist for K = 50 only
+    assert _status(server, f"/api/queues?time={AS_OF}&k=50")[0] == 200
+    for k in (5, 10, 25, 49, 51, 100):
+        code, body = _status(server, f"/api/queues?time={AS_OF}&k={k}")
+        assert code == 422 and "frozen budgets 50" in body["detail"], k

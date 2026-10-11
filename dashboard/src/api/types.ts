@@ -203,6 +203,9 @@ export interface Network {
   whatIf?: boolean;
 }
 
+/** Review budgets K (cases per day) the routing weights were frozen for (E12); no other K (D133). */
+export const ROUTING_BUDGETS = [50, 100, 200, 500] as const;
+
 export const POLICIES = ["R1", "R2", "R3", "R4"] as const;
 export type Policy = (typeof POLICIES)[number];
 export const POLICY_LABEL: Record<Policy, string> = {

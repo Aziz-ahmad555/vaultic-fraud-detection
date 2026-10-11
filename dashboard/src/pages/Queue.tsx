@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import type { Policy, PolicyQueue, Transaction } from "../api/types";
-import { POLICIES, POLICY_LABEL } from "../api/types";
+import { POLICIES, POLICY_LABEL, ROUTING_BUDGETS } from "../api/types";
 import { DecisionBadge, RiskCell } from "../components/Badges";
 import { Braid } from "../components/Braid";
 import { HBars } from "../components/Charts";
@@ -43,7 +43,7 @@ export function Queue() {
         <label className="field-inline">
           <span>Cases per day (K)</span>
           <select value={k} onChange={(e) => setK(Number(e.target.value))}>
-            {[10, 25, 50, 100, 200].map((x) => (
+            {ROUTING_BUDGETS.map((x) => (
               <option key={x} value={x}>{x}</option>
             ))}
           </select>
