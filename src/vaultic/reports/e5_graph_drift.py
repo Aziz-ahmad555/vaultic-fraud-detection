@@ -150,7 +150,9 @@ def main() -> None:
               "group_sizes": {g: [int(m.sum()), int(yv[m].sum())] for g, m in groups.items()},
               "drift": drift, "models": table}  # fmt: skip
     OUT_JSON.write_text(json.dumps(result, indent=1), encoding="utf-8")
-    write_md(result)
+    from vaultic.reports.render_saved import keep_hand_section
+
+    keep_hand_section(OUT_MD, lambda: write_md(result))  # never overwrite the hand-written reading
     print(f"wrote {OUT_MD} and {OUT_JSON}")
 
 

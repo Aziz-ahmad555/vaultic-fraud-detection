@@ -84,10 +84,36 @@ def beats_random(y: np.ndarray, score: np.ndarray, seed: int = 0) -> dict:
             "base_rate": base, "beats_random": bool(lo > base)}  # fmt: skip
 
 
+# D150: the runs behind research/tables/emerging_fraud.md, pinned by id (the latest run of an
+# experiment can change: EXP-009 also holds B5's final run)
+RUNS = {
+    "EXP-009": "20261008-211052-888539",
+    "EXP-009-holdout-ProductCD-C": "20261010-012032-962189",
+    "EXP-009-holdout-ProductCD-H": "20261010-015501-228978",
+    "EXP-009-holdout-ProductCD-S": "20261010-102002-860653",
+    "EXP-009-holdout-ProductCD-W": "20261010-104300-647677",
+    "EXP-009-holdout-R": "20261009-112357-306004",
+    "EXP-009-holdout-card4-american-express": "20261010-110634-429228",
+    "EXP-009-holdout-card4-discover": "20261010-113159-930427",
+    "EXP-009-holdout-card4-mastercard": "20261010-115754-353859",
+    "EXP-009-holdout-card4-visa": "20261010-122024-178155",
+    "EXP-108-holdout-ProductCD-C": "20261010-013817-433965",
+    "EXP-108-holdout-ProductCD-H": "20261010-020743-527107",
+    "EXP-108-holdout-ProductCD-S": "20261010-103252-614377",
+    "EXP-108-holdout-ProductCD-W": "20261010-105405-318953",
+    "EXP-108-holdout-R": "20261009-142427-959567",
+    "EXP-108-holdout-card4-american-express": "20261010-111937-807316",
+    "EXP-108-holdout-card4-discover": "20261010-114432-397534",
+    "EXP-108-holdout-card4-mastercard": "20261010-120947-424091",
+    "EXP-108-holdout-card4-visa": "20261010-123346-659765",
+}
+
+
 def _run_pr_auc(experiment: str, ids: np.ndarray) -> float:
-    """Mean over seeds of the run's validation PR-AUC on the given rows (latest run)."""
-    runs = sorted(d for d in (RUNS_DIR / experiment).iterdir() if (d / "metrics.json").exists())
-    preds = pd.read_parquet(runs[-1] / "predictions.parquet")
+    """Mean over seeds of the pinned run's validation PR-AUC on the given rows."""
+    if experiment not in RUNS:
+        raise KeyError(f"{experiment} has no pinned run in reports/emerging.py RUNS (D150)")
+    preds = pd.read_parquet(RUNS_DIR / experiment / RUNS[experiment] / "predictions.parquet")
     preds = preds[preds["split"] == "validation"].set_index("TransactionID").loc[ids]
     y = preds["label"].to_numpy()
     seeds = [c for c in preds.columns if c.startswith("score_seed")]

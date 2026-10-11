@@ -102,10 +102,13 @@ def main() -> None:
                           for k in ("F3-log (post-hoc)", "F3", "MVAF")}})  # fmt: skip
     coef = float(np.mean([m.model_[-1].coef_[0][len(d["gate_views"][0]) + HIST] for m in log]))
     result = {"generated": date.today().isoformat(), "post_hoc": True, "cap": cap,
+              "test_rows": int(len(y)), "test_frauds": int(y.sum()),
               "f3_log_coef_hist": coef, "methods": methods.to_dict("records"),
               "comparisons": comps.to_dict("records"), "subgroups": subs, "blocks": blocks}  # fmt: skip
     OUT_JSON.write_text(json.dumps(result, indent=1, default=float), encoding="utf-8")
-    write_md(result)
+    from vaultic.reports.render_saved import keep_hand_section
+
+    keep_hand_section(OUT_MD, lambda: write_md(result))  # never overwrite the hand-written reading
     print(f"wrote {OUT_MD} and {OUT_JSON}")
 
 
@@ -121,7 +124,8 @@ def write_md(r: dict) -> None:
         f"{r['cap']:.0f} being the count's maximum on the gate rows; same D95-tuned C (not "
         "re-tuned), seeds 0-4, gate rows (fit + tune) and other inputs as the pre-registered F3; "
         "cost threshold chosen on the calibrate_fused rows. F3, MVAF, F4 and B5 are the stored "
-        "final-run scores and thresholds. Test period, 92,427 rows, 3,213 frauds.", "",
+        f"final-run scores and thresholds. Test period, {r['test_rows']:,} rows, "
+        f"{r['test_frauds']:,} frauds.", "",
         "| method | PR-AUC [95% CI] | recall@1%FPR [95% CI] | cost ($) [95% CI] |", "|---|---|---|---|",
     ]  # fmt: skip
     for m in r["methods"]:

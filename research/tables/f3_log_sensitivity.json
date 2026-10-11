@@ -2,6 +2,8 @@
  "generated": "2026-10-11",
  "post_hoc": true,
  "cap": 366.0,
+ "test_rows": 92427,
+ "test_frauds": 3213,
  "f3_log_coef_hist": 0.3554812169120195,
  "methods": [
   {

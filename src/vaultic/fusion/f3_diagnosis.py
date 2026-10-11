@@ -259,7 +259,9 @@ def main() -> None:
               "f3_pr_auc_by_period": levels, "inputs": shift_table(models, d),
               "swaps": swap_table(models, d), "time": time_table(models, d)}  # fmt: skip
     OUT_JSON.write_text(json.dumps(result, indent=1), encoding="utf-8")
-    write_md(result)
+    from vaultic.reports.render_saved import keep_hand_section
+
+    keep_hand_section(OUT_MD, lambda: write_md(result))  # never overwrite the hand-written reading
     print(f"wrote {OUT_JSON} and {OUT_MD}")
 
 
