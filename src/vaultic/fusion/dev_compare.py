@@ -111,7 +111,7 @@ def external_scores(run_dir: Path, ids: np.ndarray) -> np.ndarray:
 
 
 def build_table(smoke: bool, d95: bool = False, final: bool = False, return_parts: bool = False,
-                parts_only: bool = False):  # fmt: skip
+                parts_only: bool = False, gate_label_maturity_days: int | None = None):  # fmt: skip
     """The view table. d95=True (D95): the cross-fitted plan, the views with their tuned
     hyperparameters (configs EXP-V-<view>.yaml from `vaultic.eval.tune --view`), XGBoost for the
     anomaly and temporal views (temporal on the sequence features, in-process).
@@ -190,7 +190,18 @@ def build_table(smoke: bool, d95: bool = False, final: bool = False, return_part
                                        available=avail("temporal")),
         }  # fmt: skip
         encoder = fit_on_training_period(df, splits, columns=("ProductCD",))
-        table = view_table(df, features, views, crossfit_plan(splits, final=final), encoder,
+        plan = crossfit_plan(splits, final=final)
+        if gate_label_maturity_days is not None:
+            # D141 (post hoc): label maturity on the cross-fitted gate folds only; the fixed fold
+            # (validation and test scores) stays exactly as pre-registered
+            from vaultic.views.plan import check_plan
+
+            mature = crossfit_plan(
+                splits, final=final, label_maturity_days=gate_label_maturity_days
+            )
+            plan = [m if m.name != "fixed" else f for m, f in zip(mature, plan, strict=True)]
+            check_plan(plan, splits, final)
+        table = view_table(df, features, views, plan, encoder,
                            splits)  # fmt: skip
         if not return_parts:
             return table
