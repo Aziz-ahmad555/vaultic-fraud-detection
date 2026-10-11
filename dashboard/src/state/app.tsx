@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../api";
 import type { AsOf, Role } from "../api/types";
+import { LABEL_DELAYS } from "../api/types";
 import { DAY } from "../lib/format";
 
 // the mock covers the validation period; the real-data backend reports its own range (test period)
@@ -45,6 +46,11 @@ interface Prefs {
   role: Role;
 }
 
+/** A remembered label delay outside LABEL_DELAYS (e.g. from an older version) falls back to 30 days. */
+export function validDelay(days: unknown): number {
+  return typeof days === "number" && (LABEL_DELAYS as readonly number[]).includes(days) ? days : 30;
+}
+
 function loadPrefs(): Prefs {
   const fallback: Prefs = {
     time: 141 * DAY + 14 * 3600,
@@ -54,7 +60,8 @@ function loadPrefs(): Prefs {
   };
   try {
     const raw = window.localStorage.getItem(PREFS_KEY);
-    return raw ? { ...fallback, ...(JSON.parse(raw) as Partial<Prefs>) } : fallback;
+    const prefs = raw ? { ...fallback, ...(JSON.parse(raw) as Partial<Prefs>) } : fallback;
+    return { ...prefs, labelDelayDays: validDelay(prefs.labelDelayDays) };
   } catch {
     return fallback;
   }
@@ -117,7 +124,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value: AppState = {
     asOf: { time, labelDelayDays },
     setAsOfTime: (t) => setTime(Math.min(range.last, Math.max(range.first, Math.round(t)))),
-    setLabelDelay: setLabelDelayDays,
+    setLabelDelay: (days) => setLabelDelayDays(validDelay(days)),
     range,
     theme,
     setTheme,

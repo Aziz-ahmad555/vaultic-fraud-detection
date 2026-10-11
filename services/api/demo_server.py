@@ -34,11 +34,13 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 DAY = 86400
+# the label delays the dashboard offers (D125); any other L is refused on every endpoint
+LABEL_DELAYS = (0, 7, 30, 60)
 VIEWS = ("tabular", "behavioral", "temporal", "graph", "anomaly")
 ACTIONS = ("allow", "monitor", "step_up", "hold", "block")
 POLICIES = ("R1", "R2", "R3", "R4")
@@ -89,6 +91,23 @@ class FeedbackIn(BaseModel):
 
 def _none(x):
     return None if x is None or (isinstance(x, float) and not np.isfinite(x)) else x
+
+
+def label_delay(L: int = 30) -> int:
+    """The L query parameter of every as-of endpoint: one of LABEL_DELAYS, else 422 (D125)."""
+    if L not in LABEL_DELAYS:
+        raise HTTPException(
+            422, f"Label delay must be one of {', '.join(map(str, LABEL_DELAYS))} days, not {L}."
+        )
+    return L
+
+
+def matured_day(time: float, L: int, first_day: int) -> int | None:
+    """The latest day ALL of whose labels are known at `time` (every transaction of day D has
+    its_time + L days <= time, i.e. (D + 1) * DAY - 1 + L * DAY <= time), and always before the
+    as-of day itself (D125); None when no such day is in the data."""
+    last = min(int((time - L * DAY + 1) // DAY) - 1, int(time // DAY) - 1)
+    return last if last >= first_day else None
 
 
 def create_app(bundle_path: Path | None = None) -> FastAPI:
@@ -172,7 +191,7 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
         return {"first": float(dt.min()), "last": float(dt.max())}
 
     @app.get("/api/day-summary")
-    def day_summary(time: float, L: int = 30):
+    def day_summary(time: float, L: int = Depends(label_delay)):
         idx = day_rows(time)
         sub = df.iloc[idx]
         act = actions[idx]
@@ -211,32 +230,32 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
                 "whatIf": state["whatif"] is not None}  # fmt: skip
 
     @app.get("/api/stream")
-    def stream(time: float, start: float, end: float, L: int = 30):
+    def stream(time: float, start: float, end: float, L: int = Depends(label_delay)):
         stop = min(end, time)
         lo, hi = int(np.searchsorted(dt, start, side="right")), up_to(stop)
         return [transaction(i, stop, L) for i in range(lo, hi)]
 
     @app.get("/api/transactions/{tid}")
-    def get_transaction(tid: int, time: float, L: int = 30):
+    def get_transaction(tid: int, time: float, L: int = Depends(label_delay)):
         i = by_id.get(tid)
         if i is None or dt[i] > time:
             return None
         return transaction(i, time, L)
 
     @app.get("/api/alerts")
-    def alerts(time: float, L: int = 30):
+    def alerts(time: float, L: int = Depends(label_delay)):
         idx = [i for i in day_rows(time) if actions[i] in ("step_up", "hold", "block")]
         idx.sort(key=lambda i: -df.at[i, "p"])
         return [transaction(i, time, L) for i in idx]
 
     @app.get("/api/customers/{uid}/history")
-    def history(uid: str, time: float, L: int = 30):
+    def history(uid: str, time: float, L: int = Depends(label_delay)):
         n = up_to(time)
         idx = np.flatnonzero(df["uid"].to_numpy()[:n] == uid)
         return [transaction(int(i), time, L) for i in idx]
 
     @app.get("/api/network")
-    def network(time: float, L: int = 30, focus: str | None = None):
+    def network(time: float, L: int = Depends(label_delay), focus: str | None = None):
         n = up_to(time)
         sub = df.iloc[:n]
         if focus:
@@ -286,12 +305,13 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
         return el + lu * u * amt + (ld * d * amt if policy == "R4" else 0)
 
     @app.get("/api/queues")
-    def queues(time: float, k: int = 50, L: int = 30):
+    def queues(time: float, k: int = 50, L: int = Depends(label_delay)):
         today = df.iloc[day_rows(time)]
-        last_known = int((time - L * DAY + 1) // DAY) - 1
-        first_day = int(df["day"].min())
-        matured_day = last_known if last_known >= first_day else None
-        past = df[df["day"] == matured_day] if matured_day is not None else df.iloc[0:0]
+        known_day = matured_day(time, L, int(df["day"].min()))
+        past = df[df["day"] == known_day] if known_day is not None else df.iloc[0:0]
+        # every label of the matured day is known at as-of; checked per row all the same
+        if not all(matured(t, time, L) for t in past["TransactionDT"]):
+            raise HTTPException(500, "Internal error: an outcome label is not known yet.")
         out = []
         for policy in POLICIES:
             top = today.iloc[np.argsort(-priority(policy, today, k), kind="stable")[:k]]
@@ -299,13 +319,13 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
             caught = rev[rev["label"] == 1]
             out.append({"policy": policy, "day": int(time // DAY),
                         "cases": [transaction(by_id[int(t)], time, L) for t in top["TransactionID"]],
-                        "matured": {"day": matured_day,
+                        "matured": {"day": known_day,
                                     "fraudValueCaught": float(caught["amount"].sum()),
                                     "fraudCaught": int(len(caught)), "reviews": int(len(rev))}})  # fmt: skip
         return out
 
     @app.get("/api/drift")
-    def drift(time: float, L: int = 30):
+    def drift(time: float, L: int = Depends(label_delay)):
         sub = df.iloc[: up_to(time)]
         first = int(df["day"].min())
         ref = df[df["day"] < first + 7]

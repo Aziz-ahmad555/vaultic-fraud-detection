@@ -1,4 +1,5 @@
 import { api } from "../api";
+import { LABEL_DELAYS } from "../api/types";
 import { HBars, Legend, Lines } from "../components/Charts";
 import { Empty, ErrorState, Loading } from "../components/States";
 import { fmtMoney } from "../lib/format";
@@ -17,7 +18,7 @@ export function Drift() {
         <div className="toolbar">
           <span className="small muted">Label delay</span>
           <div className="segmented" role="group" aria-label="Label delay">
-            {[0, 7, 30, 60].map((L) => (
+            {LABEL_DELAYS.map((L) => (
               <button key={L} type="button" aria-pressed={asOf.labelDelayDays === L} onClick={() => setLabelDelay(L)}>
                 {L} days
               </button>

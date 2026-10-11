@@ -29,7 +29,7 @@ import type {
   Transaction,
   View,
 } from "../types";
-import { ACTIONS, POLICIES, VIEWS } from "../types";
+import { ACTIONS, LABEL_DELAYS, POLICIES, VIEWS } from "../types";
 import { DAY, FIRST_DAY, LAST_DAY, generate, type Dataset } from "./generate";
 import { MOCK_THRESHOLDS, decide, score } from "./model";
 
@@ -69,6 +69,23 @@ function save(s: Stored) {
 }
 
 const matured = (t: number, asOf: AsOf) => t + asOf.labelDelayDays * DAY <= asOf.time;
+
+/** The label delays the dashboard offers; the mock refuses any other, as the backend does (D125). */
+function checkDelay(asOf: AsOf): AsOf {
+  if (!(LABEL_DELAYS as readonly number[]).includes(asOf.labelDelayDays)) {
+    throw new Error(`Label delay must be one of ${LABEL_DELAYS.join(", ")} days, not ${asOf.labelDelayDays}.`);
+  }
+  return asOf;
+}
+
+/**
+ * The latest day ALL of whose labels are known at the as-of time ((D + 1) * DAY - 1 + L days <=
+ * as-of), always before the as-of day itself (D125); null when there is none.
+ */
+export function maturedDay(asOf: AsOf, firstDay: number): number | null {
+  const last = Math.min(Math.floor((asOf.time - asOf.labelDelayDays * DAY + 1) / DAY) - 1, Math.floor(asOf.time / DAY) - 1);
+  return last >= firstDay ? last : null;
+}
 
 export function createMockApi(seed = 7): Api {
   let data: Dataset | null = null;
@@ -128,6 +145,7 @@ export function createMockApi(seed = 7): Api {
     },
 
     async daySummary(asOf) {
+      checkDelay(asOf);
       const rows = dayRows(asOf);
       const byAction = Object.fromEntries(ACTIONS.map((a) => [a, 0])) as Record<Action, number>;
       let stopped = 0;
@@ -177,6 +195,7 @@ export function createMockApi(seed = 7): Api {
     },
 
     async stream(asOf, from, to) {
+      checkDelay(asOf);
       const end = Math.min(to, asOf.time);
       return upTo({ ...asOf, time: end })
         .filter((t) => t.row.TransactionDT > from && scored(t))
@@ -184,36 +203,40 @@ export function createMockApi(seed = 7): Api {
     },
 
     async transaction(id, asOf) {
+      checkDelay(asOf);
       const t = ds().byId.get(id);
       if (!t || t.row.TransactionDT > asOf.time || !scored(t)) return null;
       return withLabel(t, asOf);
     },
 
     async alerts(asOf) {
+      checkDelay(asOf);
       return dayRows(asOf)
         .filter((t) => ["step_up", "hold", "block"].includes(t.decision.action))
         .sort((a, b) => b.decision.p - a.decision.p);
     },
 
     async customerHistory(uid, asOf) {
+      checkDelay(asOf);
       return upTo(asOf)
         .filter((t) => t.entities.uid === uid)
         .map((t) => withLabel(t, asOf));
     },
 
     async network(asOf, focus) {
+      checkDelay(asOf);
       return buildNetwork(upTo(asOf), asOf, ds(), focus);
     },
 
     async queues(asOf, k) {
+      checkDelay(asOf);
       const today = dayRows(asOf);
-      const lastKnownDay = Math.floor((asOf.time - asOf.labelDelayDays * DAY + 1) / DAY) - 1;
-      const maturedDay = lastKnownDay >= FIRST_DAY ? lastKnownDay : null;
+      const known = maturedDay(asOf, FIRST_DAY);
       const past =
-        maturedDay === null
+        known === null
           ? []
           : ds()
-              .transactions.filter((t) => t.row.day === maturedDay && scored(t))
+              .transactions.filter((t) => t.row.day === known && scored(t))
               .map((t) => withLabel(t, asOf));
       return POLICIES.map((policy): PolicyQueue => {
         const rank = (rows: Transaction[]) =>
@@ -225,7 +248,7 @@ export function createMockApi(seed = 7): Api {
           day: dayOf(asOf),
           cases: rank(today),
           matured: {
-            day: maturedDay,
+            day: known,
             fraudValueCaught: caught.reduce((s, t) => s + t.amount, 0),
             fraudCaught: caught.length,
             reviews: reviewed.length,
@@ -235,6 +258,7 @@ export function createMockApi(seed = 7): Api {
     },
 
     async drift(asOf) {
+      checkDelay(asOf);
       return mockDrift(asOf);
     },
 

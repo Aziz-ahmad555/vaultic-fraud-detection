@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { VIEWS } from "../types";
 import { DAY } from "./generate";
-import { createMockApi } from "./mockApi";
+import { createMockApi, maturedDay } from "./mockApi";
+import { validDelay } from "../../state/app";
 
 const api = createMockApi(7);
 const asOf = (day: number, hour: number, L: number) => ({ time: day * DAY + hour * 3600, labelDelayDays: L });
@@ -64,5 +65,41 @@ describe("mock API as-of rules", () => {
     const { thresholds } = await api.thresholds();
     await expect(api.saveThresholds(thresholds, "analyst")).rejects.toThrow(/Only admins/);
     await expect(api.saveThresholds({ ...thresholds, t_hold: 1 }, "admin")).rejects.toThrow(/must rise/);
+  });
+
+  it("refuses a label delay the dashboard does not offer, on every as-of method (D125)", async () => {
+    for (const L of [-1, 1, 14, 31, 90]) {
+      const a = asOf(140, 12, L);
+      for (const call of [
+        () => api.daySummary(a),
+        () => api.stream(a, 0, a.time),
+        () => api.transaction(3_100_000, a),
+        () => api.alerts(a),
+        () => api.customerHistory("x", a),
+        () => api.network(a),
+        () => api.queues(a, 50),
+        () => api.drift(a),
+      ])
+        await expect(call()).rejects.toThrow(/0, 7, 30, 60/);
+    }
+  });
+
+  it("the matured day is always before the as-of day, also with no label delay", async () => {
+    expect(maturedDay({ time: 141 * DAY + DAY - 1, labelDelayDays: 0 }, 128)).toBe(140);
+    for (let t = 128 * DAY; t < 151 * DAY; t += 7919)
+      for (const L of [0, 7, 30, 60]) {
+        const d = maturedDay({ time: t, labelDelayDays: L }, 1);
+        expect(d).not.toBeNull();
+        expect(d!).toBeLessThan(Math.floor(t / DAY));
+        expect((d! + 1) * DAY - 1 + L * DAY).toBeLessThanOrEqual(t);
+      }
+    const q = await api.queues({ time: 141 * DAY + DAY - 1, labelDelayDays: 0 }, 50);
+    expect(q[0].matured.day).toBe(140);
+  });
+
+  it("a remembered label delay outside the offered ones falls back to 30 days", () => {
+    expect(validDelay(14)).toBe(30);
+    expect(validDelay("7")).toBe(30);
+    for (const L of [0, 7, 30, 60]) expect(validDelay(L)).toBe(L);
   });
 });

@@ -216,3 +216,49 @@ def test_no_block_note_and_whatif_cost_mode(server):
         assert json.loads(r.read())["active"] is False
     back = _get(server, f"/api/day-summary?time={AS_OF}")
     assert back["whatIf"] is False and back["byAction"] == before["byAction"]
+
+
+AS_OF_ENDPOINTS = ("/api/day-summary?time={t}", "/api/stream?time={t}&start=0&end={t}",
+                   "/api/transactions/1000?time={t}", "/api/alerts?time={t}",
+                   "/api/customers/u1/history?time={t}", "/api/network?time={t}",
+                   "/api/queues?time={t}&k=50", "/api/drift?time={t}")  # fmt: skip
+
+
+def _status(base, path):
+    try:
+        with urllib.request.urlopen(base + path) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read())
+
+
+@pytest.mark.parametrize("bad", [-1, 1, 14, 29, 31, 90, 365])
+def test_every_as_of_endpoint_refuses_a_label_delay_outside_the_offered_ones(server, bad):
+    for path in AS_OF_ENDPOINTS:
+        code, body = _status(server, path.format(t=AS_OF) + f"&L={bad}")
+        assert code == 422, path
+        assert "0, 7, 30, 60" in json.dumps(body)
+
+
+@pytest.mark.parametrize("L", [0, 7, 30, 60])
+def test_every_as_of_endpoint_accepts_the_offered_label_delays(server, L):
+    for path in AS_OF_ENDPOINTS:
+        assert _status(server, path.format(t=AS_OF) + f"&L={L}")[0] == 200, path
+
+
+def test_matured_day_is_always_before_the_as_of_day():
+    mod = _load_module()
+    end_of_day = 152 * DAY + DAY - 1  # last second of day 152
+    assert mod.matured_day(end_of_day, 0, 151) == 151  # L = 0 used to give day 152 itself
+    assert mod.matured_day(152 * DAY + 3600, 0, 151) == 151
+    assert mod.matured_day(152 * DAY + 3600, 30, 151) is None  # nothing matured yet
+    # the matured day's last second plus L is never after the as-of time
+    for t in range(151 * DAY, 200 * DAY, 7919):
+        for L in (0, 7, 30, 60):
+            d = mod.matured_day(t, L, 1)
+            assert d < t // DAY and (d + 1) * DAY - 1 + L * DAY <= t
+
+
+def test_queues_matured_day_at_the_end_of_a_day_with_no_label_delay(server):
+    q = _get(server, f"/api/queues?time={152 * DAY + DAY - 1}&k=50&L=0")
+    assert q[0]["matured"]["day"] == 151

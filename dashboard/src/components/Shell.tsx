@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { DATA_SOURCE } from "../api";
+import { LABEL_DELAYS } from "../api/types";
 import { HTTP_SOURCE_LABEL, SCORE_SOURCE } from "../api/http/httpApi";
 import { DAY, fmtClock } from "../lib/format";
 import { isTyping, useApp } from "../state/app";
@@ -48,7 +49,7 @@ function AsOfControl() {
       <label className="asof-delay">
         <span>Label delay</span>
         <select value={asOf.labelDelayDays} onChange={(e) => setLabelDelay(Number(e.target.value))}>
-          {[0, 7, 30, 60].map((d) => (
+          {LABEL_DELAYS.map((d) => (
             <option key={d} value={d}>
               {d} days
             </option>

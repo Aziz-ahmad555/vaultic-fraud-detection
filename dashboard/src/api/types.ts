@@ -144,6 +144,9 @@ export interface ScoreResult {
   decision: DecisionRecord;
 }
 
+/** The label delays (days) the dashboard offers; the backend refuses any other (D125). */
+export const LABEL_DELAYS = [0, 7, 30, 60] as const;
+
 export interface AsOf {
   time: number; // seconds on the dataset clock
   labelDelayDays: number;
