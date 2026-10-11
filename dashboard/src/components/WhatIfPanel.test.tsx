@@ -46,4 +46,20 @@ describe("null thresholds render as never (D134)", () => {
     expect(text).toContain("monitor 0.50, step-up 3.25, hold never");
     expect(text).toContain("block never; hold on view disagreement from never");
   });
+
+  it("an emptied cost field keeps its value instead of being sent as 0 (D137)", async () => {
+    whatIf.mockClear();
+    render(
+      <AppProvider>
+        <WhatIfPanel />
+      </AppProvider>,
+    );
+    const fp = (await screen.findAllByLabelText("False positive cost ($)")).at(-1) as HTMLInputElement;
+    fireEvent.change(fp, { target: { value: "" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Apply what-if costs" }).at(-1)!);
+    await waitFor(() => expect(whatIf.mock.calls.some(([c]) => c !== null)).toBe(true));
+    const sent = whatIf.mock.calls.map(([c]) => c).find((c) => c !== null) as Record<string, number>;
+    expect(sent.c_fp).toBe(10); // the current cost, not 0
+    expect(sent.c_rev).toBe(5);
+  });
 });

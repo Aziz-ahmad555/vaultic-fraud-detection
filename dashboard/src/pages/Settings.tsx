@@ -6,6 +6,7 @@ import { ACTION_LABEL } from "../api/types";
 import { LockIcon, WhatIfReportNote } from "../components/Badges";
 import { WhatIfPanel } from "../components/WhatIfPanel";
 import { ErrorState, Loading } from "../components/States";
+import { parseField, parseNullableField, toField } from "../lib/fields";
 import { fmtClock, fmtInt, fmtMoney } from "../lib/format";
 import { useData } from "../lib/useData";
 import { asOfKey } from "../lib/whatIf";
@@ -23,9 +24,14 @@ export function Settings() {
   const summary = useData(() => api.daySummary(asOf), [asOfKey(asOf)]);
   const [nonce, setNonce] = useState(0);
   const log = useData(() => api.auditLog(), [nonce]);
-  const [draft, setDraft] = useState<Thresholds | null>(null);
+  // fields as text: an emptied Monitor / Step-up / Hold field keeps its value; an empty Block or
+  // disagreement field means "never", as the placeholder says (D137)
+  const [draft, setDraft] = useState<Record<keyof Thresholds, string> | null>(null);
   useEffect(() => {
-    if (cfg.data) setDraft(cfg.data.thresholds);
+    if (cfg.data) {
+      const th = cfg.data.thresholds;
+      setDraft({ t_monitor: toField(th.t_monitor), t_step: toField(th.t_step), t_hold: toField(th.t_hold), t_block: toField(th.t_block), t_dis: toField(th.t_dis) });
+    }
   }, [cfg.data]);
   // real-data backend: the final run's frozen thresholds, read-only for every role (D129)
   const frozen = cfg.data?.frozen === true;
@@ -33,9 +39,18 @@ export function Settings() {
   const editable = admin && !frozen;
 
   const saveThresholds = async () => {
-    if (!draft) return;
+    if (!draft || !cfg.data) return;
+    const now = cfg.data.thresholds;
+    const keep = (k: "t_monitor" | "t_step" | "t_hold") => (draft[k].trim() === "" ? now[k] : parseField(draft[k], now[k] ?? 0));
+    const next: Thresholds = {
+      t_monitor: keep("t_monitor"),
+      t_step: keep("t_step"),
+      t_hold: keep("t_hold"),
+      t_block: parseNullableField(draft.t_block, now.t_block),
+      t_dis: parseNullableField(draft.t_dis, now.t_dis),
+    };
     try {
-      await api.saveThresholds(draft, role);
+      await api.saveThresholds(next, role);
       toast("Thresholds saved");
       setNonce((n) => n + 1);
     } catch (e) {
@@ -114,19 +129,19 @@ export function Settings() {
                     min={0}
                     step={1}
                     placeholder="never"
-                    value={draft[f.key] ?? ""}
+                    value={draft[f.key]}
                     disabled={!editable}
-                    onChange={(e) => setDraft({ ...draft, [f.key]: Number(e.target.value) })}
+                    onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })}
                   />
                 </label>
               ))}
               <label className="field">
                 <span>{ACTION_LABEL.block} from expected loss ($)</span>
-                <input type="number" min={0} step={1} placeholder="never" value={draft.t_block ?? ""} disabled={!editable} onChange={(e) => setDraft({ ...draft, t_block: e.target.value === "" ? null : Number(e.target.value) })} />
+                <input type="number" min={0} step={1} placeholder="never" value={draft.t_block} disabled={!editable} onChange={(e) => setDraft({ ...draft, t_block: e.target.value })} />
               </label>
               <label className="field">
                 <span>Hold when view disagreement is at least</span>
-                <input type="number" min={0} max={1} step={0.05} placeholder="never" value={draft.t_dis ?? ""} disabled={!editable} onChange={(e) => setDraft({ ...draft, t_dis: e.target.value === "" ? null : Number(e.target.value) })} />
+                <input type="number" min={0} max={1} step={0.05} placeholder="never" value={draft.t_dis} disabled={!editable} onChange={(e) => setDraft({ ...draft, t_dis: e.target.value })} />
               </label>
               {!frozen && (
                 <div className="actions" style={{ alignSelf: "end" }}>

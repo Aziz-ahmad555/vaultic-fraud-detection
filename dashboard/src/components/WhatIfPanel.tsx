@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { CostModel } from "../api/types";
+import { parseField, toField } from "../lib/fields";
 import { fmtThreshold } from "../lib/format";
 import { useData } from "../lib/useData";
 import { whatIfKey } from "../lib/whatIf";
@@ -25,9 +26,11 @@ export function WhatIfPanel() {
   const { toast, whatIf, setWhatIf } = useApp();
   // the status of the CURRENT setting: frozen costs for the evaluated system, else the re-chosen thresholds
   const status = useData(() => (api.whatIf ? api.whatIf(whatIf) : Promise.resolve(null)), [whatIfKey(whatIf)]);
-  const [draft, setDraft] = useState<CostModel | null>(null);
+  // fields as text: an emptied field keeps its current value instead of becoming 0 (D137)
+  const [draft, setDraft] = useState<Record<keyof CostModel, string> | null>(null);
   useEffect(() => {
-    if (status.data && !draft) setDraft(status.data.cost);
+    if (status.data && !draft)
+      setDraft(Object.fromEntries(FIELDS.map((f) => [f.key, toField(status.data!.cost[f.key] ?? 1)])) as Record<keyof CostModel, string>);
   }, [status.data, draft]);
 
   if (!api.whatIf || !status.data?.available) return null;
@@ -61,7 +64,8 @@ export function WhatIfPanel() {
             className="threshold-form"
             onSubmit={(e) => {
               e.preventDefault();
-              apply(draft);
+              const current = status.data!.cost;
+              apply(Object.fromEntries(FIELDS.map((f) => [f.key, parseField(draft[f.key], current[f.key] ?? 1)])) as unknown as CostModel);
             }}
           >
             {FIELDS.map((f) => (
@@ -72,8 +76,8 @@ export function WhatIfPanel() {
                   min={0}
                   max={f.max}
                   step={f.step}
-                  value={draft[f.key] ?? 1}
-                  onChange={(e) => setDraft({ ...draft, [f.key]: Number(e.target.value) })}
+                  value={draft[f.key]}
+                  onChange={(e) => setDraft({ ...draft, [f.key]: e.target.value })}
                 />
               </label>
             ))}
