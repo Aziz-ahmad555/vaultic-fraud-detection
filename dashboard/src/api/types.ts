@@ -239,6 +239,8 @@ export interface RetrainEvent {
   accepted: boolean;
 }
 export interface DriftReport {
+  /** what today is compared with; never data after the as-of time (D130) */
+  reference?: string;
   featurePsi: { feature: string; psi: number }[];
   scorePsi: DriftSeriesPoint[];
   disagreement: DriftSeriesPoint[];

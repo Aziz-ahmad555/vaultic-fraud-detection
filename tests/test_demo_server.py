@@ -1,6 +1,7 @@
 """Demo backend endpoints (services/api/demo_server.py) on a small synthetic bundle, served by a
 real uvicorn server and called over HTTP (standard library only)."""
 
+import contextlib
 import importlib.util
 import json
 import socket
@@ -76,11 +77,10 @@ def _bundle(tmp_path: Path) -> Path:
     return path
 
 
-@pytest.fixture(scope="module")
-def server(tmp_path_factory):
+@contextlib.contextmanager
+def _serve(app):
     import uvicorn
 
-    app = _load_module().create_app(_bundle(tmp_path_factory.mktemp("bundle")))
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
@@ -91,9 +91,17 @@ def server(tmp_path_factory):
         if srv.started:
             break
         time.sleep(0.05)
-    yield f"http://127.0.0.1:{port}"
-    srv.should_exit = True
-    thread.join(timeout=5)
+    try:
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        srv.should_exit = True
+        thread.join(timeout=5)
+
+
+@pytest.fixture(scope="module")
+def server(tmp_path_factory):
+    with _serve(_load_module().create_app(_bundle(tmp_path_factory.mktemp("bundle")))) as base:
+        yield base
 
 
 def _get(base, path):
@@ -157,7 +165,13 @@ def test_day_summary_alerts_queues_history_network(server):
 
 def test_drift_lab_score_thresholds_feedback_audit(server):
     d = _get(server, f"/api/drift?time={AS_OF}")
-    assert d["alarms"] == [] and d["retrains"] == [] and len(d["featurePsi"]) == 5
+    assert d["alarms"] == [] and d["retrains"] == []
+    assert "147-150" in d["reference"]
+    assert {f["feature"] for f in d["featurePsi"]} <= {
+        "fused risk score",
+        "amount",
+        "view disagreement",
+    }  # the inputs the reference has
     assert _get(server, "/api/lab")["runs"][0]["id"] == "MVAF"
     code, _ = _send(server, "/api/score", {}, "POST")
     assert code == 501
@@ -357,3 +371,21 @@ def test_whatif_changes_decisions_but_not_scores(server):
     assert [t["row"]["TransactionID"] for t in plain] == [t["row"]["TransactionID"] for t in what]
     assert [t["decision"]["p"] for t in plain] == [t["decision"]["p"] for t in what]
     assert [t["decision"]["action"] for t in plain] != [t["decision"]["action"] for t in what]
+
+
+def test_drift_never_uses_anything_after_the_as_of_time(tmp_path):
+    """D130: the reference is the calibration days; drift at as-of is the same whether or not
+    the bundle holds later rows."""
+    (tmp_path / "full").mkdir()
+    full = _bundle(tmp_path / "full")
+    cut = tmp_path / "cut"
+    cut.mkdir()
+    df = pd.read_parquet(full)
+    df[df["TransactionDT"] <= AS_OF].to_parquet(cut / full.name, index=False)
+    (cut / full.with_suffix(".json").name).write_text(full.with_suffix(".json").read_text("utf-8"))
+    cal = full.with_name("demo_final_calibration.parquet")
+    (cut / cal.name).write_bytes(cal.read_bytes())
+    mod = _load_module()
+    with _serve(mod.create_app(full)) as a, _serve(mod.create_app(cut / full.name)) as b:
+        da, db = (_get(x, f"/api/drift?time={AS_OF}") for x in (a, b))
+    assert da == db and da["scorePsi"] and da["featurePsi"]

@@ -464,14 +464,20 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
 
     @app.get("/api/drift")
     def drift(time: float, L: LabelDelay):
+        """PSI of the test period up to the as-of time against the calibration days 147-150
+        (demo_final_calibration.parquet), which end before the test period starts: the reference
+        never contains anything after the as-of time (D130). Only inputs present in both are
+        compared: the fused (calibrated) risk score, the amount and the view disagreement, plus
+        each view score if the calibration file carries it. A day or input with fewer than 10
+        values is left out, never shown as 0."""
         sub = df.iloc[: up_to(time)]
-        first = int(df["day"].min())
-        ref = df[df["day"] < first + 7]
+        if cal is None:
+            raise HTTPException(501, "Drift needs demo_final_calibration.parquet as its reference.")
 
         def psi(a, b):
             a, b = a[np.isfinite(a)], b[np.isfinite(b)]
             if len(a) < 10 or len(b) < 10:
-                return 0.0
+                return None
             edges = np.unique(np.quantile(a, np.linspace(0, 1, 11)))
             edges[0], edges[-1] = -np.inf, np.inf
             pa = np.histogram(a, edges)[0] / len(a) + 1e-4
@@ -479,17 +485,22 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
             return float(np.sum((pb - pa) * np.log(pb / pa)))
 
         days = sorted(sub["day"].unique())
-        score_psi = [{"day": int(dd), "value": psi(ref["p_raw"].to_numpy(),
-                                                   sub.loc[sub["day"] == dd, "p_raw"].to_numpy())}
-                     for dd in days]  # fmt: skip
+        ref_p = cal["p"].to_numpy(dtype=float)
+        score_psi = [{"day": int(dd), "value": v} for dd in days
+                     if (v := psi(ref_p, sub.loc[sub["day"] == dd, "p"].to_numpy(dtype=float)))
+                     is not None]  # fmt: skip
         dis = [{"day": int(dd), "value": float(sub.loc[sub["day"] == dd, "disagreement"].mean())}
                for dd in days]  # fmt: skip
         today = sub[sub["day"] == int(time // DAY)]
-        feats = [{"feature": f"view score: {v}", "psi": psi(ref[f"p_{v}"].to_numpy(),
-                                                            today[f"p_{v}"].to_numpy())}
-                 for v in VIEWS]  # fmt: skip
+        inputs_ = [("fused risk score", "p"), ("amount", "amount"),
+                   ("view disagreement", "disagreement")]  # fmt: skip
+        inputs_ += [(f"view score: {v}", f"p_{v}") for v in VIEWS if f"p_{v}" in cal]
+        feats = [{"feature": name, "psi": v} for name, col in inputs_
+                 if (v := psi(cal[col].to_numpy(dtype=float), today[col].to_numpy(dtype=float)))
+                 is not None]  # fmt: skip
         # no drift detectors, injected drifts or retraining ran on the final run (Phase 10)
         return {
+            "reference": "calibration days 147-150 (before the test period)",
             "featurePsi": feats,
             "scorePsi": score_psi,
             "disagreement": dis,

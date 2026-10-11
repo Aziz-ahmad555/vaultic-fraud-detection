@@ -8,7 +8,9 @@ import { asOfKey } from "../lib/whatIf";
 import { useApp } from "../state/app";
 
 export function Drift() {
-  const { asOf, setLabelDelay } = useApp();
+  const { asOf, setLabelDelay, range } = useApp();
+  const firstDay = Math.floor(range.first / 86400);
+  const lastDay = Math.floor(range.last / 86400);
   const d = useData(() => api.drift(asOf), [asOfKey(asOf)]);
   const today = Math.floor(asOf.time / 86400);
 
@@ -39,6 +41,7 @@ export function Drift() {
             <section className="pane">
               <div className="pane-head">
                 <h2>Feature drift (PSI, today vs reference)</h2>
+                {d.data.reference && <span className="muted small">Reference: {d.data.reference}</span>}
               </div>
               <div className="pane-body">
                 <HBars
@@ -78,11 +81,11 @@ export function Drift() {
             <div className="pane-body">
               <svg viewBox="0 0 900 96" width={900} height={96} style={{ maxWidth: "100%", height: "auto" }} role="img" aria-label={`Timeline: ${d.data.alarms.length} alarms, ${d.data.retrains.length} retraining attempts`} className="chart">
                 {(() => {
-                  const x = (day: number) => 20 + ((day - 128) / (150 - 128)) * 860;
+                  const x = (day: number) => 20 + ((day - firstDay) / Math.max(lastDay - firstDay, 1)) * 860;
                   return (
                     <>
                       <line x1={20} x2={880} y1={50} y2={50} stroke="var(--graphite)" />
-                      {Array.from({ length: 23 }, (_, i) => 128 + i).map((day) => (
+                      {Array.from({ length: lastDay - firstDay + 1 }, (_, i) => firstDay + i).map((day) => (
                         <text key={day} x={x(day)} y={92} textAnchor="middle" className="chart-tick">{day % 2 === 0 ? day : ""}</text>
                       ))}
                       {d.data.injected.map((i) => (
