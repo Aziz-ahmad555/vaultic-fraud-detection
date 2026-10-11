@@ -145,8 +145,11 @@ def choose_thresholds(
     cost: CostModel = DEFAULT_COST,
     grid_size: int = 15,
     monitor_share: float = 0.05,
+    allow_block: bool = True,
 ) -> tuple[Thresholds, dict]:
-    """Thresholds minimising total cost on VALIDATION rows (pass validation arrays only)."""
+    """Thresholds minimising total cost on VALIDATION rows (pass validation arrays only).
+    allow_block=False keeps t_block at inf and optimises the other thresholds without Block
+    (the 'without Block' policy of the post-hoc comparison, D145)."""
     el = np.asarray(p, dtype=float) * np.asarray(amount, dtype=float)
     per = cost.per_action(y, amount)
     n = len(el)
@@ -162,7 +165,7 @@ def choose_thresholds(
     rows = np.arange(n)
     for t_dis in dis_grid[::-1]:  # inf first: no disagreement rule unless it pays
         hold_dis = d >= t_dis
-        for t_block in grid[::-1]:
+        for t_block in grid[::-1] if allow_block else np.array([np.inf]):
             block = (el >= t_block) & confident_fraud
             for t_hold in grid[grid <= t_block][::-1]:
                 hold = ((el >= t_hold) | hold_dis) & ~block
@@ -178,7 +181,7 @@ def choose_thresholds(
     t_monitor = float(np.quantile(allowed, 1 - monitor_share)) if len(allowed) else t_step
     th = Thresholds(min(t_monitor, t_step), t_step, t_hold, t_block, t_dis)
     info = {"validation_cost": float(best_cost), "cost_model": asdict(cost),
-            "grid_size": grid_size, "monitor_share": monitor_share}  # fmt: skip
+            "grid_size": grid_size, "monitor_share": monitor_share, "allow_block": allow_block}  # fmt: skip
     return th, info
 
 

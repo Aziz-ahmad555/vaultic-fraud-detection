@@ -73,7 +73,6 @@ def main() -> None:
     from vaultic.trust.decision import (
         DEFAULT_COST,
         CostModel,
-        Thresholds,
         choose_thresholds,
         decide,
         total_cost,
@@ -97,17 +96,18 @@ def main() -> None:
     rows = sweep(cal, test)
     base = {(r["c_fp"], r["step_up_success_rate"], r["legit_step_up_friction"], r["c_step"]): r
             for r in rows if r["hold_success_rate"] == 1.0}  # fmt: skip
-    # cost under each hold_success_rate if Block were forbidden (thresholds re-chosen without it)
+    # cost under each hold_success_rate of the policy re-chosen with Block disabled (D145)
     for r in rows:
         key = (r["c_fp"], r["step_up_success_rate"], r["legit_step_up_friction"], r["c_step"])
         r["cost_change_vs_hold_1"] = r["test_cost"] - base[key]["test_cost"]
         if r["block_reachable"]:
             cost = CostModel(r["c_fp"], DEFAULT_COST.c_rev, r["c_step"], r["step_up_success_rate"],
                              r["legit_step_up_friction"], hold_success_rate=r["hold_success_rate"])  # fmt: skip
-            t2, _ = choose_thresholds(cal["p"].to_numpy(), cal["amount"].to_numpy(), cal["label"].to_numpy(),
-                                      cal["conformal_set"].to_numpy(object), cal["disagreement"].to_numpy(),
-                                      cost=cost)  # fmt: skip
-            no_block = Thresholds(t2.t_monitor, t2.t_step, t2.t_hold, float("inf"), t2.t_dis)
+            no_block, _ = choose_thresholds(cal["p"].to_numpy(), cal["amount"].to_numpy(),
+                                            cal["label"].to_numpy(),
+                                            cal["conformal_set"].to_numpy(object),
+                                            cal["disagreement"].to_numpy(), cost=cost,
+                                            allow_block=False)  # fmt: skip
             a = decide(test["p"].to_numpy(), test["amount"].to_numpy(), no_block,
                        test["conformal_set"].to_numpy(object), test["disagreement"].to_numpy())  # fmt: skip
             r["test_cost_if_never_block"] = total_cost(
@@ -134,7 +134,9 @@ def main() -> None:
               "rows": int(len(test)), "frauds": int(test["label"].sum()), "summary": summary,
               "default_costs": default, "grid": rows}  # fmt: skip
     OUT_JSON.write_text(json.dumps(result, indent=1), encoding="utf-8")
-    write_md(result)
+    from vaultic.reports.render_saved import keep_hand_section
+
+    keep_hand_section(OUT_MD, lambda: write_md(result))  # the reading is hand-written
     print(f"wrote {OUT_MD} and {OUT_JSON}")
 
 
@@ -150,8 +152,9 @@ def write_md(r: dict) -> None:
              f"hold_success_rate. Inputs reproduce E12's default cost (${r['e12_default_cost']:,.2f}). "
              "Cost change: test total cost minus the same setting with hold_success_rate = 1.0, each "
              "under its own cost model (a leakier Hold makes every held fraud dearer, so costs rise). "
-             "Saving from Block: test cost with Block forbidden (thresholds otherwise the same) minus "
-             "the cost with the chosen thresholds.", "",
+             "Saving from Block: test cost of the policy re-chosen on the calibration days with Block "
+             "disabled (D145) minus the test cost of the chosen policy; negative where the re-chosen "
+             "policy without Block does better on the test period.", "",
              "| hold_success_rate | settings where Block is reachable | mean share of test rows blocked | max share blocked | mean cost change vs 1.0 ($) | mean saving from Block ($) |",
              "|---|---|---|---|---|---|"]  # fmt: skip
     for s in r["summary"]:
