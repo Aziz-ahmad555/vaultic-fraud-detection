@@ -1,4 +1,4 @@
-import { api } from "../api";
+import { api, DATA_SOURCE } from "../api";
 import { LABEL_DELAYS } from "../api/types";
 import { HBars, Legend, Lines } from "../components/Charts";
 import { Empty, ErrorState, Loading } from "../components/States";
@@ -125,7 +125,11 @@ export function Drift() {
               <span className="muted small">A challenger needs a significant PR-AUC gain (95% CI above 0) and no higher cost (D45)</span>
             </div>
             {d.data.retrains.length === 0 ? (
-              <Empty title="No retraining attempts yet">They appear after a drift alarm. Move the as-of date past the injected drift on day 139.</Empty>
+              <Empty title="No retraining attempts yet">
+                {DATA_SOURCE === "http"
+                  ? "No drift detectors, injected drifts or retraining were run on the final run, so none are shown."
+                  : "They appear after a drift alarm. Move the as-of date past the injected drift on day 139."}
+              </Empty>
             ) : (
               <div className="table-wrap">
                 <table className="data">

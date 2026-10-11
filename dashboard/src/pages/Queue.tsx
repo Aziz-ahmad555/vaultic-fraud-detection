@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../api";
+import { api, DATA_SOURCE } from "../api";
 import type { Policy, PolicyQueue, Transaction } from "../api/types";
 import { POLICIES, POLICY_LABEL, ROUTING_BUDGETS } from "../api/types";
 import { DecisionBadge, RiskCell } from "../components/Badges";
@@ -67,7 +67,7 @@ export function Queue() {
             </div>
             <div className="pane-body">
               {matured === null ? (
-                <p className="muted">Labels arrive {asOf.labelDelayDays} days late, so no day of the mock data has known outcomes yet. Shorten the label delay or move the as-of date forward.</p>
+                <p className="muted">Labels arrive {asOf.labelDelayDays} days late, so no day of the {DATA_SOURCE === "http" ? "test period" : "mock data"} has known outcomes yet. Shorten the label delay or move the as-of date forward.</p>
               ) : (
                 <HBars
                   labelWidth={300}

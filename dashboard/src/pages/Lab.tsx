@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api } from "../api";
+import { api, DATA_SOURCE } from "../api";
 import { HeatMap, Legend, Lines } from "../components/Charts";
 import { ErrorState, Loading } from "../components/States";
 import { fmtMoney, fmtPct } from "../lib/format";
@@ -12,6 +12,9 @@ const RUN_STYLE = [
   { color: "var(--ink)", dashed: true },
   { color: "var(--graphite)", dashed: false },
 ];
+
+/** What the numbers on this page are (D138). */
+const NUMBERS = DATA_SOURCE === "http" ? "final run, test period" : "mock numbers";
 
 export function Lab() {
   const lab = useData(() => api.lab(), []);
@@ -28,7 +31,11 @@ export function Lab() {
     <div className="page">
       <div className="page-head">
         <h1>Model lab</h1>
-        <p className="mock-note small">Mock runs: synthetic curves and numbers to lay out the page. They are not results.</p>
+        <p className="mock-note small">
+          {DATA_SOURCE === "http"
+            ? "EXP-200-final, test period: the E10 runs as stored with the final run (D138)."
+            : "Mock runs: synthetic curves and numbers to lay out the page. They are not results."}
+        </p>
       </div>
       <section className="pane">
         <div className="pane-head">
@@ -46,7 +53,7 @@ export function Lab() {
       </section>
       <div className="grid-2">
         <section className="pane">
-          <div className="pane-head"><h2>Precision–recall curves <span className="muted small">mock numbers</span></h2></div>
+          <div className="pane-head"><h2>Precision–recall curves <span className="muted small">{NUMBERS}</span></h2></div>
           <div className="pane-body">
             <Lines
               xDomain={[0, 1]}
@@ -59,7 +66,7 @@ export function Lab() {
           </div>
         </section>
         <section className="pane">
-          <div className="pane-head"><h2>Calibration <span className="muted small">mock numbers</span></h2></div>
+          <div className="pane-head"><h2>Calibration <span className="muted small">{NUMBERS}</span></h2></div>
           <div className="pane-body">
             <Lines
               xDomain={[0, 1]}
@@ -75,7 +82,7 @@ export function Lab() {
       </div>
       <div className="grid-2">
         <section className="pane">
-          <div className="pane-head"><h2>Ablation: adding views to B5 <span className="muted small">mock numbers</span></h2></div>
+          <div className="pane-head"><h2>Ablation: adding views to B5 <span className="muted small">{NUMBERS}</span></h2></div>
           <div className="table-wrap">
             <table className="data">
               <caption className="visually-hidden">Ablation table</caption>
@@ -106,7 +113,7 @@ export function Lab() {
           </div>
         </section>
         <section className="pane">
-          <div className="pane-head"><h2>Fusion: F1–F7 vs MVAF <span className="muted small">mock numbers</span></h2></div>
+          <div className="pane-head"><h2>Fusion: F1–F7 vs MVAF <span className="muted small">{NUMBERS}</span></h2></div>
           <div className="table-wrap">
             <table className="data">
               <caption className="visually-hidden">Fusion comparison</caption>
@@ -134,7 +141,7 @@ export function Lab() {
       </div>
       <section className="pane">
         <div className="pane-head">
-          <h2>Cost sensitivity <span className="muted small">mock numbers</span></h2>
+          <h2>Cost sensitivity <span className="muted small">{NUMBERS}</span></h2>
           <span className="muted small">Total cost by false-positive cost and step-up success rate (darker = costlier)</span>
         </div>
         <div className="pane-body">

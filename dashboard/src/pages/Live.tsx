@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../api";
+import { api, DATA_SOURCE } from "../api";
 import type { Action, Transaction } from "../api/types";
 import { ACTIONS, ACTION_LABEL } from "../api/types";
 import { DecisionBadge, RiskCell, setText } from "../components/Badges";
@@ -11,6 +11,13 @@ import { fmtClock, fmtMoney2 } from "../lib/format";
 import { useApp } from "../state/app";
 
 const SPEEDS = [1, 100, 1000] as const;
+
+/** Name of the replayed data, from the data source (D138). */
+export const streamName = (source: "mock" | "http") => (source === "http" ? "IEEE-CIS test period (final run)" : "synthetic mock data");
+
+/** Toast when the replay reaches the last transaction time of the data (D138). */
+export const replayEndText = (source: "mock" | "http", last: number) =>
+  `Replay reached the end of the ${streamName(source)} (${fmtClock(last)})`;
 const TICK_MS = 250;
 const KEEP = 250;
 
@@ -41,7 +48,7 @@ export function Live() {
       const to = Math.min(from + (TICK_MS / 1000) * speed, range.last);
       if (to >= range.last) {
         setPlaying(false);
-        toast("Replay reached the end of the mock data (day 150)");
+        toast(replayEndText(DATA_SOURCE, range.last));
       }
       const txs = await api.stream({ ...asOf, time: to }, from, to);
       setClock(to);
@@ -67,7 +74,8 @@ export function Live() {
       <div className="page-head">
         <h1>Live monitor</h1>
         <p className="muted small">
-          Replays the mock stream from the as-of time. Replay clock <strong className="num">{fmtClock(clock)}</strong>
+          Replays the {streamName(DATA_SOURCE)} from the as-of time ({fmtClock(asOf.time)}). Replay clock <strong className="num">{fmtClock(clock)}</strong>
+          {clock > asOf.time && " (ahead of the as-of time; outcome labels are shown as known at the replay clock; other pages stay at the as-of time)"}
         </p>
       </div>
       <div className="toolbar" role="toolbar" aria-label="Replay controls">
