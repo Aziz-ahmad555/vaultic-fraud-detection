@@ -104,6 +104,8 @@ def main() -> None:
 
 
 def write_md(r: dict) -> None:
+    from vaultic.eval.bootstrap import format_p
+
     g0, g1 = r["gate_rows_preregistered"], r["gate_rows_mature"]
     lines = ["# E10 with label-mature gate folds (POST-HOC / EXPLORATORY)", "",
              "**POST-HOC / EXPLORATORY (D141; disclosure D140).** Not pre-registered; every E10 number in "
@@ -112,7 +114,9 @@ def write_md(r: dict) -> None:
              f"The three cross-fitted gate folds are rebuilt with {r['maturity_days']}-day label maturity "
              "(each fold's view models train only on labels released by the start of its predicted block); "
              "the first fold (1-30 -> 31-60) has no released labels under maturity and is left out (D147); "
-             "the fixed fold is unchanged, so the test-period view scores equal the final run's (max |diff| "
+             "the fixed fold is unchanged, so its gate rows on validation days 128-143 keep their immature "
+             "view scores (the sensitivity removes the freshness advantage for the cross-fitted folds only) "
+             "and the test-period view scores equal the final run's (max |diff| "
              f"{r['test_view_scores_max_abs_diff']:.1e}). Gate rows (fit + tune): {g0[0]:,} ({g0[1]:,} frauds) "
              f"pre-registered, {g1[0]:,} ({g1[1]:,} frauds) with mature folds. The gate methods are refitted "
              "with their D95 settings (not re-tuned), seeds 0-4. Test period of final run "
@@ -126,7 +130,7 @@ def write_md(r: dict) -> None:
         else:
             lines.append(f"| {m['method']} | {m['pr_auc_preregistered']:.4f} | {m['pr_auc_mature_gate']:.4f} "
                          f"[{m['ci_low']:.4f}, {m['ci_high']:.4f}] | {m['diff']:+.4f} "
-                         f"[{m['diff_ci_low']:+.4f}, {m['diff_ci_high']:+.4f}] | {m['p_value']:.3f} |")  # fmt: skip
+                         f"[{m['diff_ci_low']:+.4f}, {m['diff_ci_high']:+.4f}] | {format_p(m['p_value'])} |")  # fmt: skip
     lines += ["", "## Reading (added by hand, not generated)", "", "_To be written._", ""]
     OUT_MD.write_text("\n".join(lines), encoding="utf-8")
 
