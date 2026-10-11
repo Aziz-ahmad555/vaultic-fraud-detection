@@ -159,7 +159,7 @@ def test_day_summary_alerts_queues_history_network(server):
     assert q[0]["matured"]["day"] is None  # no labelled day yet at as-of
     h = _get(server, f"/api/customers/u1/history?time={AS_OF}")
     assert all(t["entities"]["uid"] == "u1" for t in h)
-    net = _get(server, f"/api/network?time={AS_OF}&focus=u1")
+    net = _get(server, f"/api/network?time={AS_OF}&focus=uid:u1")
     assert any(n["id"] == "uid:u1" for n in net["nodes"])
 
 
@@ -389,3 +389,43 @@ def test_drift_never_uses_anything_after_the_as_of_time(tmp_path):
     with _serve(mod.create_app(full)) as a, _serve(mod.create_app(cut / full.name)) as b:
         da, db = (_get(x, f"/api/drift?time={AS_OF}") for x in (a, b))
     assert da == db and da["scorePsi"] and da["featurePsi"]
+
+
+def _two_hops(df: pd.DataFrame, kind: str, value: str) -> set[str]:
+    """Reference: the mock's rule (two links from the focus; email / address hubs are not
+    expanded unless they are the focus)."""
+    entities = ("card", "email", "address", "device")
+    keep, frontier = {(kind, value)}, [(kind, value)]
+    for _ in range(2):
+        nxt = []
+        for k, v in frontier:
+            if k in ("email", "address") and (k, v) != (kind, value):
+                continue
+            rows = df[df[k] == v]
+            nbrs = ([(e, x) for e in entities for x in rows[e].dropna().unique()] if k == "uid"
+                    else [("uid", u) for u in rows["uid"].unique()])  # fmt: skip
+            for nb in nbrs:
+                if nb not in keep:
+                    keep.add(nb)
+                    nxt.append(nb)
+        frontier = nxt
+    return {f"{k}:{v}" for k, v in keep}
+
+
+def test_network_focus_matches_its_column_only_and_expands_two_hops(server, tmp_path):
+    df = pd.read_parquet(_bundle(tmp_path))
+    df = df[df["TransactionDT"] <= AS_OF]
+    for focus in ("uid:u1", "card:c2", "email:gmail.com", "address:325"):
+        net = _get(server, f"/api/network?time={AS_OF}&focus={urllib.parse.quote(focus)}")
+        kind, value = focus.split(":", 1)
+        assert {n["id"] for n in net["nodes"]} == _two_hops(df, kind, value), focus
+        ids = {n["id"] for n in net["nodes"]}
+        assert all(e["source"] in ids and e["target"] in ids for e in net["edges"])
+        assert all(e["time"] <= AS_OF for e in net["edges"]) and net["whatIf"] is False
+    # the prefix names the column: "c2" is a card, not a customer; no prefix is refused
+    assert _get(server, f"/api/network?time={AS_OF}&focus=uid:c2")["nodes"] == []
+    for bad in ("u1", "colour:red", "uid:"):
+        assert _status(server, f"/api/network?time={AS_OF}&focus={bad}")[0] == 422, bad
+    # a customer reaches other customers through a shared card (two hops) ...
+    u1 = {n["id"] for n in _get(server, f"/api/network?time={AS_OF}&focus=uid:u1")["nodes"]}
+    assert any(i.startswith("uid:") and i != "uid:u1" for i in u1)

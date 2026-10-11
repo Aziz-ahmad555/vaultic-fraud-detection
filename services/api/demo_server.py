@@ -136,6 +136,11 @@ WhatIfDep = Annotated[dict | None, Depends(whatif_params)]
 
 
 SHARED_WINDOW_DAYS = 7
+ENTITY_KINDS = ("card", "email", "address", "device")
+HUB_KINDS = ("email", "address")  # one domain / region links most customers: never expanded
+MAX_NODES = (
+    160  # a focused network stops growing here (the mock stops after the hop that passes it)
+)
 
 
 def bundle_inputs(df: pd.DataFrame) -> pd.DataFrame:
@@ -208,6 +213,9 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
     dt = df["TransactionDT"].to_numpy()
     by_id = {int(t): i for i, t in enumerate(df["TransactionID"].to_numpy())}
     inputs = bundle_inputs(df)  # exact where the bundle supports it, else not available (D126)
+    # row positions (time order) of every customer and entity, for the focused network (D131)
+    rows_of = {k: {v: idx for v, idx in df.groupby(k, sort=False).indices.items()}
+               for k in ("uid", *ENTITY_KINDS)}  # fmt: skip
     # t_dis = inf (disagreement rule off) on the Python side is null in the contract
     thresholds = {k: _none(float(v)) if v is not None else None
                   for k, v in meta["thresholds"].items()}  # fmt: skip
@@ -387,24 +395,72 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
         act = decisions(w)[0]
         return [transaction(int(i), time, L, act, w is not None) for i in idx]
 
+    def node_rows(kind: str, value, n: int) -> np.ndarray:
+        idx = rows_of[kind].get(value)
+        return np.empty(0, int) if idx is None else idx[idx < n]
+
+    def focused_network(focus: str, n: int, time: float, L: int) -> dict:
+        """The entities within two links of the focus, as the mock (D131): the focus's
+        `kind:` prefix names the one column it is matched in; email domains and billing regions
+        (hubs) are never expanded unless they are the focus; at most MAX_NODES entities."""
+        kind, _, value = focus.partition(":")
+        if kind not in ("uid", *ENTITY_KINDS) or not value:
+            raise HTTPException(
+                422, "focus must be kind:value with kind uid, card, email, address or device."
+            )
+        start = (kind, value)
+        if len(node_rows(kind, value, n)) == 0:
+            return {"nodes": [], "edges": [], "rings": []}
+        keep, frontier = {start}, [start]
+        for _hop in range(2):
+            nxt = []
+            for k, v in frontier:
+                if k in HUB_KINDS and (k, v) != start:
+                    continue
+                idx = node_rows(k, v, n)
+                if k == "uid":
+                    nbrs = [(e, x) for e in ENTITY_KINDS for x in pd.unique(df[e].to_numpy()[idx])
+                            if _none(x) is not None]  # fmt: skip
+                else:
+                    nbrs = [("uid", u) for u in pd.unique(df["uid"].to_numpy()[idx])]
+                for nb in nbrs:
+                    if nb not in keep and len(keep) < MAX_NODES:
+                        keep.add(nb)
+                        nxt.append(nb)
+            frontier = nxt
+        label, tx_time = df["label"].to_numpy(), df["TransactionDT"].to_numpy()
+        nodes = []
+        for k, v in keep:
+            idx = node_rows(k, v, n)
+            known = (label[idx] == 1) & (tx_time[idx] + L * DAY <= time)
+            nodes.append({"id": f"{k}:{v}", "type": k, "label": str(v), "ring": None,
+                          "knownFraud": int(known.sum()), "transactions": int(len(idx))})  # fmt: skip
+        edges = {}
+        for k, u in keep:
+            if k != "uid":
+                continue
+            for i in node_rows("uid", u, n):  # time order: the first row of a link sets its time
+                for e in ENTITY_KINDS:
+                    x = _none(df[e].iat[i])
+                    if x is not None and (e, x) in keep:
+                        eid = f"uid:{u}|{e}:{x}"
+                        edges.setdefault(eid, {"id": eid, "source": f"uid:{u}", "target": f"{e}:{x}",
+                                               "time": float(tx_time[i])})  # fmt: skip
+        return {"nodes": nodes, "edges": list(edges.values()), "rings": []}
+
     @app.get("/api/network")
     def network(time: float, L: LabelDelay, w: WhatIfDep, focus: str | None = None):
-        actions = decisions(w)[0]
         n = up_to(time)
-        sub = df.iloc[:n]
         if focus:
-            hit = np.zeros(n, bool)
-            for col in ("uid", "card", "email", "address", "device"):
-                hit |= sub[col].astype(str).to_numpy() == focus
-            sub = sub[hit]
-        else:
-            rows = day_rows(time)
-            sub = sub.iloc[rows][np.isin(actions[rows], ["hold", "block"])].nlargest(40, "p")
+            return {**focused_network(focus, n, time, L), "whatIf": False}
+        actions = decisions(w)[0]
+        rows = day_rows(time)
+        sub = df.iloc[:n].iloc[rows][np.isin(actions[rows], ["hold", "block"])].nlargest(40, "p")
         nodes, edges = {}, {}
         for _, r in sub.iterrows():
             known = int(r["label"] == 1 and matured(r["TransactionDT"], time, L))
             ids = []
-            for kind in ("uid", "card", "email", "address", "device"):
+            for kind in ("uid", *ENTITY_KINDS):
                 val = _none(r[kind])
                 if val is None:
                     continue
@@ -420,7 +476,7 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
                                        "time": float(r["TransactionDT"])})  # fmt: skip
         # without a focus the entities come from today's holds and blocks: what-if decisions
         return {"nodes": list(nodes.values()), "edges": list(edges.values()), "rings": [],
-                "whatIf": w is not None and not focus}  # fmt: skip
+                "whatIf": w is not None}  # fmt: skip
 
     def lambdas(k: int) -> dict:
         keys = sorted(int(x) for x in meta["routing_lambdas"])
