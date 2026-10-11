@@ -153,3 +153,15 @@ def test_sensitivity_sweeps_the_otp_cost():
     step_ups = [int((decide(p, amount, Thresholds(**o["thresholds"])) == STEP_UP).sum())
                 for o in out]  # fmt: skip
     assert step_ups[2] <= step_ups[0]  # a dearer OTP never means more step-ups
+
+
+def test_hold_success_rate_default_keeps_d43_and_can_make_block_optimal():
+    """D123 / D124: with hold_success_rate = 1 (default) Hold costs c_rev and weakly dominates
+    Block; with an imperfect Hold a confident fraud is cheaper to block."""
+    y, amount = np.array([1, 0]), np.array([200.0, 200.0])
+    d43 = CostModel().per_action(y, amount)
+    assert d43[0, HOLD] == CostModel().c_rev and (d43[:, BLOCK] >= d43[:, HOLD]).all()
+    leaky = CostModel(hold_success_rate=0.8).per_action(y, amount)
+    assert leaky[0, HOLD] == pytest.approx(5.0 + 0.2 * 200.0)
+    assert leaky[0, BLOCK] < leaky[0, HOLD]  # a held fraud is missed 20% of the time
+    assert leaky[1, HOLD] == d43[1, HOLD]  # a legitimate customer costs the same review

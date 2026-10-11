@@ -74,6 +74,7 @@ class CostIn(BaseModel):
     c_step: float
     step_up_success_rate: float
     legit_step_up_friction: float
+    hold_success_rate: float = 1.0  # share of held fraud stopped (D124); 1.0 = the evaluated system
 
 
 class WhatIfIn(BaseModel):
@@ -104,7 +105,10 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
     actions = base_actions.copy()  # the served actions: the frozen E12 ones unless what-if is on
     cal_path = bundle_path.with_name("demo_final_calibration.parquet")
     cal = pd.read_parquet(cal_path) if cal_path.exists() else None
-    cost = meta["cost_model"]
+    cost = {
+        **meta["cost_model"],
+        "hold_success_rate": meta["cost_model"].get("hold_success_rate", 1.0),
+    }
 
     app = FastAPI(title="Vaultic demo backend", version="0.1")
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
@@ -175,12 +179,15 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
         by_action = {a: int((act == a).sum()) for a in ACTIONS}
         p, amt = sub["p"].to_numpy(), sub["amount"].to_numpy()
         cost = state["whatif"]["cost"] if state["whatif"] else meta["cost_model"]
+        hold_rate = cost.get("hold_success_rate", 1.0)
+        held = act == "hold"
         el = p * amt
         low = np.isin(act, ["allow", "monitor"])
         step = act == "step_up"
         rate = cost["step_up_success_rate"]
-        stopped = float(np.sum(np.where(step, rate * el, el)[~low]))
-        costs = {"missedFraud": float(el[low].sum() + ((1 - rate) * el[step]).sum()),
+        stopped = float(np.sum(np.where(step, rate * el, np.where(held, hold_rate * el, el))[~low]))
+        costs = {"missedFraud": float(el[low].sum() + ((1 - rate) * el[step]).sum()
+                                      + ((1 - hold_rate) * el[held]).sum()),
                  "falsePositives": float(((1 - p) * cost["c_fp"])[act == "block"].sum()),
                  "reviews": float(cost["c_rev"] * np.isin(act, ["hold", "block"]).sum()),
                  "stepUps": float((cost["c_step"] + (1 - p) * cost["legit_step_up_friction"])[step].sum())}  # fmt: skip
@@ -379,7 +386,7 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
     def whatif_status():
         w = state["whatif"]
         return {"active": w is not None, "available": cal is not None,
-                "cost": w["cost"] if w else meta["cost_model"],
+                "cost": w["cost"] if w else cost,
                 "thresholds": w["thresholds"] if w else None, "note": WHATIF_NOTE}  # fmt: skip
 
     @app.get("/api/whatif")
@@ -392,10 +399,10 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
         if cal is None:
             raise HTTPException(501, "The what-if cost mode needs demo_final_calibration.parquet.")
         c = body.cost
-        if not (0 <= c.step_up_success_rate <= 1) or min(c.c_fp, c.c_rev, c.c_step,
+        if not (0 <= c.step_up_success_rate <= 1) or not (0 <= c.hold_success_rate <= 1) or min(c.c_fp, c.c_rev, c.c_step,
                                                          c.legit_step_up_friction) < 0:  # fmt: skip
             raise HTTPException(
-                422, "Costs must be at least 0 and the step-up success rate between 0 and 1."
+                422, "Costs must be at least 0 and the success rates between 0 and 1."
             )
         src = Path(__file__).resolve().parents[2] / "src"
         if str(src) not in sys.path:
@@ -403,7 +410,8 @@ def create_app(bundle_path: Path | None = None) -> FastAPI:
         from vaultic.trust.decision import ACTIONS as CODES
         from vaultic.trust.decision import CostModel, choose_thresholds, decide
 
-        cm = CostModel(c.c_fp, c.c_rev, c.c_step, c.step_up_success_rate, c.legit_step_up_friction)
+        cm = CostModel(c.c_fp, c.c_rev, c.c_step, c.step_up_success_rate, c.legit_step_up_friction,
+                       hold_success_rate=c.hold_success_rate)  # fmt: skip
         th, _ = choose_thresholds(cal["p"].to_numpy(), cal["amount"].to_numpy(),
                                   cal["label"].to_numpy(), cal["conformal_set"].to_numpy(object),
                                   cal["disagreement"].to_numpy(), cost=cm)  # fmt: skip

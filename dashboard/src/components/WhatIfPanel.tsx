@@ -10,6 +10,7 @@ const FIELDS: { key: keyof CostModel; label: string; step: number; max?: number 
   { key: "c_step", label: "Step-up (OTP) cost ($)", step: 0.1 },
   { key: "step_up_success_rate", label: "Step-up stops fraud (share)", step: 0.05, max: 1 },
   { key: "legit_step_up_friction", label: "Friction for a legitimate customer ($)", step: 0.5 },
+  { key: "hold_success_rate", label: "Hold stops fraud (share; 1 = evaluated system)", step: 0.05, max: 1 },
 ];
 
 /**
@@ -49,6 +50,8 @@ export function WhatIfPanel({ onChange }: { onChange?: () => void }) {
         <p className="muted small">
           Choose other costs: the decision thresholds are re-chosen on the calibration days (147–150) by minimising total cost, as in the research
           pipeline, and applied to the test period. The evaluated system is the frozen decision engine of the final run; switch back at any time.
+          With a Hold that always stops the fraud (share 1) a Block can never cost less than a Hold, so Block appears only when held fraud can slip
+          through (D123, D124).
         </p>
         {draft && (
           <form
@@ -66,7 +69,7 @@ export function WhatIfPanel({ onChange }: { onChange?: () => void }) {
                   min={0}
                   max={f.max}
                   step={f.step}
-                  value={draft[f.key]}
+                  value={draft[f.key] ?? 1}
                   onChange={(e) => setDraft({ ...draft, [f.key]: Number(e.target.value) })}
                 />
               </label>

@@ -182,6 +182,7 @@ def test_no_block_note_and_whatif_cost_mode(server):
     assert "No Block decisions" in meta["no_block_note"]  # t_block = inf in the bundle
     w = _get(server, "/api/whatif")
     assert w["active"] is False and "not the evaluated system" in w["note"]
+    assert w["cost"]["hold_success_rate"] == 1.0  # the evaluated system
     before = _get(server, f"/api/day-summary?time={AS_OF}")
     assert before["whatIf"] is False
     cost = {"c_fp": 2.0, "c_rev": 1.0, "c_step": 0.1, "step_up_success_rate": 0.9,
@@ -193,6 +194,20 @@ def test_no_block_note_and_whatif_cost_mode(server):
     rows = _get(server, f"/api/stream?time={AS_OF}&start=0&end={AS_OF}")
     assert all(t["decision"]["whatIf"] is True for t in rows)
     assert _get(server, "/api/audit")[0]["action"].startswith("Turned on the what-if cost mode")
+    code, w = _send(
+        server,
+        "/api/whatif",
+        {"cost": {**cost, "hold_success_rate": 0.7}, "role": "analyst"},
+        "PUT",
+    )
+    assert code == 200 and w["cost"]["hold_success_rate"] == 0.7  # imperfect Hold (D124)
+    code, _ = _send(
+        server,
+        "/api/whatif",
+        {"cost": {**cost, "hold_success_rate": 1.2}, "role": "analyst"},
+        "PUT",
+    )
+    assert code == 422
     bad = {**cost, "step_up_success_rate": 1.5}
     code, _ = _send(server, "/api/whatif", {"cost": bad, "role": "analyst"}, "PUT")
     assert code == 422

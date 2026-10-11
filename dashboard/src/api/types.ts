@@ -72,6 +72,8 @@ export interface CostModel {
   c_step: number;
   step_up_success_rate: number;
   legit_step_up_friction: number;
+  /** share of held fraud actually stopped (D124); 1 or absent = the evaluated system (D43) */
+  hold_success_rate?: number;
 }
 
 export interface Thresholds {
