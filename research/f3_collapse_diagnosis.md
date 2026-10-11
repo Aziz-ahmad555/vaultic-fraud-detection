@@ -145,3 +145,6 @@ input was not examined beyond its per-block PR-AUC above.
 
 Not done, deliberately: any F3 variant with a bounded or log-transformed count. It would be a
 new, post-hoc method, so it could only appear as a separately labelled exploratory analysis.
+
+That separately labelled analysis was then requested and is in research/f3_log_sensitivity.md
+(D119): F3-log reaches test PR-AUC 0.5908, still 0.031 below MVAF.

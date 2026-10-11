@@ -1,0 +1,325 @@
+{
+ "generated": "2026-10-11",
+ "post_hoc": true,
+ "cap": 366.0,
+ "f3_log_coef_hist": 0.3554812169120195,
+ "methods": [
+  {
+   "method": "F3-log (post-hoc)",
+   "pr_auc": 0.5908128606265823,
+   "pr_auc_ci_low": 0.5730821462247229,
+   "pr_auc_ci_high": 0.6080452057530478,
+   "recall_at_1pct_fpr": 0.5197634609399315,
+   "recall_at_1pct_fpr_ci_low": 0.5012703878158705,
+   "recall_at_1pct_fpr_ci_high": 0.5392848962870724,
+   "cost": 255650.59000000003,
+   "cost_ci_low": 233617.19505,
+   "cost_ci_high": 278546.7649,
+   "pr_auc_per_seed": [
+    0.5908128606265823,
+    0.5908128606265823,
+    0.5908128606265823,
+    0.5908128606265823,
+    0.5908128606265823
+   ]
+  },
+  {
+   "method": "F3",
+   "pr_auc": 0.4228653169167545,
+   "pr_auc_ci_low": 0.40491414904126,
+   "pr_auc_ci_high": 0.4413288439640208,
+   "recall_at_1pct_fpr": 0.2801120448179272,
+   "recall_at_1pct_fpr_ci_low": 0.2546036365180558,
+   "recall_at_1pct_fpr_ci_high": 0.30664711770475356,
+   "cost": 278070.44200000004,
+   "cost_ci_low": 255674.46177499997,
+   "cost_ci_high": 301600.74737500004,
+   "pr_auc_per_seed": [
+    0.4228653169167545,
+    0.4228653169167545,
+    0.4228653169167545,
+    0.4228653169167545,
+    0.4228653169167545
+   ]
+  },
+  {
+   "method": "MVAF",
+   "pr_auc": 0.621892721953029,
+   "pr_auc_ci_low": 0.6037333419089818,
+   "pr_auc_ci_high": 0.639216134911859,
+   "recall_at_1pct_fpr": 0.5468409586056645,
+   "recall_at_1pct_fpr_ci_low": 0.5274148203146678,
+   "recall_at_1pct_fpr_ci_high": 0.5666169940806279,
+   "cost": 236083.921,
+   "cost_ci_low": 215814.76872499997,
+   "cost_ci_high": 258102.47022500003,
+   "pr_auc_per_seed": null
+  },
+  {
+   "method": "F4",
+   "pr_auc": 0.6206419589014122,
+   "pr_auc_ci_low": 0.6025803049620395,
+   "pr_auc_ci_high": 0.638563139760862,
+   "recall_at_1pct_fpr": 0.5490196078431373,
+   "recall_at_1pct_fpr_ci_low": 0.5316876496534342,
+   "recall_at_1pct_fpr_ci_high": 0.5673084247410115,
+   "cost": 234255.753,
+   "cost_ci_low": 213379.1163,
+   "cost_ci_high": 255715.67429999998,
+   "pr_auc_per_seed": null
+  },
+  {
+   "method": "B5",
+   "pr_auc": 0.6532306857147558,
+   "pr_auc_ci_low": 0.6367642343555661,
+   "pr_auc_ci_high": 0.6697331147768801,
+   "recall_at_1pct_fpr": 0.5726735138499844,
+   "recall_at_1pct_fpr_ci_low": 0.555028269877667,
+   "recall_at_1pct_fpr_ci_high": 0.5908979593829906,
+   "cost": 268022.76,
+   "cost_ci_low": 243921.33975,
+   "cost_ci_high": 293297.31485,
+   "pr_auc_per_seed": null
+  }
+ ],
+ "comparisons": [
+  {
+   "metric": "pr_auc",
+   "comparison": "F3-log (post-hoc) - F3",
+   "diff": 0.16794754370982784,
+   "ci_low": 0.15802738136301814,
+   "ci_high": 0.17773552762064218,
+   "p_value": 0.0,
+   "relative_pct": 39.7165567832299,
+   "seed_mean_diff": 0.16794754370982784,
+   "cohens_d_paired": NaN,
+   "p_holm": 0.0
+  },
+  {
+   "metric": "pr_auc",
+   "comparison": "F3-log (post-hoc) - MVAF",
+   "diff": -0.03107986132644669,
+   "ci_low": -0.035424843593963196,
+   "ci_high": -0.026378162221784754,
+   "p_value": 0.0,
+   "relative_pct": -4.997624225098122,
+   "seed_mean_diff": NaN,
+   "cohens_d_paired": NaN,
+   "p_holm": 0.0
+  },
+  {
+   "metric": "pr_auc",
+   "comparison": "F3-log (post-hoc) - F4",
+   "diff": -0.029829098274829824,
+   "ci_low": -0.03586067791277064,
+   "ci_high": -0.023931063982554727,
+   "p_value": 0.0,
+   "relative_pct": -4.806168491674299,
+   "seed_mean_diff": NaN,
+   "cohens_d_paired": NaN,
+   "p_holm": 0.0
+  },
+  {
+   "metric": "pr_auc",
+   "comparison": "F3-log (post-hoc) - B5",
+   "diff": -0.062417825088173506,
+   "ci_low": -0.06893480697850317,
+   "ci_high": -0.055670045901580326,
+   "p_value": 0.0,
+   "relative_pct": -9.555249998685655,
+   "seed_mean_diff": NaN,
+   "cohens_d_paired": NaN,
+   "p_holm": 0.0
+  },
+  {
+   "metric": "recall_at_1pct_fpr",
+   "comparison": "F3-log (post-hoc) - F3",
+   "diff": 0.23965141612200436,
+   "ci_low": 0.21600313455479325,
+   "ci_high": 0.2639327805590321,
+   "p_value": 0.0,
+   "relative_pct": NaN,
+   "seed_mean_diff": NaN,
+   "cohens_d_paired": NaN,
+   "p_holm": 0.0
+  },
+  {
+   "metric": "recall_at_1pct_fpr",
+   "comparison": "F3-log (post-hoc) - MVAF",
+   "diff": -0.027077497665732975,
+   "ci_low": -0.03470844278850297,
+   "ci_high": -0.017718423082484478,
+   "p_value": 0.0,
+   "relative_pct": NaN,
+   "seed_mean_diff": NaN,
+   "cohens_d_paired": NaN,
+   "p_holm": 0.0
+  },
+  {
+   "metric": "recall_at_1pct_fpr",
+   "comparison": "F3-log (post-hoc) - F4",
+   "diff": -0.02925614690320577,
+   "ci_low": -0.03653905253729305,
+   "ci_high": -0.019660245718412492,
+   "p_value": 0.0,
+   "relative_pct": NaN,
+   "seed_mean_diff": NaN,
+   "cohens_d_paired": NaN,
+   "p_holm": 0.0
+  },
+  {
+   "metric": "recall_at_1pct_fpr",
+   "comparison": "F3-log (post-hoc) - B5",
+   "diff": -0.05291005291005291,
+   "ci_low": -0.06146476631384731,
+   "ci_high": -0.04143776692502381,
+   "p_value": 0.0,
+   "relative_pct": NaN,
+   "seed_mean_diff": NaN,
+   "cohens_d_paired": NaN,
+   "p_holm": 0.0
+  },
+  {
+   "metric": "cost",
+   "comparison": "F3-log (post-hoc) - F3",
+   "diff": -22419.852000000014,
+   "ci_low": -30338.569899999955,
+   "ci_high": -14693.619525000007,
+   "p_value": 0.0,
+   "relative_pct": NaN,
+   "seed_mean_diff": NaN,
+   "cohens_d_paired": NaN,
+   "p_holm": 0.0
+  },
+  {
+   "metric": "cost",
+   "comparison": "F3-log (post-hoc) - MVAF",
+   "diff": 19566.669000000024,
+   "ci_low": 10618.589050000031,
+   "ci_high": 28230.862575000003,
+   "p_value": 0.0,
+   "relative_pct": NaN,
+   "seed_mean_diff": NaN,
+   "cohens_d_paired": NaN,
+   "p_holm": 0.0
+  },
+  {
+   "metric": "cost",
+   "comparison": "F3-log (post-hoc) - F4",
+   "diff": 21394.83700000003,
+   "ci_low": 11287.78229999998,
+   "ci_high": 31526.76202500002,
+   "p_value": 0.002,
+   "relative_pct": NaN,
+   "seed_mean_diff": NaN,
+   "cohens_d_paired": NaN,
+   "p_holm": 0.004
+  },
+  {
+   "metric": "cost",
+   "comparison": "F3-log (post-hoc) - B5",
+   "diff": -12372.169999999984,
+   "ci_low": -25972.120925000007,
+   "ci_high": 2236.7086750000135,
+   "p_value": 0.088,
+   "relative_pct": NaN,
+   "seed_mean_diff": NaN,
+   "cohens_d_paired": NaN,
+   "p_holm": 0.088
+  }
+ ],
+ "subgroups": [
+  {
+   "subgroup": "all rows",
+   "rows": 92427,
+   "frauds": 3213,
+   "F3-log (post-hoc)": 0.5908128606265823,
+   "F3": 0.4228653169167545,
+   "MVAF": 0.621892721953029,
+   "F4": 0.6206419589014122,
+   "B5": 0.6532306857147558
+  },
+  {
+   "subgroup": "cold start",
+   "rows": 27350,
+   "frauds": 896,
+   "F3-log (post-hoc)": 0.5863099144497421,
+   "F3": 0.5896413353961788,
+   "MVAF": 0.5947428879439124,
+   "F4": 0.5924735939540375,
+   "B5": 0.6230269733432677
+  },
+  {
+   "subgroup": "with history",
+   "rows": 65077,
+   "frauds": 2317,
+   "F3-log (post-hoc)": 0.5931060808742977,
+   "F3": 0.3856328122193357,
+   "MVAF": 0.6347560254789708,
+   "F4": 0.6307471392657299,
+   "B5": 0.6663892885826697
+  },
+  {
+   "subgroup": "1-2 views",
+   "rows": 13131,
+   "frauds": 365,
+   "F3-log (post-hoc)": 0.5026493674214563,
+   "F3": 0.5054704211658696,
+   "MVAF": 0.5151833187456759,
+   "F4": 0.5148904002812604,
+   "B5": 0.5487941620927006
+  },
+  {
+   "subgroup": "3-4 views",
+   "rows": 51004,
+   "frauds": 1678,
+   "F3-log (post-hoc)": 0.5669799621055318,
+   "F3": 0.5676477300407089,
+   "MVAF": 0.578971339143822,
+   "F4": 0.5880614867632693,
+   "B5": 0.6205110317757843
+  },
+  {
+   "subgroup": "5 views",
+   "rows": 28292,
+   "frauds": 1170,
+   "F3-log (post-hoc)": 0.6536660043626351,
+   "F3": 0.35870026316667497,
+   "MVAF": 0.7125307322023977,
+   "F4": 0.6980495973118584,
+   "B5": 0.7371888216485176
+  }
+ ],
+ "blocks": [
+  {
+   "days": "151-157",
+   "F3-log (post-hoc)": 0.6610298452786759,
+   "F3": 0.6597791483683584,
+   "MVAF": 0.6718283217241069
+  },
+  {
+   "days": "158-164",
+   "F3-log (post-hoc)": 0.5507548821519626,
+   "F3": 0.5524988684220435,
+   "MVAF": 0.5660898407031826
+  },
+  {
+   "days": "165-171",
+   "F3-log (post-hoc)": 0.5320349491692966,
+   "F3": 0.27957113822451873,
+   "MVAF": 0.5953125631488969
+  },
+  {
+   "days": "172-178",
+   "F3-log (post-hoc)": 0.6471026720122508,
+   "F3": 0.3977951018273463,
+   "MVAF": 0.6729688304246433
+  },
+  {
+   "days": "179-182",
+   "F3-log (post-hoc)": 0.5597129487407424,
+   "F3": 0.5412610088912673,
+   "MVAF": 0.596110558622658
+  }
+ ]
+}
