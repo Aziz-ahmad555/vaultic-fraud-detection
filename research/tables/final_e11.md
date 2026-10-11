@@ -66,15 +66,15 @@ Primary: MVAF's drop minus F3's / F4's (negative = MVAF degrades less); Holm acr
 
 | condition | comparison | diff | 95% CI | p | p (Holm) |
 |---|---|---|---|---|---|
-| tabular | drop MVAF - drop F3 | -0.2429 | [-0.2593, -0.2258] | 0.000 | 0.000 |
-| behavioral | drop MVAF - drop F3 | +0.0232 | [+0.0179, +0.0287] | 0.000 | 0.000 |
-| temporal | drop MVAF - drop F3 | +0.0079 | [+0.0047, +0.0109] | 0.000 | 0.000 |
+| tabular | drop MVAF - drop F3 | -0.2429 | [-0.2593, -0.2258] | < 0.001 | < 0.001 |
+| behavioral | drop MVAF - drop F3 | +0.0232 | [+0.0179, +0.0287] | < 0.001 | < 0.001 |
+| temporal | drop MVAF - drop F3 | +0.0079 | [+0.0047, +0.0109] | < 0.001 | < 0.001 |
 | graph | drop MVAF - drop F3 | +0.0019 | [+0.0005, +0.0032] | 0.006 | 0.012 |
 | anomaly | drop MVAF - drop F3 | -0.0013 | [-0.0032, +0.0006] | 0.194 | 0.194 |
-| tabular only | drop MVAF - drop F3 | +0.0379 | [+0.0317, +0.0445] | 0.000 |  |
-| tabular | drop MVAF - drop F4 | -0.2233 | [-0.2374, -0.2085] | 0.000 | 0.000 |
-| behavioral | drop MVAF - drop F4 | -0.0172 | [-0.0216, -0.0132] | 0.000 | 0.000 |
+| tabular only | drop MVAF - drop F3 | +0.0379 | [+0.0317, +0.0445] | < 0.001 |  |
+| tabular | drop MVAF - drop F4 | -0.2233 | [-0.2374, -0.2085] | < 0.001 | < 0.001 |
+| behavioral | drop MVAF - drop F4 | -0.0172 | [-0.0216, -0.0132] | < 0.001 | < 0.001 |
 | temporal | drop MVAF - drop F4 | +0.0002 | [-0.0018, +0.0022] | 0.872 | 0.872 |
 | graph | drop MVAF - drop F4 | -0.0013 | [-0.0029, +0.0002] | 0.088 | 0.176 |
-| anomaly | drop MVAF - drop F4 | -0.0149 | [-0.0175, -0.0123] | 0.000 | 0.000 |
-| tabular only | drop MVAF - drop F4 | -0.0299 | [-0.0339, -0.0260] | 0.000 |  |
+| anomaly | drop MVAF - drop F4 | -0.0149 | [-0.0175, -0.0123] | < 0.001 | < 0.001 |
+| tabular only | drop MVAF - drop F4 | -0.0299 | [-0.0339, -0.0260] | < 0.001 |  |

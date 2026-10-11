@@ -7,11 +7,16 @@ Run:  python -m vaultic.reports.render_saved final           E10-E12 (research/t
       python -m vaultic.reports.render_saved f3-sensitivity  research/f3_log_sensitivity.md
       python -m vaultic.reports.render_saved e5-drift        research/e5_graph_drift.md
       python -m vaultic.reports.render_saved hold-sensitivity research/hold_sensitivity.md
+      python -m vaultic.reports.render_saved gate-maturity   research/gate_maturity_sensitivity.md
 
-Each report is rebuilt by the same writer that made it, from the JSON that run saved next to it.
+Each report is rebuilt by the same writer that made it, from the JSON that run saved next to it;
+nothing is refitted or rescored, and no test-period data is read (the JSON holds only results).
 A section whose heading ends "(added by hand, not generated)" is kept as it is in the current
-file. E10-E12 keep the final run's generation date (the content is that run's), so a re-render
-reproduces the committed files.
+file, and the post-hoc generators write their reports only through keep_hand_section too
+(D150). E10-E12 keep the final run's generation date (the content is that run's); D95 keeps its
+generation date and stored runtime line. Bootstrap p-values print as '< 0.001' when no resample
+lies beyond (D156), and the D95 report states no fixed conclusion: the comparisons are in its
+table (D146, D156).
 """
 
 from __future__ import annotations

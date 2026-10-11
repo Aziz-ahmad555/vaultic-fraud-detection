@@ -16,16 +16,16 @@ Paired comparisons (F3-log minus method, same 1,000 resamples; for cost, positiv
 
 | metric | comparison | diff | 95% CI | p |
 |---|---|---|---|---|
-| pr_auc | F3-log (post-hoc) - F3 | +0.1679 | [+0.1580, +0.1777] | 0.000 |
-| pr_auc | F3-log (post-hoc) - MVAF | -0.0311 | [-0.0354, -0.0264] | 0.000 |
-| pr_auc | F3-log (post-hoc) - F4 | -0.0298 | [-0.0359, -0.0239] | 0.000 |
-| pr_auc | F3-log (post-hoc) - B5 | -0.0624 | [-0.0689, -0.0557] | 0.000 |
-| recall_at_1pct_fpr | F3-log (post-hoc) - F3 | +0.2397 | [+0.2160, +0.2639] | 0.000 |
-| recall_at_1pct_fpr | F3-log (post-hoc) - MVAF | -0.0271 | [-0.0347, -0.0177] | 0.000 |
-| recall_at_1pct_fpr | F3-log (post-hoc) - F4 | -0.0293 | [-0.0365, -0.0197] | 0.000 |
-| recall_at_1pct_fpr | F3-log (post-hoc) - B5 | -0.0529 | [-0.0615, -0.0414] | 0.000 |
-| cost | F3-log (post-hoc) - F3 | -22,420 | [-30,339, -14,694] | 0.000 |
-| cost | F3-log (post-hoc) - MVAF | 19,567 | [10,619, 28,231] | 0.000 |
+| pr_auc | F3-log (post-hoc) - F3 | +0.1679 | [+0.1580, +0.1777] | < 0.001 |
+| pr_auc | F3-log (post-hoc) - MVAF | -0.0311 | [-0.0354, -0.0264] | < 0.001 |
+| pr_auc | F3-log (post-hoc) - F4 | -0.0298 | [-0.0359, -0.0239] | < 0.001 |
+| pr_auc | F3-log (post-hoc) - B5 | -0.0624 | [-0.0689, -0.0557] | < 0.001 |
+| recall_at_1pct_fpr | F3-log (post-hoc) - F3 | +0.2397 | [+0.2160, +0.2639] | < 0.001 |
+| recall_at_1pct_fpr | F3-log (post-hoc) - MVAF | -0.0271 | [-0.0347, -0.0177] | < 0.001 |
+| recall_at_1pct_fpr | F3-log (post-hoc) - F4 | -0.0293 | [-0.0365, -0.0197] | < 0.001 |
+| recall_at_1pct_fpr | F3-log (post-hoc) - B5 | -0.0529 | [-0.0615, -0.0414] | < 0.001 |
+| cost | F3-log (post-hoc) - F3 | -22,420 | [-30,339, -14,694] | < 0.001 |
+| cost | F3-log (post-hoc) - MVAF | 19,567 | [10,619, 28,231] | < 0.001 |
 | cost | F3-log (post-hoc) - F4 | 21,395 | [11,288, 31,527] | 0.002 |
 | cost | F3-log (post-hoc) - B5 | -12,372 | [-25,972, 2,237] | 0.088 |
 

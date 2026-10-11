@@ -59,7 +59,7 @@ def report_lines(counts: list[dict], views: list[dict], fusion: list[dict], per_
     res = pd.DataFrame(fusion).set_index("method")
     sub = pd.DataFrame(subgroups)
     # Holm across the table's MVAF comparisons (D146: the report text uses the adjusted p)
-    from vaultic.eval.bootstrap import holm
+    from vaultic.eval.bootstrap import format_p, holm
 
     tested = [m for m in res.index if m != "MVAF" and not pd.isna(res.loc[m].get("p", np.nan))]
     p_holm = dict(zip(tested, holm([float(res.loc[m, "p"]) for m in tested]), strict=True))
@@ -100,8 +100,8 @@ def report_lines(counts: list[dict], views: list[dict], fusion: list[dict], per_
             ""
             if pd.isna(r.get("MVAF - method", np.nan))
             else (
-                f"{r['MVAF - method']:+.4f} | [{r['d_low']:+.4f}, {r['d_high']:+.4f}] | {r['p']:.3f} | "
-                f"{p_holm[name]:.3f}"
+                f"{r['MVAF - method']:+.4f} | [{r['d_low']:+.4f}, {r['d_high']:+.4f}] | {format_p(r['p'])} | "
+                f"{format_p(p_holm[name])}"
             )
         )
         if not diff:
@@ -110,16 +110,6 @@ def report_lines(counts: list[dict], views: list[dict], fusion: list[dict], per_
                     if name in tuned else ("F0: Optuna on 128-143" if name == "F0" else "—"))  # fmt: skip
         lines.append(f"| {name} | {r['PR-AUC']:.4f} | [{r['ci_low']:.4f}, {r['ci_high']:.4f}] | "
                      f"{seed_txt} | {diff} | {tune_txt} |")  # fmt: skip
-    lines += (
-        [
-            "",
-            "With Holm's correction over these comparisons MVAF is not different from F2-F7 "
-            "(including F4 and F6, whose raw p is below 0.05); it beats F1 and trails B5 and F0 "
-            "(D97, D146).",
-        ]
-        if p_holm
-        else []
-    )
     methods = [m for m in ORDER if m in sub.columns]
     versus = [c for c in sub.columns if c.startswith("MVAF - ")]
     lines += [

@@ -113,6 +113,8 @@ def main() -> None:
 
 
 def write_md(r: dict) -> None:
+    from vaultic.eval.bootstrap import format_p
+
     lines = [
         "# F3 with a bounded history count: sensitivity analysis (POST-HOC / EXPLORATORY)", "",
         "**POST-HOC / EXPLORATORY, not a replacement result.** Not pre-registered; designed after "
@@ -140,7 +142,7 @@ def write_md(r: dict) -> None:
         fmt = ",.0f" if c["metric"] == "cost" else "+.4f"
         lines.append(
             f"| {c['metric']} | {c['comparison']} | {c['diff']:{fmt}} | "
-            f"[{c['ci_low']:{fmt}}, {c['ci_high']:{fmt}}] | {c['p_value']:.3f} |"
+            f"[{c['ci_low']:{fmt}}, {c['ci_high']:{fmt}}] | {format_p(c['p_value'])} |"
         )
     names = [k for k in r["subgroups"][0] if k not in ("subgroup", "rows", "frauds")]
     lines += ["", "## PR-AUC by subgroup", "",

@@ -40,7 +40,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from vaultic.eval.bootstrap import paired_bootstrap
+from vaultic.eval.bootstrap import format_p, paired_bootstrap
 from vaultic.eval.metrics import pr_auc
 from vaultic.paths import INTERIM_DIR, RESEARCH_DIR
 
@@ -313,7 +313,7 @@ def main() -> None:
             else (
                 f"{r['MVAF - method']:+.4f}",
                 f"[{r['d_low']:+.4f}, {r['d_high']:+.4f}]",
-                f"{r['p']:.3f}",
+                format_p(r["p"]),
             )
         )
         lines.append(f"| {r['method']} | {r['PR-AUC']:.4f} | [{r['ci_low']:.4f}, {r['ci_high']:.4f}] | "

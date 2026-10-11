@@ -224,3 +224,18 @@ def holm(p_values: Sequence[float]) -> list[float]:
         running = max(running, (m - rank) * p[i])
         adjusted[i] = min(running, 1.0)
     return adjusted.tolist()
+
+
+def format_p(p: float) -> str:
+    """A bootstrap p-value for a report (D156): '< 0.001' when no resample lies beyond (p = 0;
+    with 1,000 resamples the smallest non-zero two-sided p is 0.002), else three decimals;
+    empty for NaN."""
+    if p is None or p != p:  # NaN
+        return ""
+    return "< 0.001" if p < 0.001 else f"{p:.3f}"
+
+
+def p_phrase(p: float) -> str:
+    """'p < 0.001' or 'p = 0.123' for running text (D156)."""
+    f = format_p(p)
+    return f"p {f}" if f.startswith("<") else f"p = {f}"

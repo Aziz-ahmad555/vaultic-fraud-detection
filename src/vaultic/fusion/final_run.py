@@ -755,6 +755,8 @@ def _ci(r, k):
 
 
 def write_reports(out_dir, prefix, meta, methods, comps, subs, h2, drops, drop_comps, trust, gate):
+    from vaultic.eval.bootstrap import format_p, p_phrase
+
     banner = ("" if meta["mode"] == "final" else
               "**PIPELINE CHECK on validation (days 149-150), not a result.**\n\n")  # fmt: skip
     head = (f"Generated {date.today().isoformat()} by `python -m vaultic.fusion.final_run --mode "
@@ -777,8 +779,8 @@ def write_reports(out_dir, prefix, meta, methods, comps, subs, h2, drops, drop_c
         dd = r.get("cohens_d_paired", np.nan)
         sm = r.get("seed_mean_diff", np.nan)
         lines.append(f"| {r['metric']} | {r['comparison']} | {r['diff']:+.4f} | "
-                     f"[{r['ci_low']:+.4f}, {r['ci_high']:+.4f}] | {r['p_value']:.3f} | "
-                     f"{r['p_holm']:.3f} | {'' if pd.isna(rel) else f'{rel:+.1f}'} | "
+                     f"[{r['ci_low']:+.4f}, {r['ci_high']:+.4f}] | {format_p(r['p_value'])} | "
+                     f"{format_p(r['p_holm'])} | {'' if pd.isna(rel) else f'{rel:+.1f}'} | "
                      f"{'' if pd.isna(sm) else f'{sm:+.4f}'} | "
                      f"{'' if pd.isna(dd) else f'{dd:+.2f}'} |")  # fmt: skip
     mcols = [c for c in subs.columns if c not in ("subgroup", "rows", "frauds")
@@ -791,7 +793,7 @@ def write_reports(out_dir, prefix, meta, methods, comps, subs, h2, drops, drop_c
         vals = ["" if pd.isna(r.get(c, np.nan)) else
                 f"{r[c]:.4f} [{r[c + '_ci_low']:.4f}, {r[c + '_ci_high']:.4f}]" for c in mcols]  # fmt: skip
         ds = ["" if not isinstance(r.get(c), tuple) else
-              f"{r[c][0]:+.4f} [{r[c][1]:+.4f}, {r[c][2]:+.4f}], p (Holm) {r[c][4]:.3f}"
+              f"{r[c][0]:+.4f} [{r[c][1]:+.4f}, {r[c][2]:+.4f}], p (Holm) {format_p(r[c][4])}"
               for c in vcols]  # fmt: skip
         lines.append(f"| {r['subgroup']} | {r['rows']} | {r['frauds']} | "
                      + " | ".join(vals + ds) + " |")  # fmt: skip
@@ -823,9 +825,9 @@ def write_reports(out_dir, prefix, meta, methods, comps, subs, h2, drops, drop_c
               "across the five single-view conditions.", "",
               "| condition | comparison | diff | 95% CI | p | p (Holm) |", "|---|---|---|---|---|---|"]  # fmt: skip
     for r in drop_comps.to_dict("records"):
-        ph = "" if pd.isna(r.get("p_holm", np.nan)) else f"{r['p_holm']:.3f}"
+        ph = format_p(r.get("p_holm", np.nan))
         lines.append(f"| {r['condition']} | {r['comparison']} | {r['diff']:+.4f} | "
-                     f"[{r['ci_low']:+.4f}, {r['ci_high']:+.4f}] | {r['p_value']:.3f} | {ph} |")  # fmt: skip
+                     f"[{r['ci_low']:+.4f}, {r['ci_high']:+.4f}] | {format_p(r['p_value'])} | {ph} |")  # fmt: skip
     (out_dir / f"{prefix}e11.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     from vaultic.trust.final_trust import plot_reliability
@@ -866,8 +868,8 @@ def write_reports(out_dir, prefix, meta, methods, comps, subs, h2, drops, drop_c
             "",
         ]
         lines += [f"- K = {h['K']}: {h['comparison']} {h['fraud_value_diff']:+,.0f} "
-                  f"[{h['ci_low']:+,.0f}, {h['ci_high']:+,.0f}], p = {h['p_value']:.3f}, "
-                  f"p (Holm) = {h['p_holm']:.3f}"
+                  f"[{h['ci_low']:+,.0f}, {h['ci_high']:+,.0f}], {p_phrase(h['p_value'])}, "
+                  f"Holm {p_phrase(h['p_holm'])}"
                   for h in r["routing"]["h5"]]  # fmt: skip
         lines.append("")
     lines += [f"**Phase 8 exit gate** (Mondrian coverage within 2 points of target): "
