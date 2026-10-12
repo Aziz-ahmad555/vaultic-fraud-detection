@@ -392,3 +392,29 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def check_test(system: FrozenSystem, parts: dict, stored: pd.DataFrame) -> dict:
+    """Final runs only: the refitted MVAF and B5 on the test rows against the stored
+    EXP-200-final scores, and the rebuilt E12 decisions against E12's default-cost total."""
+    from vaultic.trust.decision import total_cost
+
+    if parts["dev"]:
+        raise RuntimeError("check_test reads the test period; final runs only")
+    df, features = parts["df"], parts["features"]
+    pos = np.flatnonzero(df["day"].to_numpy() >= parts["splits"].test.first)
+    frame = features.loc[pos].reset_index(drop=True)
+    rows = df.loc[pos].reset_index(drop=True)
+    ids = rows["TransactionID"].to_numpy()
+    sc = system.score(frame, system.context(rows, frame))
+    b5, _ = system.b5(frame)
+    amount, y = rows["TransactionAmt"].to_numpy(float), rows["isFraud"].to_numpy()
+    cost = total_cost(system.decide(sc["risk"], sc["p"], amount), y, amount)
+    final = json.loads(FINAL_RESULTS.read_text("utf-8"))
+    want = final["e12"]["MVAF"]["decision"]["default"]["evaluation_cost"]
+    out = {"rows": int(len(pos)),
+           "mvaf": float(np.max(np.abs(sc["risk"] - stored["score_MVAF"].reindex(ids).to_numpy()))),
+           "b5": float(np.max(np.abs(b5 - stored["score_B5"].reindex(ids).to_numpy()))),
+           "e12_cost": abs(cost - want)}  # fmt: skip
+    out["passed"] = out["mvaf"] <= TOLERANCE and out["b5"] <= TOLERANCE and out["e12_cost"] <= 0.01
+    return out

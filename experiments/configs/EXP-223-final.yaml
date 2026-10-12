@@ -1,0 +1,16 @@
+# Stage 2: E23 subgroup performance gaps (pre-registered D121 section 3; details D161).
+# Run ONLY with `python -m vaultic.stage2.final --exp EXP-223-final` after Aziz's go-ahead;
+# frozen and hashed in research/frozen_stage2.md. Every setting is checked at startup against
+# stage2/final.py EXPECTED. No training: the stored EXP-200-final test scores.
+id: EXP-223-final
+status: frozen-final
+experiment: E23
+question: "Performance gaps across ProductCD, DeviceType, purchaser email domain and cold start (a performance-gap check, not a fairness audit: no demographic data)"
+venv: .venv
+e10_run: experiments/runs/EXP-200-final/20261011-002400-202994
+methods: [B5, F0, F4, MVAF]
+products: [W, C, R, H, S]
+devices: [desktop, mobile]
+top_emails: 5            # most frequent purchaser email domains in the TRAINING period
+min_frauds: 30           # groups below: reported, flagged, left out of the gaps (D161)
+bootstrap: {n: 1000, seed: 0}

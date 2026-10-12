@@ -156,6 +156,7 @@ def dice_candidates(problem: Problem, i: int, train: pd.DataFrame, setting: dict
             query, total_CFs=setting["total_cfs"], desired_class=0, features_to_vary=list(VARY),
             permitted_range={"TransactionAmt": list(amount_range)} if amount_range else None,
             stopping_threshold=0.5, sample_size=setting["sample_size"], random_seed=seed,
+            posthoc_sparsity_algorithm=setting.get("posthoc", "binary"),
         )  # fmt: skip
         cfs = res.cf_examples_list[0].final_cfs_df
     except Exception as e:  # DiCE raises when it finds nothing

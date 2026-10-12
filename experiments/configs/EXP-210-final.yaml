@@ -1,0 +1,23 @@
+# Stage 2: the ablation ladder E3, E4, E5, E8 (pre-registered D121 section 2).
+# Run ONLY with `python -m vaultic.stage2.final --exp EXP-210-final` after Aziz's go-ahead;
+# frozen and hashed in research/frozen_stage2.md. Every setting is checked at startup against
+# stage2/final.py EXPECTED. Rung 5 = E10's F4 (stored scores, after a reproduction check).
+id: EXP-210-final
+status: frozen-final
+experiment: ladder
+question: "Does each added view improve test PR-AUC under F4 stacking (H1, per step)?"
+venv: .venv
+e10_run: experiments/runs/EXP-200-final/20261011-002400-202994
+seeds: [0, 1, 2, 3, 4]
+bootstrap: {n: 1000, seed: 0}
+rungs:
+  1: [tabular]
+  2: [tabular, behavioral]
+  3: [tabular, behavioral, temporal]
+  4: [tabular, behavioral, temporal, graph]
+  5: [tabular, behavioral, temporal, graph, anomaly]
+f4_trials: 50
+tuned: research/tables/stage2_ladder_tuned.json   # rungs 1-4, tuned on validation (ladder-tune)
+metrics: [pr_auc, recall_at_1pct_fpr, cost]
+h1_alpha: 0.05
+sensitivity: bounded_count        # log1p(min(ctx_hist_n_past, gate-row max)); not in H1
