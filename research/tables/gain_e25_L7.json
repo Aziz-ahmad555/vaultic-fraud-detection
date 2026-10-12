@@ -1,0 +1,90 @@
+[
+ {
+  "group": "all",
+  "rows": 60602,
+  "frauds": 2114,
+  "base PR-AUC": 0.6831227884207853,
+  "new PR-AUC": 0.6831227884207853,
+  "gain": 0.0,
+  "ci_low": 0.0,
+  "ci_high": 0.0,
+  "p": 1.0
+ },
+ {
+  "group": ">= 5 past",
+  "rows": 20766,
+  "frauds": 743,
+  "base PR-AUC": 0.8568477285275939,
+  "new PR-AUC": 0.8568477285275939,
+  "gain": 0.0,
+  "ci_low": 0.0,
+  "ci_high": 0.0,
+  "p": 1.0
+ },
+ {
+  "group": "1-4 past",
+  "rows": 21071,
+  "frauds": 783,
+  "base PR-AUC": 0.5996192713440559,
+  "new PR-AUC": 0.5996192713440559,
+  "gain": 0.0,
+  "ci_low": 0.0,
+  "ci_high": 0.0,
+  "p": 1.0
+ },
+ {
+  "group": "cold start",
+  "rows": 18765,
+  "frauds": 588,
+  "base PR-AUC": 0.5463631767358443,
+  "new PR-AUC": 0.5463631767358443,
+  "gain": 0.0,
+  "ci_low": 0.0,
+  "ci_high": 0.0,
+  "p": 1.0
+ },
+ {
+  "group": "has_identity yes",
+  "rows": 10835,
+  "frauds": 974,
+  "base PR-AUC": 0.7706298380925453,
+  "new PR-AUC": 0.7706298380925453,
+  "gain": 0.0,
+  "ci_low": 0.0,
+  "ci_high": 0.0,
+  "p": 1.0
+ },
+ {
+  "group": "has_identity no",
+  "rows": 49767,
+  "frauds": 1140,
+  "base PR-AUC": 0.6025309875456077,
+  "new PR-AUC": 0.6025309875456077,
+  "gain": 0.0,
+  "ci_low": 0.0,
+  "ci_high": 0.0,
+  "p": 1.0
+ },
+ {
+  "group": "graph view available",
+  "rows": 29688,
+  "frauds": 1119,
+  "base PR-AUC": 0.699718233915397,
+  "new PR-AUC": 0.699718233915397,
+  "gain": 0.0,
+  "ci_low": 0.0,
+  "ci_high": 0.0,
+  "p": 1.0
+ },
+ {
+  "group": "graph view missing",
+  "rows": 30914,
+  "frauds": 995,
+  "base PR-AUC": 0.6653460682264518,
+  "new PR-AUC": 0.6653460682264518,
+  "gain": 0.0,
+  "ci_low": 0.0,
+  "ci_high": 0.0,
+  "p": 1.0
+ }
+]

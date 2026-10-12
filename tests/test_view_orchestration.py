@@ -433,3 +433,40 @@ def test_calibration_with_enough_frauds_chooses_by_ece(monkeypatch):
     monkeypatch.setattr(orch, "MIN_ISOTONIC_FRAUDS", 1)
     _, info = orch.calibrate_views(table)
     assert not any(e["fallback"] for e in info.values())
+
+
+def test_crossfit_plan_expanding_windows():
+    """D95: expanding windows over the training period + the fixed fold; each fold calibrates
+    on its own block's last 3 days; validation and test come from the fixed fold only."""
+    from vaultic.views.plan import crossfit_plan
+
+    plan = crossfit_plan(SPLITS)
+    assert [(f.name, f.train, f.predict, f.calibrate_views) for f in plan] == [
+        ("crossfit_0", (1, 30), (31, 60), (58, 60)),
+        ("crossfit_1", (1, 60), (61, 90), (88, 90)),
+        ("crossfit_2", (1, 90), (91, 120), (118, 120)),
+        ("fixed", (1, 120), (128, 150), (144, 146)),
+    ]
+    final = crossfit_plan(SPLITS, final=True)
+    assert [f.name for f in final if f.test is not None] == ["fixed"]
+    for f in plan[:3]:  # no fold predicts days it trained on, or beyond the training period
+        assert f.train[1] < f.predict[0] and f.predict[1] <= SPLITS.train.last
+
+
+def test_gate_folds_validated():
+    from dataclasses import replace
+
+    from vaultic.data.splits import DayRange, validate
+
+    with pytest.raises(ValueError, match="gate fold"):
+        validate(replace(SPLITS, gate_folds=((DayRange(1, 90), DayRange(91, 130)),)))
+
+
+def test_view_with_no_available_training_rows_is_missing_for_that_fold():
+    """D95: e.g. the anomaly view in the first cross-fitted fold (no scores on days 1-30)."""
+    from vaultic.views.orchestrate import SupervisedView
+
+    frame = pd.DataFrame({"a": [1.0, 2.0, 3.0], "avail": [0, 0, 0]})
+    view = SupervisedView(["a"], "logistic_regression", {}, available=lambda f: f["avail"] > 0)
+    view.fit(frame, np.array([0, 1, 0]))
+    assert np.isnan(view.predict(frame.assign(avail=1))).all()

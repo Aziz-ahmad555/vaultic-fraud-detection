@@ -153,3 +153,36 @@ def test_sensitivity_sweeps_the_otp_cost():
     step_ups = [int((decide(p, amount, Thresholds(**o["thresholds"])) == STEP_UP).sum())
                 for o in out]  # fmt: skip
     assert step_ups[2] <= step_ups[0]  # a dearer OTP never means more step-ups
+
+
+def test_hold_success_rate_default_keeps_d43_and_can_make_block_optimal():
+    """D123 / D124: with hold_success_rate = 1 (default) Hold costs c_rev and weakly dominates
+    Block; with an imperfect Hold a confident fraud is cheaper to block."""
+    y, amount = np.array([1, 0]), np.array([200.0, 200.0])
+    d43 = CostModel().per_action(y, amount)
+    assert d43[0, HOLD] == CostModel().c_rev and (d43[:, BLOCK] >= d43[:, HOLD]).all()
+    leaky = CostModel(hold_success_rate=0.8).per_action(y, amount)
+    assert leaky[0, HOLD] == pytest.approx(5.0 + 0.2 * 200.0)
+    assert leaky[0, BLOCK] < leaky[0, HOLD]  # a held fraud is missed 20% of the time
+    assert leaky[1, HOLD] == d43[1, HOLD]  # a legitimate customer costs the same review
+
+
+def test_allow_block_false_reoptimises_without_block():
+    """D145: the 'without Block' policy is re-chosen, not the Block policy with t_block forced."""
+    rng = np.random.default_rng(3)
+    n = 2000
+    y = (rng.random(n) < 0.1).astype(int)
+    p = np.clip(0.6 * y + rng.random(n) * 0.5, 0, 1)
+    amount = rng.lognormal(4, 1, n)
+    sets = np.where(p > 0.6, "fraud", "legit")
+    leaky = CostModel(hold_success_rate=0.7)
+    with_block, _ = choose_thresholds(p, amount, y, sets, cost=leaky)
+    without, info = choose_thresholds(p, amount, y, sets, cost=leaky, allow_block=False)
+    assert np.isinf(without.t_block) and info["allow_block"] is False
+    cost_with = total_cost(decide(p, amount, with_block, sets), y, amount, leaky)
+    cost_without = total_cost(decide(p, amount, without, sets), y, amount, leaky)
+    forced = Thresholds(with_block.t_monitor, with_block.t_step, with_block.t_hold, np.inf,
+                        with_block.t_dis)  # fmt: skip
+    cost_forced = total_cost(decide(p, amount, forced, sets), y, amount, leaky)
+    assert cost_with <= cost_without + 1e-6  # Block can only help on the rows it is chosen on
+    assert cost_without <= cost_forced + 1e-6  # re-optimising never does worse than forcing

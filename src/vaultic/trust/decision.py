@@ -20,7 +20,9 @@ C_FP = $10, C_rev = $5. How each action enters it (research/decisions.md D43):
                   fraud is stopped with probability step_up_success_rate (default 0.9) and
                   missed otherwise; a legit customer also bears legit_step_up_friction
                   (default $1) (D45)
-  Hold            one analyst review (C_rev); fraud caught; a legit transaction is released
+  Hold            one analyst review (C_rev); fraud caught (with probability hold_success_rate,
+                  default 1.0 = D43; below 1 the review may miss the fraud or come too late,
+                  D124, post-hoc sensitivity); a legit transaction is released
   Block           a case is opened (C_rev); fraud caught; a legit transaction is a false
                   positive (C_FP)
 Monitor changes no cost term, so cost cannot choose its threshold: t_monitor is set so a fixed
@@ -46,6 +48,9 @@ class CostModel:
     c_step: float = 0.50  # per-OTP operational cost: SMS + support overhead (D46)
     step_up_success_rate: float = 0.9  # share of fraud a step-up stops (D45)
     legit_step_up_friction: float = 1.0  # cost to a legit customer asked to step up (D45)
+    # share of held fraud actually stopped; 1.0 = D43 (Hold then weakly dominates Block, D123);
+    # below 1 only in the post-hoc sensitivity analysis and the demo's what-if mode (D124)
+    hold_success_rate: float = 1.0
 
     def per_action(self, y: np.ndarray, amount: np.ndarray) -> np.ndarray:
         """(n, 5) cost of taking each action for each transaction."""
@@ -58,7 +63,7 @@ class CostModel:
                 self.c_step
                 + (1 - self.step_up_success_rate) * missed
                 + (1 - y) * self.legit_step_up_friction,  # step-up
-                np.full(len(y), self.c_rev),  # hold
+                self.c_rev + (1 - self.hold_success_rate) * missed,  # hold
                 self.c_rev + (1 - y) * self.c_fp,  # block
             ]
         )
@@ -112,7 +117,8 @@ def breakdown(action, y, amount, cost: CostModel = DEFAULT_COST) -> dict:
     action, y, a = np.asarray(action), np.asarray(y), np.asarray(amount, dtype=float)
     passed = np.isin(action, [ALLOW, MONITOR])
     stepped = action == STEP_UP
-    miss = (1 - cost.step_up_success_rate) * stepped + passed  # expected share missed
+    held = action == HOLD
+    miss = (1 - cost.step_up_success_rate) * stepped + (1 - cost.hold_success_rate) * held + passed
     out = {name: int((action == i).sum()) for i, name in enumerate(ACTIONS)}
     out.update(
         missed_fraud_value=float((a * y * miss).sum()),
@@ -139,8 +145,11 @@ def choose_thresholds(
     cost: CostModel = DEFAULT_COST,
     grid_size: int = 15,
     monitor_share: float = 0.05,
+    allow_block: bool = True,
 ) -> tuple[Thresholds, dict]:
-    """Thresholds minimising total cost on VALIDATION rows (pass validation arrays only)."""
+    """Thresholds minimising total cost on VALIDATION rows (pass validation arrays only).
+    allow_block=False keeps t_block at inf and optimises the other thresholds without Block
+    (the 'without Block' policy of the post-hoc comparison, D145)."""
     el = np.asarray(p, dtype=float) * np.asarray(amount, dtype=float)
     per = cost.per_action(y, amount)
     n = len(el)
@@ -156,7 +165,7 @@ def choose_thresholds(
     rows = np.arange(n)
     for t_dis in dis_grid[::-1]:  # inf first: no disagreement rule unless it pays
         hold_dis = d >= t_dis
-        for t_block in grid[::-1]:
+        for t_block in grid[::-1] if allow_block else np.array([np.inf]):
             block = (el >= t_block) & confident_fraud
             for t_hold in grid[grid <= t_block][::-1]:
                 hold = ((el >= t_hold) | hold_dis) & ~block
@@ -172,7 +181,7 @@ def choose_thresholds(
     t_monitor = float(np.quantile(allowed, 1 - monitor_share)) if len(allowed) else t_step
     th = Thresholds(min(t_monitor, t_step), t_step, t_hold, t_block, t_dis)
     info = {"validation_cost": float(best_cost), "cost_model": asdict(cost),
-            "grid_size": grid_size, "monitor_share": monitor_share}  # fmt: skip
+            "grid_size": grid_size, "monitor_share": monitor_share, "allow_block": allow_block}  # fmt: skip
     return th, info
 
 

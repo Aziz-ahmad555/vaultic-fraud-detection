@@ -44,12 +44,16 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
-def write_freeze(files: list[Path], out: Path = FROZEN_PATH) -> None:
+def write_freeze(
+    files: list[Path],
+    out: Path = FROZEN_PATH,
+    title: str = "Frozen configs for the Phase 2 final runs",
+) -> None:
     commit = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, capture_output=True, text=True
     ).stdout.strip()
     lines = [
-        "# Frozen configs for the Phase 2 final runs",
+        f"# {title}",
         "",
         f"Frozen {datetime.now().isoformat(timespec='seconds')} at git commit `{commit}`, before "
         "any --final run. Final runs are made once per baseline and never repeated after seeing "

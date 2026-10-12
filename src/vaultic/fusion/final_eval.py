@@ -1,0 +1,285 @@
+"""Statistics of the pre-registered final experiments E10 and E11 (D101, D102).
+
+Pure functions over score arrays, so they are tested on synthetic data and used unchanged by
+fusion/final_run.py. Every comparison is paired: all methods are evaluated on the same
+bootstrap resamples of the same rows (1,000 by default). Two-sided p-values; Holm correction
+within each table; effect sizes from the per-seed values (eval/stats.effect_sizes).
+
+E10  per method: PR-AUC, recall@1%FPR and total cost at a threshold chosen on the calibration
+     rows (never on the evaluation rows); MVAF minus every other method for each metric;
+     subgroups; the H2 decision rule.
+E11  PR-AUC drop of each method when a view is removed for every row (and "tabular only");
+     MVAF's drop minus F3's / F4's drop, Holm across the five single-view conditions.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+
+from vaultic.eval.bootstrap import holm
+from vaultic.eval.metrics import cost_at, pr_auc, recall_at_fpr
+from vaultic.eval.stats import effect_sizes
+
+N_BOOT = 1000
+VIEWS = ("tabular", "behavioral", "temporal", "graph", "anomaly")
+
+
+def boot_indices(n: int, n_boot: int = N_BOOT, seed: int = 0) -> list[np.ndarray]:
+    rng = np.random.default_rng(seed)
+    return [rng.integers(0, n, n) for _ in range(n_boot)]
+
+
+def _p_two_sided(diffs: np.ndarray) -> float:
+    """NaN when there is no valid resample (D106: never crash on a small subgroup)."""
+    diffs = np.asarray(diffs, dtype=float)
+    diffs = diffs[np.isfinite(diffs)]
+    if diffs.size == 0:
+        return float("nan")
+    p = 2 * min((diffs <= 0).mean(), (diffs >= 0).mean())
+    return float(min(p, 1.0))
+
+
+def _ci(values) -> tuple[float, float]:
+    """95% percentile interval; (NaN, NaN) when there is no valid resample (D106)."""
+    b = np.asarray(values, dtype=float)
+    b = b[np.isfinite(b)]
+    if b.size == 0:
+        return float("nan"), float("nan")
+    lo, hi = np.quantile(b, [0.025, 0.975])
+    return float(lo), float(hi)
+
+
+def holm_nan(p_values) -> list[float]:
+    """Holm over the finite p-values; a NaN p (no valid resample) stays NaN and is not part of
+    the family (D106)."""
+    p = np.asarray(p_values, dtype=float)
+    out = np.full(len(p), np.nan)
+    ok = np.isfinite(p)
+    if ok.any():
+        out[ok] = holm(p[ok].tolist())
+    return out.tolist()
+
+
+def _ok(y: np.ndarray) -> bool:
+    return 0 < y.sum() < len(y)
+
+
+def metric_fns(amount: np.ndarray, thresholds: dict[str, float]):
+    """name -> fn(method, y, s, idx) for the three E10 metrics (cost uses the method's threshold
+    chosen on the calibration rows and the resampled amounts)."""
+    return {
+        "pr_auc": lambda m, y, s, idx: pr_auc(y, s),
+        "recall_at_1pct_fpr": lambda m, y, s, idx: recall_at_fpr(y, s, 0.01),
+        "cost": lambda m, y, s, idx: cost_at(y, s, amount[idx], thresholds[m]),
+    }
+
+
+def e10_table(
+    y: np.ndarray,
+    scores: dict[str, np.ndarray],
+    per_seed: dict[str, list[np.ndarray]],
+    amount: np.ndarray,
+    thresholds: dict[str, float],
+    reference: str = "MVAF",
+    n_boot: int = N_BOOT,
+    seed: int = 0,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(methods, comparisons): each method's metrics with 95% CIs; reference minus each other
+    method per metric with CI, p and Holm-adjusted p (one Holm family per metric), and effect
+    sizes (from per-seed values where a method has several seeds)."""
+    y = np.asarray(y).astype(int)
+    fns = metric_fns(np.asarray(amount, dtype=float), thresholds)
+    idx = boot_indices(len(y), n_boot, seed)
+    boots = {m: {k: [] for k in fns} for m in scores}
+    for i in idx:
+        yy = y[i]
+        if not _ok(yy):
+            continue
+        for m, s in scores.items():
+            for k, f in fns.items():
+                boots[m][k].append(f(m, yy, s[i], i))
+    all_rows = np.arange(len(y))
+    methods = []
+    for m, s in scores.items():
+        row = {"method": m}
+        for k, f in fns.items():
+            b = np.asarray(boots[m][k])
+            row[k] = f(m, y, s, all_rows)
+            row[f"{k}_ci_low"], row[f"{k}_ci_high"] = _ci(b)
+        seeds = per_seed.get(m)
+        row["pr_auc_per_seed"] = [float(pr_auc(y, x)) for x in seeds] if seeds else None
+        methods.append(row)
+    comps = []
+    for k in fns:
+        fam = []
+        for m in scores:
+            if m == reference:
+                continue
+            d = np.asarray(boots[reference][k]) - np.asarray(boots[m][k])
+            entry = {"metric": k, "comparison": f"{reference} - {m}",
+                     "diff": fns[k](reference, y, scores[reference], all_rows)
+                     - fns[k](m, y, scores[m], all_rows),
+                     "ci_low": _ci(d)[0], "ci_high": _ci(d)[1],
+                     "p_value": _p_two_sided(d)}  # fmt: skip
+            if k == "pr_auc":
+                # relative % from the reported diff (seed-averaged scores), so both share a sign;
+                # Cohen's d and the per-seed mean diff from the single-seed PR-AUCs (D102)
+                base = fns[k](m, y, scores[m], all_rows)
+                entry.update({"relative_pct": entry["diff"] / base * 100 if base else np.nan,
+                              "seed_mean_diff": np.nan, "cohens_d_paired": np.nan})  # fmt: skip
+                a, b = per_seed.get(reference), per_seed.get(m)
+                if a and b and len(a) == len(b) and len(a) > 1:
+                    es = effect_sizes([pr_auc(y, x) for x in a], [pr_auc(y, x) for x in b])
+                    entry.update({"seed_mean_diff": es["diff"],
+                                  "cohens_d_paired": es["cohens_d_paired"]})  # fmt: skip
+            fam.append(entry)
+        adj = holm_nan([e["p_value"] for e in fam])
+        for e, p in zip(fam, adj, strict=True):
+            e["p_holm"] = p
+        comps.extend(fam)
+    return pd.DataFrame(methods), pd.DataFrame(comps)
+
+
+def refit_check(stored: pd.Series, ids, scores) -> dict:
+    """Refitted scores vs stored predictions (indexed by TransactionID) on the same rows. Rows
+    missing from the stored run, or not finite on either side, are left out and counted."""
+    ref = stored.reindex(np.asarray(ids)).to_numpy(float)
+    s = np.asarray(scores, dtype=float)
+    ok = np.isfinite(ref) & np.isfinite(s)
+    out = {"n_rows": int(len(s)), "n_compared": int(ok.sum()), "n_missing": int((~ok).sum()),
+           "max_abs_diff": np.nan, "corr": np.nan}  # fmt: skip
+    if ok.sum() >= 2:
+        out["max_abs_diff"] = float(np.max(np.abs(ref[ok] - s[ok])))
+        if np.std(ref[ok]) > 0 and np.std(s[ok]) > 0:
+            out["corr"] = float(np.corrcoef(ref[ok], s[ok])[0, 1])
+    return out
+
+
+def subgroup_masks(context_hist: np.ndarray, has_identity: np.ndarray,
+                   view_masks: np.ndarray) -> dict[str, np.ndarray]:  # fmt: skip
+    """E10 subgroups (D101): cold start vs history, has_identity, graph view available, and
+    the number of available views (1-2, 3-4, 5). view_masks: (n, 5) in VIEWS order."""
+    n_views = view_masks.sum(axis=1)
+    graph = view_masks[:, VIEWS.index("graph")].astype(bool)
+    return {
+        "cold start": context_hist == 0, "with history": context_hist > 0,
+        "has_identity yes": has_identity == 1, "has_identity no": has_identity == 0,
+        "graph view available": graph, "graph view missing": ~graph,
+        "1-2 views": (n_views >= 1) & (n_views <= 2), "3-4 views": (n_views >= 3) & (n_views <= 4),
+        "5 views": n_views == 5,
+    }  # fmt: skip
+
+
+def paired_pr_auc(y, a, b, n_boot: int = N_BOOT, seed: int = 0) -> dict[str, float]:
+    y = np.asarray(y).astype(int)
+    d = [pr_auc(y[i], a[i]) - pr_auc(y[i], b[i]) for i in boot_indices(len(y), n_boot, seed)
+         if _ok(y[i])]  # fmt: skip
+    lo, hi = _ci(d)
+    return {"diff": pr_auc(y, a) - pr_auc(y, b), "ci_low": lo, "ci_high": hi,
+            "p_value": _p_two_sided(np.asarray(d))}  # fmt: skip
+
+
+def e10_subgroups(y, scores: dict[str, np.ndarray], masks: dict[str, np.ndarray],
+                  reference: str = "MVAF", versus=("F3", "F4"), n_boot: int = N_BOOT) -> pd.DataFrame:  # fmt: skip
+    """PR-AUC per subgroup and method with a bootstrap 95% CI (<method>_ci_low / _ci_high, the
+    same resamples for every method); reference minus each `versus` method, paired. Cells of
+    the comparison columns are (diff, ci_low, ci_high, p, p_holm), with Holm across every
+    comparison in the table (all subgroups x `versus` methods; D104)."""
+    rows, tests = [], []
+    y = np.asarray(y).astype(int)
+    for name, m in masks.items():
+        row = {"subgroup": name, "rows": int(m.sum()), "frauds": int(y[m].sum())}
+        if _ok(y[m]):
+            row.update({k: pr_auc(y[m], s[m]) for k, s in scores.items()})
+            ym = y[m]
+            idx = [i for i in boot_indices(len(ym), n_boot) if _ok(ym[i])]
+            for k, s in scores.items():
+                row[f"{k}_ci_low"], row[f"{k}_ci_high"] = _ci([pr_auc(ym[i], s[m][i]) for i in idx])
+            for v in versus:
+                r = paired_pr_auc(y[m], scores[reference][m], scores[v][m], n_boot)
+                row[f"{reference} - {v}"] = (r["diff"], r["ci_low"], r["ci_high"], r["p_value"])
+                tests.append((len(rows), f"{reference} - {v}"))
+        rows.append(row)
+    adj = holm_nan([rows[i][c][3] for i, c in tests]) if tests else []
+    for (i, c), p in zip(tests, adj, strict=True):
+        rows[i][c] = (*rows[i][c], float(p))
+    return pd.DataFrame(rows)
+
+
+def h2_verdict(comparisons: pd.DataFrame, subgroups: pd.DataFrame, alpha: float = 0.05) -> dict:
+    """D101/D102: H2 is supported only if MVAF beats F3 AND F4 overall (PR-AUC, positive and
+    Holm-significant) AND its margin over each on rows with missing views (1-2 and 3-4 views) is
+    larger than on rows with all 5 views.
+
+    D105: the margin comparison needs all three margins (1-2, 3-4, 5 views) to be finite; if one
+    is not (a subgroup without both classes), that part is undetermined (None). The verdict is
+    "not supported" if any part is False, "undetermined" if no part is False but one is None,
+    and "supported" only if every part is True."""
+    pr = comparisons[comparisons["metric"] == "pr_auc"].set_index("comparison")
+    overall = {v: bool(pr.loc[f"MVAF - {v}", "diff"] > 0 and pr.loc[f"MVAF - {v}", "p_holm"] < alpha)
+               for v in ("F3", "F4")}  # fmt: skip
+    sub = subgroups.set_index("subgroup")
+
+    def margin(group, v):
+        val = sub.loc[group].get(f"MVAF - {v}") if group in sub.index else None
+        return val[0] if isinstance(val, tuple) else np.nan
+
+    larger = {}
+    for v in ("F3", "F4"):
+        missing = [margin(g, v) for g in ("1-2 views", "3-4 views")]
+        full = margin("5 views", v)
+        if not all(np.isfinite(x) for x in [*missing, full]):
+            larger[v] = None  # undetermined (D105)
+        else:
+            larger[v] = bool(min(missing) > full)
+    parts = [*overall.values(), *larger.values()]
+    if any(p is False for p in parts):
+        verdict = "not supported"
+    elif any(p is None for p in parts):
+        verdict = "undetermined"
+    else:
+        verdict = "supported"
+    return {"beats_overall": overall, "larger_margin_on_missing_views": larger,
+            "verdict": verdict, "supported": verdict == "supported"}  # fmt: skip
+
+
+def e11_drops(y, full: dict[str, np.ndarray], removed: dict[str, dict[str, np.ndarray]],
+              reference: str = "MVAF", versus=("F3", "F4"), n_boot: int = N_BOOT,
+              seed: int = 0) -> tuple[pd.DataFrame, pd.DataFrame]:  # fmt: skip
+    """(drops, comparisons). removed[condition][method] = scores with that view removed for all
+    rows. Drop = PR-AUC(full) - PR-AUC(removed), with a bootstrap CI. Comparisons: reference's
+    drop minus each `versus` method's drop, paired on the same resamples; Holm across the
+    single-view conditions (one family per `versus` method); 'tabular only' is reported but
+    not in the Holm family."""
+    y = np.asarray(y).astype(int)
+    idx = [i for i in boot_indices(len(y), n_boot, seed) if _ok(y[i])]
+    drops, boot_drop = [], {}
+    for cond, by_method in removed.items():
+        for m, s in by_method.items():
+            point = pr_auc(y, full[m]) - pr_auc(y, s)
+            b = np.array([pr_auc(y[i], full[m][i]) - pr_auc(y[i], s[i]) for i in idx])
+            boot_drop[(cond, m)] = b
+            drops.append({"condition": cond, "method": m, "pr_auc_full": pr_auc(y, full[m]),
+                          "pr_auc_removed": pr_auc(y, s), "drop": point,
+                          "ci_low": _ci(b)[0], "ci_high": _ci(b)[1]})  # fmt: skip
+    comps = []
+    for v in versus:
+        fam = []
+        for cond, by_method in removed.items():
+            if reference not in by_method or v not in by_method:
+                continue
+            d = boot_drop[(cond, reference)] - boot_drop[(cond, v)]
+            point = ((pr_auc(y, full[reference]) - pr_auc(y, by_method[reference]))
+                     - (pr_auc(y, full[v]) - pr_auc(y, by_method[v])))  # fmt: skip
+            fam.append({"condition": cond, "comparison": f"drop {reference} - drop {v}",
+                        "diff": point, "ci_low": _ci(d)[0], "ci_high": _ci(d)[1],
+                        "p_value": _p_two_sided(d)})  # fmt: skip
+        single = [e for e in fam if e["condition"] != "tabular only"]
+        adj = holm_nan([e["p_value"] for e in single]) if single else []
+        for e, p in zip(single, adj, strict=True):
+            e["p_holm"] = p
+        for e in fam:
+            e.setdefault("p_holm", np.nan)
+        comps.extend(fam)
+    return pd.DataFrame(drops), pd.DataFrame(comps)

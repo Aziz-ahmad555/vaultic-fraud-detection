@@ -1,0 +1,7 @@
+# Phase 4 development run (validation only): B5 + graph features (setting C, label delay
+# L = 30, 30-day window, hub thresholds fitted on the training period; features/graph.py)
+# with B5's FROZEN tuned hyperparameters. A first look, not roadmap E5 (EXP-105, planned). D72.
+extends: EXP-009.yaml
+id: EXP-105-frozen
+question: "B5 + graph features (setting C), frozen B5 hyperparameters (development, Phase 4)"
+features: b5_graph

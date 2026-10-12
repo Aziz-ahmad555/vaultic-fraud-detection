@@ -15,6 +15,7 @@ from pathlib import Path
 
 import yaml
 
+from vaultic.eval.bootstrap import p_phrase
 from vaultic.eval.compare import compare_runs
 from vaultic.paths import RESEARCH_DIR, RUNS_DIR
 from vaultic.reports.table1 import SPEC_PATH, latest_run
@@ -57,7 +58,7 @@ def check(runs_dir: Path = RUNS_DIR, spec_path: Path = SPEC_PATH) -> tuple[bool,
         ],
         "",
         f"Paired bootstrap B5 − B3 (same test resamples): {paired['diff']:+.4f} "
-        f"(95% CI {paired['ci_low']:+.4f} to {paired['ci_high']:+.4f}, p = {paired['p_value']:.3f}).",
+        f"(95% CI {paired['ci_low']:+.4f} to {paired['ci_high']:+.4f}, {p_phrase(paired['p_value'])}).",
         "",
         f"**Result: {'PASSED' if passed else 'NOT PASSED'}.**",
         "",

@@ -1,0 +1,26 @@
+id: EXP-V-graph
+question: 'V-graph tuned (Optuna, 25 trials per weighting arm, validation only; winning
+  arm: scale_pos_weight)'
+model:
+  name: xgboost
+  params:
+    max_depth: 9
+    learning_rate: 0.027672
+    min_child_weight: 34.670378
+    subsample: 0.617183
+    colsample_bytree: 0.657618
+    reg_lambda: 4.924339
+    reg_alpha: 0.002547
+    gamma: 0.656676
+    n_estimators: 300
+    scale_pos_weight: 24.684288
+features: graph_only
+seeds:
+- 0
+- 1
+- 2
+- 3
+- 4
+bootstrap:
+  n: 1000
+  seed: 0

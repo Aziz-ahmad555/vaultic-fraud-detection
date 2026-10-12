@@ -4,12 +4,12 @@ Every feature of a transaction at time t uses only that customer's (uid's) trans
 time strictly before t; rows sharing the same second never see each other. No labels are used.
 Groups (roadmap Phase 3):
 
-  amount deviation  amt_z (mean/std, >= 2 past), amt_robust_z = (a - median) /
+  amount deviation  amt_z (mean/std, std 0 -> one cent; >= 2 past), amt_robust_z = (a - median) /
                     (1.4826 * MAD + 0.01) (>= 2 past), amt_ratio_median (>= 1 past),
                     amt_percentile (mid-rank in past amounts, >= 1 past)
   velocity          vel_n_{1h,24h,7d,30d}, vel_amt_{...}: count / amount sum in [t - w, t)
   recency           secs_since_prev, mean_gap (mean gap between past transactions, >= 2 past),
-                    gap_ratio = secs_since_prev / mean_gap
+                    gap_ratio = secs_since_prev / mean_gap (mean_gap 0 -> 1 s)
   escalation        amt_slope_5: least-squares slope of amount over the last 5 transactions
                     including the current one (>= 2 points)
   novelty           new_{email,device,addr2,product}: 1 if the uid never used this value
@@ -158,7 +158,9 @@ def build_behavioral(df: pd.DataFrame, uid: pd.Series) -> pd.DataFrame:
         mean = np.where(n_past > 0, total / n_past, np.nan)
         var = np.where(n_past > 1, (squares - n_past * mean**2) / (n_past - 1), np.nan)
         std = np.sqrt(np.clip(var, 0, None))
-        out["amt_z"] = np.where(n_past > 1, (amount - mean) / std, np.nan).astype(np.float32)
+        # a constant history (std 0) gets one cent as its spread, like amt_robust_z (D66)
+        spread = np.where(std > 0, std, MAD_EPS)
+        out["amt_z"] = np.where(n_past > 1, (amount - mean) / spread, np.nan).astype(np.float32)
     hist = _amount_history_features(uid_values, time, amount)
     with np.errstate(invalid="ignore", divide="ignore"):
         robust = (amount - hist["median"]) / (MAD_SCALE * hist["mad"] + MAD_EPS)
@@ -184,7 +186,8 @@ def build_behavioral(df: pd.DataFrame, uid: pd.Series) -> pd.DataFrame:
         )
         out["secs_since_prev"] = since_prev.astype(np.float32)
         out["mean_gap"] = mean_gap.astype(np.float32)
-        out["gap_ratio"] = (since_prev / mean_gap).astype(np.float32)
+        # past transactions all in the same second: a 1-second mean gap keeps the ratio finite
+        out["gap_ratio"] = (since_prev / np.where(mean_gap > 0, mean_gap, 1.0)).astype(np.float32)
 
     # escalation
     out["amt_slope_5"] = hist["slope"].astype(np.float32)

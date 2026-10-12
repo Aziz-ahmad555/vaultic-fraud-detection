@@ -46,6 +46,8 @@ class Splits:
     # fits the per-view calibrators, the later one everything fitted on fused scores
     calibrate_views: DayRange | None = None
     calibrate_fused: DayRange | None = None
+    # cross-fitted gate folds over the training period (D95): (train, predict) pairs
+    gate_folds: tuple[tuple[DayRange, DayRange], ...] = ()
 
     @property
     def calibrate(self) -> DayRange | None:
@@ -80,6 +82,9 @@ def load_splits(path: Path = SPLITS_PATH) -> Splits:
         rolling=tuple((_range(f["train"]), _range(f["test"])) for f in cfg.get("rolling", [])),
         calibrate_views=_range(fixed["calibrate_views"]) if "calibrate_views" in fixed else None,
         calibrate_fused=_range(fixed["calibrate_fused"]) if "calibrate_fused" in fixed else None,
+        gate_folds=tuple(
+            (_range(f["train"]), _range(f["predict"])) for f in cfg.get("gate_folds", [])
+        ),
     )
     validate(splits)
     return splits
@@ -102,6 +107,12 @@ def validate(s: Splits) -> None:
             raise ValueError(
                 "calibrate_views then calibrate_fused must be consecutive slices forming the "
                 "tail of validation (ending on its last day)"
+            )
+    for train, block in s.gate_folds:
+        if not (train.last < block.first and block.last <= s.train.last):
+            raise ValueError(
+                f"gate fold must predict days after its training, inside the training period: "
+                f"{train}, {block}"
             )
     for train, test in s.rolling:
         if not train.last < test.first:

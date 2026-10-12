@@ -7,14 +7,16 @@ needs:
   - "out-of-sample scores of all five views for validation and test"
   - "calibrated view probabilities (Phase 8 calibration per view)"
 question: "E10: MVAF vs F1-F7 (RQ2, H2)"
+# view definitions (D89): vaultic.views.definitions; tabular = B5 without label-derived features,
+# behavioral = behavioral + label-derived customer features, temporal = XGBoost on sequences (D88)
 views: [tabular, behavioral, temporal, graph, anomaly]
 context: [log_amount, hist_n_past, has_identity, ProductCD, hour]
 fusion:
-  methods: [F1, F2, F3, F4, F5, F6, F7, MVAF, MVAF_cost]
+  methods: [F0, F1, F2, F3, F4, F5, F6, F7, MVAF, MVAF_cost]   # F0: one XGBoost on all view features (D90)
   mvaf: {hidden: [32, 32], dropout: 0.25, epochs: 30}
   f7: {dropout: 0.25, mofe_lambda: 1.0}
   tuning: {method: optuna, trials: 50, period: validation}   # equal budget for trainable ones
-compare: ["MVAF vs F3", "MVAF vs F4", "MVAF vs F7"]
+compare: ["MVAF vs F0", "MVAF vs B5", "MVAF vs F3", "MVAF vs F4", "MVAF vs F7"]   # D90, D91
 report:
   overall: [pr_auc, roc_auc, recall_at_1pct_fpr, cost]
   statistics: {paired_bootstrap: true, holm: true, effect_size: true}

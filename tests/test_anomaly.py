@@ -86,3 +86,28 @@ def test_anomaly_view_encodes_categoricals_with_the_shared_encoder():
     new.loc[new.index[0], "ProductCD"] = "R"  # unseen in training -> code 1, still scored
     out = view.transform(new, uid[:3], np.full(3, 30))
     assert out.notna().all().all()
+
+
+def test_forward_chained_scores_use_only_earlier_days():
+    """D68: each block is scored by models fitted on earlier days only; the first block is NaN;
+    rows after the training period are scored by a model of the whole training period."""
+    from vaultic.views.anomaly_build import forward_chained_scores
+
+    rng = np.random.default_rng(0)
+    n = 1200
+    day = np.sort(rng.integers(1, 101, n))
+    X = rng.normal(size=(n, 4))
+    y = (rng.random(n) < 0.05).astype(int)
+    uid = rng.integers(0, 20, n)
+    n_past = np.full(n, 30)
+    s = forward_chained_scores(X, y, uid, n_past, day, train_last_day=60, block_days=20,
+                               max_iter=20)  # fmt: skip
+    assert s.loc[day <= 20].isna().all().all()
+    assert s.loc[day > 20, "anomaly_if"].notna().all()
+    # changing future rows (later days) leaves earlier scores unchanged
+    X2 = X.copy()
+    X2[day > 40] = 99.0
+    s2 = forward_chained_scores(X2, y, uid, n_past, day, train_last_day=60, block_days=20,
+                                max_iter=20)  # fmt: skip
+    early = day <= 40
+    np.testing.assert_array_equal(s.loc[early].to_numpy(), s2.loc[early].to_numpy())

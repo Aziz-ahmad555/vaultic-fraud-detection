@@ -2,13 +2,21 @@
 
 Run:  python -m vaultic.eval.run experiments/configs/EXP-001.yaml           (development)
       python -m vaultic.eval.run experiments/configs/EXP-001.yaml --final   (final run)
+      python -m vaultic.eval.run experiments/configs/EXP-001.yaml --smoke   (pipeline check)
+
+--smoke checks a config end to end before a long run: one seed, 50 bootstrap resamples, 10% of
+the rows (TransactionID % 10 == 0), written to experiments/runs/<id>-smoke/ and never to the
+experiment log. Its numbers are not results. It cannot be combined with --final.
 
 Trains on the train period (one model per seed) and scores the VALIDATION period; thresholds
 are chosen on validation. Test rows are not predicted at all unless --final is given; final
 runs add test metrics and are logged as FINAL. Writes to experiments/runs/<id>/<timestamp>/:
   config.yaml        the exact config used
   metrics.json       validation (and, if final, test) metrics: mean, std, per-seed values and
-                     95% bootstrap CI (deterministic: same config + seeds -> identical file)
+                     95% bootstrap CI (deterministic: same config + seeds -> identical file),
+                     plus the warnings raised during training and scoring (counts, flagged
+                     categories such as ConvergenceWarning)
+  warnings.log       every warning raised, grouped with counts (never silenced)
   run_info.json      code version (git), data version (file hashes), runtime
   predictions.parquet  TransactionID, TransactionDT, split, label, per-seed and mean score
 It also logs to MLflow (experiments/mlflow/mlflow.db) when mlflow is installed, and appends one line
@@ -44,9 +52,18 @@ from vaultic.eval.metrics import (
     f1_at,
     precision_at_k,
 )
+from vaultic.eval.warn_capture import capture_warnings
 from vaultic.features.pipeline import features_path
-from vaultic.features.sets import NEEDS_BASE, NEEDS_UID, design_matrix, drop_features
-from vaultic.paths import MERGED_PATH, REPO_ROOT, RESEARCH_DIR, RUNS_DIR
+from vaultic.features.sets import (
+    EXTRA_FEATURES,
+    NEEDS_BASE,
+    NEEDS_UID,
+    VIEW_ONLY,
+    attach_features,
+    design_matrix,
+    drop_features,
+)
+from vaultic.paths import FEATURES_DIR, MERGED_PATH, REPO_ROOT, RESEARCH_DIR, RUNS_DIR
 from vaultic.views.tabular import effective_device, make_model, resolve_device
 
 PRECISION_K = 500
@@ -78,6 +95,9 @@ def read_config(path: Path) -> dict[str, Any]:
 
 def load_config(path: Path) -> dict[str, Any]:
     cfg = read_config(path)
+    if cfg.get("status") == "frozen-final":  # D102: only fusion/final_run.py runs these
+        raise ValueError(f"{cfg.get('id', path)} is a frozen final config: run it with "
+                         "`python -m vaultic.fusion.final_run --mode final`")  # fmt: skip
     if cfg.get("status") == "planned":
         needs = "; ".join(cfg.get("needs", [])) or "see the config"
         raise ValueError(
@@ -191,6 +211,10 @@ def evaluate(
     if maturity is not None:  # E25: only training labels already known when validation starts
         start = splits.validation.first * SECONDS_PER_DAY
         tr = tr & label_matured(df["TransactionDT"].to_numpy(), start, int(maturity))
+    held_out = cfg.get("train_drop_fraud")  # emerging fraud (D69): {column: value}
+    if held_out:
+        for column, value in held_out.items():
+            tr = tr & ~((df[column].astype(str) == str(value)).to_numpy() & (y == 1))
     if not (tr.any() and va.any()):
         raise ValueError("train and validation must both be non-empty")
     if final and not te.any():
@@ -235,6 +259,8 @@ def evaluate(
     }
     if maturity is not None:
         result["train_label_maturity_days"] = int(maturity)
+    if held_out:
+        result["train_drop_fraud"] = {k: str(v) for k, v in held_out.items()}
     if final:
         result["rows"]["test"] = int(te.sum())
         result["test_fraud_rate"] = float(y[te].mean())
@@ -333,6 +359,25 @@ def load_inputs(cfg: dict[str, Any], splits) -> tuple[pd.DataFrame, pd.DataFrame
             )
         base = pd.read_parquet(path)
         inputs.append(path)
+        for kind in EXTRA_FEATURES.get(cfg["features"], ()):
+            extra_path = FEATURES_DIR / f"{kind}_{variant}.parquet"
+            if not extra_path.exists():
+                raise FileNotFoundError(f"{extra_path} missing; build the {kind} features first")
+            base = attach_features(base, pd.read_parquet(extra_path), kind)
+            inputs.append(extra_path)
+        if cfg["features"] == "behavioral_view":  # D89: behavioral file + label-derived columns
+            from vaultic.views.definitions import LABEL_DERIVED
+
+            beh_path = FEATURES_DIR / f"behavioral_{variant}.parquet"
+            base = attach_features(pd.read_parquet(beh_path),
+                                   base[["TransactionID", *LABEL_DERIVED]], "label-derived")  # fmt: skip
+            inputs.append(beh_path)
+    elif cfg["features"] in VIEW_ONLY:
+        path = FEATURES_DIR / f"{VIEW_ONLY[cfg['features']]}_{variant}.parquet"
+        if not path.exists():
+            raise FileNotFoundError(f"{path} missing; build those features first")
+        base = pd.read_parquet(path)
+        inputs.append(path)
     elif cfg["features"] in NEEDS_UID:
         base = pd.read_parquet(UID_PATH, columns=["TransactionID", variant])
         base = base.rename(columns={variant: "uid"})
@@ -349,9 +394,16 @@ def run(
     rerun_reason: str | None = None,
     decisions_log: Path = RESEARCH_DIR / "decisions.md",
     device: str | None = None,
+    smoke: bool = False,
 ) -> Path:
     started = time.perf_counter()
     cfg = load_config(config_path)
+    if smoke:
+        if final:
+            raise ValueError("--smoke cannot be combined with --final")
+        cfg = {**cfg, "id": f"{cfg['id']}-smoke", "seeds": cfg["seeds"][:1],
+               "bootstrap": {**cfg.get("bootstrap", {}), "n": SMOKE_BOOTSTRAP}}  # fmt: skip
+        experiment_log = None
     # the device the model really trains on is part of the run's saved config
     device = effective_device(cfg["model"]["name"], resolve_device(device, cfg.get("device")))
     cfg = {**cfg, "device": device}
@@ -366,14 +418,20 @@ def run(
     else:
         df, base = data
         data_version = {"injected": True}
+    if smoke:
+        df, base = smoke_rows(df, base)
+        data_version["smoke"] = f"TransactionID % {SMOKE_EVERY} == 0"
 
-    result, preds, timings = evaluate(cfg, df, base, splits, final=final, device=device)
+    with capture_warnings() as caught:
+        result, preds, timings = evaluate(cfg, df, base, splits, final=final, device=device)
+    result["warnings"] = caught.summary()
 
     out_dir = runs_dir / cfg["id"] / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     out_dir.mkdir(parents=True)
     (out_dir / "config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
     (out_dir / "metrics.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     preds.to_parquet(out_dir / "predictions.parquet", index=False)
+    caught.write_log(out_dir / "warnings.log")
     info = {
         "code_version": _git_version(),
         "data_version": data_version,
@@ -391,10 +449,32 @@ def run(
     return out_dir
 
 
+SMOKE_EVERY = 10
+SMOKE_BOOTSTRAP = 50
+
+
+def smoke_rows(df: pd.DataFrame, base: pd.DataFrame | None):
+    """Every SMOKE_EVERY-th transaction (by id), keeping df and base aligned."""
+    df = df[df["TransactionID"].to_numpy() % SMOKE_EVERY == 0].reset_index(drop=True)
+    if base is not None:
+        base = base[base["TransactionID"].to_numpy() % SMOKE_EVERY == 0].reset_index(drop=True)
+    return df, base
+
+
 def _fmt(entry: dict[str, float]) -> str:
     return (
         f"{entry['mean']:.4f} ± {entry['std']:.4f} "
         f"(95% CI {entry['ci_low']:.4f}–{entry['ci_high']:.4f})"
+    )
+
+
+def warning_flag(result: dict[str, Any]) -> str:
+    """'WARNINGS: ConvergenceWarning x5' for a run whose warnings include a flagged category."""
+    flagged = result.get("warnings", {}).get("flagged", {})
+    return (
+        ("WARNINGS: " + ", ".join(f"{c} x{n}" for c, n in sorted(flagged.items())))
+        if flagged
+        else ""
     )
 
 
@@ -408,6 +488,9 @@ def log_line(
         summary = f"{mark} test PR-AUC {_fmt(result['test']['pr_auc'])}; {val}"
     else:
         summary = f"{val} (development run)"
+    flag = warning_flag(result)
+    if flag:
+        summary = f"{summary}; **{flag}**"
     return (
         f"| {cfg['id']} | {date.today().isoformat()} | {cfg['question']} | {summary}, "
         f"{len(cfg['seeds'])} seeds, uid `{result['uid_variant']}`, run `{shown.as_posix()}` | — |\n"
@@ -433,12 +516,25 @@ def main() -> None:
         default=None,
         help="override the config / VAULTIC_DEVICE (cuda: XGBoost and LightGBM on the GPU)",
     )
+    parser.add_argument(
+        "--smoke",
+        action="store_true",
+        help="pipeline check on 10%% of rows with one seed (not a result; never logged)",
+    )
     args = parser.parse_args()
-    out = run(args.config, final=args.final, rerun_reason=args.rerun_reason, device=args.device)
+    out = run(
+        args.config,
+        final=args.final,
+        rerun_reason=args.rerun_reason,
+        device=args.device,
+        smoke=args.smoke,
+    )
     result = json.loads((out / "metrics.json").read_text(encoding="utf-8"))
     print(f"{out}\n  validation PR-AUC {_fmt(result['validation']['pr_auc'])}")
     if args.final:
         print(f"  FINAL test PR-AUC {_fmt(result['test']['pr_auc'])}")
+    flag = warning_flag(result)
+    print(f"  {flag} (see {out / 'warnings.log'})" if flag else "  no flagged warnings")
 
 
 if __name__ == "__main__":

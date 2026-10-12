@@ -111,3 +111,122 @@ def test_inner_split_needs_two_days(table):
     one_day.attrs["calibrated"] = True
     with pytest.raises(ValueError, match="two days"):
         fusion_split(one_day)
+
+
+def test_dev_compare_evaluate_scores_methods_on_given_rows():
+    """D71: every method is scored on the same rows; MVAF - method is a paired difference."""
+    from types import SimpleNamespace
+
+    from vaultic.fusion.dev_compare import evaluate
+
+    rng = np.random.default_rng(0)
+    n = 600
+    y = (rng.random(n) < 0.15).astype(int)
+    rows = SimpleNamespace(y=y, views=np.column_stack([y + rng.normal(0, 0.4, n)] * 5),
+                           context=np.zeros((n, 5)))  # fmt: skip
+
+    class Fixed:
+        def __init__(self, noise):
+            self.noise = noise
+
+        def predict_proba(self, views, context=None):
+            return views[:, 0] + np.random.default_rng(1).normal(0, self.noise, len(views))
+
+    table = evaluate({"MVAF": Fixed(0.1), "F1": Fixed(3.0)}, rows).set_index("method")
+    assert table.loc["MVAF", "PR-AUC"] > table.loc["F1", "PR-AUC"]
+    assert table.loc["F1", "MVAF - method"] > 0 and table.loc["F1", "d_low"] > 0
+    assert np.isnan(table.loc["MVAF"].get("MVAF - method", np.nan))
+
+
+def test_dev_compare_scores_external_runs_on_the_same_rows(tmp_path):
+    """D90: B5 and F0 are scored on exactly the evaluation rows, from their validation preds."""
+    import pandas as pd
+
+    from vaultic.fusion.dev_compare import external_scores
+
+    preds = pd.DataFrame({"TransactionID": [1, 2, 3, 4], "split": ["validation"] * 3 + ["test"],
+                          "score": [0.1, 0.2, 0.3, 0.9]})  # fmt: skip
+    preds.to_parquet(tmp_path / "predictions.parquet")
+    assert external_scores(tmp_path, np.array([3, 1])).tolist() == [0.3, 0.1]
+    with pytest.raises(ValueError, match="lacks"):
+        external_scores(tmp_path, np.array([4]))  # a test row is never used
+
+
+def test_dev_compare_subgroups_from_context_and_masks():
+    from types import SimpleNamespace
+
+    from vaultic.fusion.dev_compare import subgroup_masks, subgroup_table
+
+    rng = np.random.default_rng(0)
+    n = 800
+    y = (rng.random(n) < 0.2).astype(int)
+    ctx = np.zeros((n, 5))
+    ctx[:, 1] = rng.integers(0, 3, n)  # ctx_hist_n_past
+    ctx[:, 2] = rng.integers(0, 2, n)  # ctx_has_identity
+    views = np.full((n, 5), 0.5)
+    views[rng.random(n) < 0.5, 3] = np.nan  # graph missing for some rows
+    rows = SimpleNamespace(y=y, context=ctx, views=views)
+    m = subgroup_masks(rows)
+    assert (m["cold start"] | m["with history"]).all() and not (
+        m["cold start"] & m["with history"]
+    ).any()
+    assert np.array_equal(m["graph view missing"], np.isnan(views[:, 3]))
+    good = y + rng.normal(0, 0.3, n)
+    t = subgroup_table({"MVAF": good, "B5": rng.random(n)}, rows).set_index("subgroup")
+    diff, lo, hi, _ = t.loc["with history", "MVAF - B5"]
+    assert lo > 0 and t.loc["cold start", "rows"] == int(m["cold start"].sum())
+    assert "MVAF - F0" not in t.columns  # F0 not given yet
+
+
+def test_fusion_tuning_spaces_and_equal_budget(table):
+    """D95/D96: every trainable method has a space; tuning uses fit -> tune rows only."""
+    pytest.importorskip("optuna")
+    from vaultic.fusion.tune_fusion import (
+        TRAINABLE,
+        concat_rows,
+        fit_seeds,
+        params_from,
+        space,
+        tune_method,
+    )
+
+    class FakeTrial:
+        def suggest_categorical(self, n, c):
+            return c[0]
+
+        def suggest_float(self, n, lo, hi, log=False):
+            return lo
+
+        def suggest_int(self, n, lo, hi):
+            return lo
+
+    for name in TRAINABLE:
+        assert space(name, FakeTrial())
+    assert "dropout" not in space("F6", FakeTrial())
+    assert params_from("MVAF", {"hidden": "32-32"})["hidden"] == (32, 32)
+    split = fusion_split(table)
+    res = tune_method("F3", split, n_trials=3)
+    assert res["trials"] == 3 and "C" in res["params"]
+    both = concat_rows(split.fit, split.tune)
+    assert len(both) == len(split.fit) + len(split.tune) and both.day.max() < 144
+    models = fit_seeds("F3", res["params"], both, seeds=(0, 1))
+    assert len(models) == 2
+
+
+def test_d95_gate_counts_and_single_run_guard(table, tmp_path, monkeypatch):
+    import sys
+
+    import vaultic.fusion.d95_compare as d95
+
+    counts = d95.gate_counts(table).set_index("fold")
+    gate = table[table["role"] == "gate_train"]
+    assert (
+        counts.loc["all", "rows"] == len(gate)
+        and counts.loc["all", "frauds"] == gate["label"].sum()
+    )
+    monkeypatch.setattr(d95, "RESEARCH_DIR", tmp_path)
+    (tmp_path / "tables").mkdir()
+    (tmp_path / "tables" / "fusion_d95.md").write_text("done")
+    monkeypatch.setattr(sys, "argv", ["d95", "--b5-run", "x", "--f0-run", "y"])
+    with pytest.raises(RuntimeError, match="runs once"):
+        d95.main()

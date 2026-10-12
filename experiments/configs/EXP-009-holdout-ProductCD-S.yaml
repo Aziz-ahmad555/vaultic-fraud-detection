@@ -1,0 +1,6 @@
+# Emerging-fraud experiment (validation only, D69/D94): B5 with frozen B5
+# hyperparameters, trained without the training-period frauds of ProductCD = S.
+extends: EXP-009.yaml
+id: EXP-009-holdout-ProductCD-S
+question: "B5 without ProductCD = S training frauds (emerging fraud, development)"
+train_drop_fraud: {ProductCD: "S"}

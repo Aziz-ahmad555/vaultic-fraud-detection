@@ -321,6 +321,16 @@ def test_nonhub_shared_evidence_ignores_hubs_and_own_history():
     assert got == {"U2": 1.0, "U9": 0.0, "U1": 0.0}
 
 
+def test_availability_share_per_split():
+    """D52 availability: g_shared_nonhub > 0; NaN (no card or device) counts as unavailable."""
+    from vaultic.features.graph import availability
+
+    feats = pd.DataFrame({"g_shared_nonhub": [0.0, 2.0, np.nan, 1.0, 0.0, 3.0]})
+    part = pd.Series(["train", "train", "train", "validation", "validation", "test"])
+    share = availability(feats, part)
+    assert share == {"train": 1 / 3, "validation": 0.5, "test": 1.0, "all": 0.5}
+
+
 def test_hub_thresholds_use_training_period_rows_only():
     """Review N3 (D78): rows after the training period never reach the hub thresholds."""
     from dataclasses import replace
