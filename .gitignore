@@ -50,3 +50,9 @@ legacy/fyp1/models_store/xgboost_baseline.json
 legacy/fyp1/scoring_latency.log
 experiments/mlflow/
 experiments/tuning/
+
+# Dashboard (npm)
+dashboard/node_modules/
+dashboard/dist/
+dashboard/coverage/
+dashboard/*.tsbuildinfo

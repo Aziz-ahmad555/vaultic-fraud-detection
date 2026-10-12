@@ -1,0 +1,430 @@
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { api, DATA_SOURCE } from "../api";
+import type { Feedback, ScoreInput, ScoreResult, Transaction } from "../api/types";
+import { ACTION_LABEL, VIEWS, VIEW_LABEL } from "../api/types";
+import { DecisionBadge, LockIcon, RiskCell, WhatIfReportNote, labelText, setText } from "../components/Badges";
+import { Braid } from "../components/Braid";
+import { NetworkGraph } from "../components/NetworkGraph";
+import { ReasonList } from "../components/Reasons";
+import { Empty, ErrorState, Loading } from "../components/States";
+import { DAY, fmtClock, fmtMoney2, fmtPct, fmtPoints, risk } from "../lib/format";
+import { useData } from "../lib/useData";
+import { asOfKey } from "../lib/whatIf";
+import { isTyping, useApp } from "../state/app";
+import { viewScores } from "./Live";
+
+/**
+ * In http mode the counterfactual runs on the illustrative model, not the evaluated system (the
+ * real counterfactual comes with E15): it stays out of the narrative and the printed report (D127).
+ */
+export const ILLUSTRATIVE_CF = DATA_SOURCE === "http";
+
+/**
+ * Plain-language case narrative from the same facts the page shows (no free text, D38).
+ * `cf`: the counterfactual sentence; `undefined` leaves counterfactuals out entirely (http mode).
+ */
+export function narrative(t: Transaction, cf?: string | null): string {
+  const d = t.decision;
+  const parts = [
+    `Transaction ${t.row.TransactionID} (${fmtMoney2(t.amount)}, product ${t.product}) scored a risk of ${risk(d.p)} out of 100 and was routed to ${ACTION_LABEL[d.action].toLowerCase()}.`,
+  ];
+  if (d.conformal_set === "uncertain" || d.conformal_set === "empty")
+    parts.push("The model is uncertain about this case: its conformal set contains both classes.");
+  const up = t.reasons.filter((r) => r.points > 0).slice(0, 3);
+  if (up.length) parts.push(`The main reasons are: ${up.map((r) => `${r.text.charAt(0).toLowerCase()}${r.text.slice(1)} (${fmtPoints(r.points)} points)`).join("; ")}.`);
+  else parts.push("No feature raised the risk above a typical transaction.");
+  const missing = VIEWS.filter((v) => t.row[`m_${v}`] === 0).map((v) => VIEW_LABEL[v].toLowerCase());
+  if (missing.length) parts.push(`No ${missing.join(" or ")} evidence was available, so ${missing.length > 1 ? "those views carry" : "that view carries"} no weight.`);
+  // only computed facts (D126): a field that is not available is left out, never guessed
+  const shared = t.inputs.sharedEntities;
+  if (shared !== null && shared > 0)
+    parts.push(`${shared} other customer${shared > 1 ? "s" : ""} used its card in the 7 days before.`);
+  else if (shared === 0) parts.push("No other customer used its card in the 7 days before.");
+  if (cf !== undefined) parts.push(cf ?? "No counterfactual has been explored yet.");
+  return parts.join(" ");
+}
+
+function Timeline({ history, current, asOf }: { history: Transaction[]; current: Transaction; asOf: number }) {
+  if (history.length <= 1) return <p className="muted small">No earlier transactions for this customer before the as-of time (cold start).</p>;
+  const width = 330;
+  const height = 120;
+  const t0 = Math.min(...history.map((h) => h.row.TransactionDT));
+  const t1 = asOf;
+  const a = history.map((h) => Math.log10(Math.max(h.amount, 1)));
+  const lo = Math.min(...a);
+  const hi = Math.max(...a, lo + 0.5);
+  const x = (t: number) => 8 + ((t - t0) / Math.max(t1 - t0, 1)) * (width - 16);
+  const y = (amt: number) => height - 18 - ((Math.log10(Math.max(amt, 1)) - lo) / (hi - lo)) * (height - 32);
+  return (
+    <figure className="m0">
+      <svg width={width} height={height} style={{ maxWidth: "100%", height: "auto" }} viewBox={`0 0 ${width} ${height}`} className="timeline" role="img" aria-label={`Customer timeline: ${history.length} transactions up to the as-of time`}>
+        <line x1={8} x2={width - 8} y1={height - 14} y2={height - 14} stroke="var(--rule)" />
+        {history.map((h) => {
+          const isCurrent = h.row.TransactionID === current.row.TransactionID;
+          const label = h.row.label;
+          return (
+            <g key={h.row.TransactionID}>
+              <circle
+                cx={x(h.row.TransactionDT)}
+                cy={y(h.amount)}
+                r={isCurrent ? 6 : 3.5}
+                fill={label === 1 ? "var(--risk-5)" : label === 0 ? "var(--sheet)" : "var(--rule)"}
+                stroke={isCurrent ? "var(--ink)" : "var(--graphite)"}
+                strokeWidth={isCurrent ? 2 : 1}
+              >
+                <title>{`${fmtMoney2(h.amount)}, ${fmtClock(h.row.TransactionDT)}. ${label === null ? "Label not known yet" : label ? "Confirmed fraud" : "Confirmed legit"}`}</title>
+              </circle>
+            </g>
+          );
+        })}
+        <text x={8} y={height - 2} className="chart-tick">{fmtClock(t0)}</text>
+        <text x={width - 8} y={height - 2} textAnchor="end" className="chart-tick">as of</text>
+      </svg>
+      <figcaption className="legend">
+        <span><span className="swatch" style={{ background: "var(--risk-5)" }} /> Confirmed fraud</span>
+        <span><span className="swatch" style={{ background: "var(--sheet)" }} /> Confirmed legit</span>
+        <span><span className="swatch" style={{ background: "var(--rule)" }} /> Label not known yet</span>
+      </figcaption>
+    </figure>
+  );
+}
+
+export function Counterfactual({ t, onDescribe, illustrative }: { t: Transaction; onDescribe: (s: string | null) => void; illustrative: boolean }) {
+  const [amount, setAmount] = useState(t.amount);
+  const [deviceKnown, setDeviceKnown] = useState<boolean | null>(t.inputs.deviceKnown);
+  const [result, setResult] = useState<ScoreResult | null>(null);
+  // the reference the counterfactual is compared with: the case's own decision, or, when the
+  // counterfactual runs on the illustrative model, that model's score of the unchanged case
+  const [base, setBase] = useState<{ p: number; action: ScoreResult["decision"]["action"] } | null>(illustrative ? null : { p: t.decision.p, action: t.decision.action });
+  useEffect(() => {
+    if (!illustrative) {
+      setBase({ p: t.decision.p, action: t.decision.action });
+      return;
+    }
+    let live = true;
+    setBase(null);
+    api.score(t.inputs).then((r) => live && setBase({ p: r.p, action: r.decision.action }));
+    return () => {
+      live = false;
+    };
+  }, [t, illustrative]);
+  useEffect(() => {
+    setAmount(t.amount);
+    setDeviceKnown(t.inputs.deviceKnown);
+  }, [t]);
+  useEffect(() => {
+    if (!base) return;
+    const input: ScoreInput = { ...t.inputs, amount, deviceKnown };
+    let live = true;
+    api.score(input).then((r) => {
+      if (!live) return;
+      setResult(r);
+      if (illustrative) return; // never described in the narrative (D127)
+      const changes = [];
+      if (Math.abs(amount - t.amount) > 0.005) changes.push(`the amount were ${fmtMoney2(amount)} instead of ${fmtMoney2(t.amount)}`);
+      if (deviceKnown !== t.inputs.deviceKnown) changes.push(deviceKnown ? "the device were one this customer has used before" : "the device were new to this customer");
+      onDescribe(changes.length ? `If ${changes.join(" and ")}, the risk would be ${risk(r.p)} instead of ${risk(base.p)}, and the decision ${ACTION_LABEL[r.decision.action].toLowerCase()}.` : null);
+    });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amount, deviceKnown, t, base]);
+
+  const max = Math.max(t.amount * 2, 20);
+  return (
+    <div>
+      <div className="cf-row">
+        <label htmlFor="cf-amount">Amount</label>
+        <input id="cf-amount" type="range" min={1} max={max} step={0.5} value={amount} onChange={(e) => setAmount(Number(e.target.value))} aria-valuetext={fmtMoney2(amount)} />
+        <span className="num">{fmtMoney2(amount)}</span>
+      </div>
+      <div className="cf-row">
+        <span>Device</span>
+        {t.inputs.deviceKnown === null ? (
+          <span className="muted">{t.entities.device === null ? "No device on this transaction" : "Whether the customer used this device before is not available"}</span>
+        ) : (
+          <div className="segmented" role="group" aria-label="Device">
+            <button type="button" aria-pressed={deviceKnown === true} onClick={() => setDeviceKnown(true)}>Known</button>
+            <button type="button" aria-pressed={deviceKnown === false} onClick={() => setDeviceKnown(false)}>New</button>
+          </div>
+        )}
+        <span />
+      </div>
+      <h3 className="small" style={{ marginTop: 12 }}>Locked</h3>
+      <ul className="m0 p0 locked-list">
+        {[
+          ["Card", t.entities.card],
+          ["Billing address", t.entities.address ?? "none"],
+          ["History", `${t.inputs.historyCount} earlier transactions${t.inputs.usualAmount !== null ? `, usual ${fmtMoney2(t.inputs.usualAmount)}` : t.inputs.historyCount > 0 ? ", usual amount not available" : ""}`],
+          ["Transactions in the 24 hours before", t.inputs.velocity24h === null ? "not available" : String(t.inputs.velocity24h)],
+          ["Other customers on the card (7 days before)", t.inputs.sharedEntities === null ? "not available" : String(t.inputs.sharedEntities)],
+        ].map(([k, v]) => (
+          <li key={k} className="locked">
+            <LockIcon title={`${k} is locked and cannot change`} />
+            <span>
+              {k}: {v}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {result && base && (
+        <div className="cf-result" aria-live="polite">
+          {illustrative ? "Illustrative model: risk would be " : "Risk would be "}
+          <strong className="num">{risk(result.p)}</strong> ({illustrative ? "illustrative model on this case: " : "now "}
+          {risk(base.p)}), decision <DecisionBadge action={result.decision.action} />
+          {illustrative && (
+            <span className="muted xs" style={{ display: "block", marginTop: 4 }}>
+              Both numbers come from the illustrative model, not the evaluated system; the case's real risk is {risk(t.decision.p)}.
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Linked entities: other customers on the card when known, else the relational view's evidence. */
+const linked = (t: Transaction) => (t.inputs.sharedEntities !== null ? t.inputs.sharedEntities > 0 : t.row.m_graph === 1);
+
+/** How fully a transaction shows the console: all five views, history, linked entities. */
+function richness(t: Transaction) {
+  const allViews = VIEWS.every((v) => t.row[`m_${v}`] === 1);
+  return (allViews ? 1000 : 0) + Math.min(t.inputs.historyCount, 50) + 5 * Math.min(t.inputs.sharedEntities ?? (linked(t) ? 1 : 0), 6);
+}
+const isRich = (t: Transaction) => VIEWS.every((v) => t.row[`m_${v}`] === 1) && t.inputs.historyCount >= 5 && linked(t);
+
+/**
+ * Default case: the richest of today's alerts that has all five views, real history and linked
+ * entities; if no alert qualifies, the richest of today's transactions (flagged as not an alert).
+ */
+export function defaultCase(alerts: Transaction[], today: Transaction[] = []): { id: number; alert: boolean } | null {
+  const best = (xs: Transaction[]) => [...xs].sort((a, b) => richness(b) - richness(a))[0];
+  const richAlerts = alerts.filter(isRich);
+  if (richAlerts.length) return { id: best(richAlerts).row.TransactionID, alert: true };
+  const richToday = today.filter(isRich);
+  if (richToday.length) return { id: best(richToday).row.TransactionID, alert: false };
+  if (alerts.length) return { id: best(alerts).row.TransactionID, alert: true };
+  return today.length ? { id: best(today).row.TransactionID, alert: false } : null;
+}
+
+export function Case() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { asOf, role, toast } = useApp();
+  const alerts = useData(() => api.alerts(asOf), [asOfKey(asOf)]);
+  const dayStart = Math.floor(asOf.time / DAY) * DAY;
+  const today = useData(() => (id ? Promise.resolve([]) : api.stream(asOf, dayStart, asOf.time)), [id, asOfKey(asOf)]);
+  const pick = id ? null : defaultCase(alerts.data ?? [], today.data ?? []);
+  const caseId = id ? Number(id) : (pick?.id ?? null);
+  const tx = useData(() => (caseId ? api.transaction(caseId, asOf) : Promise.resolve(null)), [caseId, asOfKey(asOf)]);
+  const t = tx.data;
+  const history = useData(() => (t ? api.customerHistory(t.entities.uid, asOf) : Promise.resolve([])), [t?.entities.uid, asOfKey(asOf)]);
+  const net = useData(() => (t ? api.network(asOf, `uid:${t.entities.uid}`) : Promise.resolve(null)), [t?.entities.uid, asOfKey(asOf)]);
+  const [cfText, setCfText] = useState<string | null>(null);
+  const [mine, setMine] = useState<Feedback | null>(null);
+
+  const list = alerts.data ?? [];
+  const index = useMemo(() => list.findIndex((a) => a.row.TransactionID === caseId), [list, caseId]);
+
+  const mark = async (label: Feedback) => {
+    if (!t) return;
+    try {
+      await api.feedback(t.row.TransactionID, label, role);
+      setMine(label);
+      toast(`Marked as ${label}`);
+    } catch (e) {
+      toast(`Couldn't save the label: ${(e as Error).message}`, "error");
+    }
+  };
+
+  useEffect(() => setMine(null), [caseId]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if ((k === "j" || k === "k") && list.length) {
+        const next = k === "j" ? Math.min(index + 1, list.length - 1) : Math.max(index - 1, 0);
+        navigate(`/cases/${list[next].row.TransactionID}`);
+      } else if (k === "f") mark("fraud");
+      else if (k === "l") mark("legit");
+      else if (k === "u") mark("unsure");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  return (
+    <div className="console">
+      <aside className="console-queue no-print" aria-label="Today's alerts">
+        <div className="pane-head">
+          <h2>Alerts today</h2>
+          <span className="muted xs">J / K</span>
+        </div>
+        {alerts.loading && !alerts.data && <Loading what="alerts" />}
+        {alerts.error && <ErrorState what="alerts" error={alerts.error} onRetry={alerts.reload} />}
+        {alerts.data && list.length === 0 && <Empty title="No alerts yet today">Move the as-of time later in the day to see alerts.</Empty>}
+        <ul className="queue-list">
+          {list.map((a) => (
+            <li key={a.row.TransactionID}>
+              <Link to={`/cases/${a.row.TransactionID}`} aria-current={a.row.TransactionID === caseId ? "true" : undefined}>
+                <span className="q-main">
+                  <span className="q-amount num">{fmtMoney2(a.amount)}</span>
+                  <span className="q-sub">
+                    <span className="muted">{fmtClock(a.row.TransactionDT, false)}</span>
+                    <span className="muted">Case {a.row.TransactionID}</span>
+                  </span>
+                </span>
+                <RiskCell p={a.decision.p} />
+                <DecisionBadge action={a.decision.action} whatIf={a.decision.whatIf} />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </aside>
+
+      <section className="console-case print-region" aria-label="Case">
+        {tx.loading && !t && <Loading what="the case" />}
+        {tx.error && <ErrorState what="the case" error={tx.error} onRetry={tx.reload} />}
+        {!tx.loading && !t && !tx.error && (
+          <Empty title={caseId ? `No transaction ${caseId} at this as-of time` : "Pick a case"}>
+            {caseId ? "It happened after the as-of time, or the id is wrong. Move the as-of date forward or open another case." : "Choose an alert on the left, or press J."}
+          </Empty>
+        )}
+        {t && (
+          <>
+            {pick && !pick.alert && (
+              <p className="section small muted case-note">
+                Showing today's most complete transaction as an example: it is not an alert. No alert today has all five views, history and linked
+                entities.
+              </p>
+            )}
+            {t.decision.whatIf && <WhatIfReportNote cost={t.whatIfCost} />}
+            <header className="section case-head">
+              <div className="case-title">
+                <h1>Case {t.row.TransactionID}</h1>
+                <DecisionBadge action={t.decision.action} whatIf={t.decision.whatIf} />
+              </div>
+              <div className="case-key">
+                <span className="case-amount num">{fmtMoney2(t.amount)}</span>
+                <span className="muted">{fmtClock(t.row.TransactionDT)}</span>
+              </div>
+              <dl className="facts facts-grid">
+                <div>
+                  <dt>Customer</dt>
+                  <dd>
+                    <Link to={`/network?focus=uid:${encodeURIComponent(t.entities.uid)}`}>{t.entities.uid}</Link>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Product</dt>
+                  <dd>{t.product}</dd>
+                </div>
+                <div>
+                  <dt>Conformal set</dt>
+                  <dd>{setText(t.decision.conformal_set)}</dd>
+                </div>
+                <div>
+                  <dt>Disagreement</dt>
+                  <dd className="num">{t.decision.disagreement.toFixed(2)}</dd>
+                </div>
+                <div>
+                  <dt>Expected loss</dt>
+                  <dd className="num">{fmtMoney2(t.decision.expected_loss)}</dd>
+                </div>
+                <div>
+                  <dt>Outcome</dt>
+                  <dd className={t.row.label === null ? "muted" : undefined}>{labelText(t.row.label, asOf.labelDelayDays)}</dd>
+                </div>
+              </dl>
+            </header>
+            <div className="section">
+              <h2>Evidence braid</h2>
+              <Braid size="large" weights={t.weights} scores={viewScores(t)} reasons={t.reasons} risk={t.decision.p} />
+            </div>
+            <div className="section">
+              <h2>Reasons</h2>
+              <ReasonList reasons={t.reasons} />
+              <p className="muted xs" style={{ marginTop: 8 }}>
+                Points: +20 doubles the fraud odds. Masked features keep their masked names; their meaning is not published.
+              </p>
+            </div>
+            <div className="section">
+              <h2>Narrative</h2>
+              <p className="narrative">{ILLUSTRATIVE_CF ? narrative(t) : narrative(t, cfText)}</p>
+            </div>
+            <div className="section no-print">
+              <h2>Your decision</h2>
+              <div className="actions">
+                <button type="button" className="btn" onClick={() => mark("fraud")} aria-pressed={mine === "fraud"}>Mark as fraud <kbd>F</kbd></button>
+                <button type="button" className="btn" onClick={() => mark("legit")} aria-pressed={mine === "legit"}>Mark as legit <kbd>L</kbd></button>
+                <button type="button" className="btn" onClick={() => mark("unsure")} aria-pressed={mine === "unsure"}>Mark as unsure <kbd>U</kbd></button>
+                <button type="button" className="btn btn-primary" onClick={() => window.print()}>Print or save as PDF</button>
+              </div>
+              <p className="muted xs" style={{ marginTop: 8 }}>"Unsure" labels are stored but never used for training.</p>
+            </div>
+          </>
+        )}
+      </section>
+
+      <aside className="console-evidence" aria-label="Evidence">
+        {t && (
+          <>
+            <div className="section">
+              <h2>Customer timeline</h2>
+              {history.data ? <Timeline history={history.data} current={t} asOf={asOf.time} /> : <Loading what="the timeline" />}
+              {asOf.labelDelayDays > 0 && (
+                <p className="curtain xs" style={{ padding: "4px 6px", marginTop: 6 }}>
+                  Labels after day {Math.floor((asOf.time - asOf.labelDelayDays * DAY) / DAY)} are not known yet (label delay {asOf.labelDelayDays} days).
+                </p>
+              )}
+            </div>
+            <div className="section no-print">
+              <h2>Linked entities</h2>
+              {net.data ? (
+                net.data.nodes.length > 1 ? (
+                  <>
+                    <NetworkGraph mini network={net.data} until={asOf.time} focus={`uid:${t.entities.uid}`} label={`Entities linked to customer ${t.entities.uid}`} onSelect={() => navigate("/network")} />
+                    <p className="muted xs">{net.data.nodes.length} entities within two links. Open the fraud network for details.</p>
+                  </>
+                ) : (
+                  <p className="muted small">No linked entities yet.</p>
+                )
+              ) : (
+                <Loading what="linked entities" />
+              )}
+            </div>
+            <div className={ILLUSTRATIVE_CF ? "section no-print" : "section"}>
+              <h2>Counterfactual</h2>
+              {ILLUSTRATIVE_CF && <p className="mock-note xs" style={{ display: "inline-block" }}>Illustrative model, not the evaluated system</p>}
+              <p className="muted xs">
+                What would change the decision. Card, address and history are locked: they describe who the customer is and what already happened.
+                {ILLUSTRATIVE_CF && " The final-run models score recorded transactions only, so this runs on the illustrative model and is compared with that model's score of the unchanged case; it is left out of the narrative and the printed report."}
+              </p>
+              <Counterfactual t={t} onDescribe={setCfText} illustrative={ILLUSTRATIVE_CF} />
+            </div>
+            <div className="section">
+              <h2>View scores</h2>
+              <ul className="m0 p0" style={{ listStyle: "none" }}>
+                {VIEWS.map((v) => {
+                  const p = viewScores(t)[v];
+                  return (
+                    <li key={v} className="small" style={{ display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
+                      <span>{VIEW_LABEL[v]}</span>
+                      {p === null ? <span className="muted">not available</span> : (
+                        <span className="num">
+                          <RiskCell p={p} /> weight {fmtPct(t.weights[v])}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </>
+        )}
+      </aside>
+    </div>
+  );
+}
