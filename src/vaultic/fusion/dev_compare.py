@@ -110,6 +110,36 @@ def external_scores(run_dir: Path, ids: np.ndarray) -> np.ndarray:
     return out
 
 
+def d95_views(tab_cols: list[str], cols: dict[str, list[str]]) -> dict:
+    """The five D95 view models (unfitted): XGBoost with the tuned EXP-V-<view> settings, each
+    trained and scored only where its view is available. Shared by build_table and the stage-2
+    refits (stage2/system.py), so both use exactly the same views."""
+    import yaml
+
+    from vaultic.paths import CONFIG_DIR
+    from vaultic.views.definitions import available, behavioral_columns
+    from vaultic.views.orchestrate import SupervisedView
+
+    def tuned(view):
+        cfg = yaml.safe_load((CONFIG_DIR / f"EXP-V-{view}.yaml").read_text("utf-8"))
+        return cfg["model"]["params"]
+
+    def avail(view):
+        return lambda f: available(view, f)
+
+    return {
+        "tabular": SupervisedView(tab_cols, "xgboost", tuned("tabular")),
+        "behavioral": SupervisedView(behavioral_columns(cols["behavioral"]), "xgboost",
+                                     tuned("behavioral"), available=avail("behavioral")),
+        "graph": SupervisedView(cols["graph"], "xgboost", tuned("graph"),
+                                available=avail("graph")),
+        "anomaly": SupervisedView(cols["anomaly"], "xgboost", tuned("anomaly"),
+                                  available=avail("anomaly")),
+        "temporal": SupervisedView(cols["sequence"], "xgboost", tuned("temporal"),
+                                   available=avail("temporal")),
+    }  # fmt: skip
+
+
 def build_table(smoke: bool, d95: bool = False, final: bool = False, return_parts: bool = False,
                 parts_only: bool = False, gate_label_maturity_days: int | None = None):  # fmt: skip
     """The view table. d95=True (D95): the cross-fitted plan, the views with their tuned
@@ -131,7 +161,6 @@ def build_table(smoke: bool, d95: bool = False, final: bool = False, return_part
     from vaultic.features.sets import design_matrix
     from vaultic.paths import CONFIG_DIR, FEATURES_DIR, MERGED_PATH
     from vaultic.paths import INTERIM_DIR as _INTERIM
-    from vaultic.views.definitions import available
     from vaultic.views.orchestrate import (
         SupervisedView,
         has_graph_evidence,
@@ -170,25 +199,7 @@ def build_table(smoke: bool, d95: bool = False, final: bool = False, return_part
         return {"df": df, "features": features, "tab_cols": tab_cols, "cols": cols,
                 "b5_cols": list(tab.columns), "splits": splits, "inputs": inputs}  # fmt: skip
     if d95:
-
-        def tuned(view):
-            cfg = yaml.safe_load((CONFIG_DIR / f"EXP-V-{view}.yaml").read_text("utf-8"))
-            return cfg["model"]["params"]
-
-        def avail(view):
-            return lambda f: available(view, f)
-
-        views = {
-            "tabular": SupervisedView(tab_cols, "xgboost", tuned("tabular")),
-            "behavioral": SupervisedView(behavioral_columns(cols["behavioral"]), "xgboost",
-                                         tuned("behavioral"), available=avail("behavioral")),
-            "graph": SupervisedView(cols["graph"], "xgboost", tuned("graph"),
-                                    available=avail("graph")),
-            "anomaly": SupervisedView(cols["anomaly"], "xgboost", tuned("anomaly"),
-                                      available=avail("anomaly")),
-            "temporal": SupervisedView(cols["sequence"], "xgboost", tuned("temporal"),
-                                       available=avail("temporal")),
-        }  # fmt: skip
+        views = d95_views(tab_cols, cols)
         encoder = fit_on_training_period(df, splits, columns=("ProductCD",))
         plan = crossfit_plan(splits, final=final)
         if gate_label_maturity_days is not None:
