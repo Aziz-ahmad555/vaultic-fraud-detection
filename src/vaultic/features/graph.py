@@ -34,6 +34,9 @@ and communities use a daily snapshot of the `window_days` days before the transa
 so they never see the current day. In A and B they use one static graph of all transactions.
 Email domains and addresses are hubs (one domain or region links most transactions), so
 components and communities use only uid, card and device (research/decisions.md D34).
+In C the group's known-fraud rate counts every earlier transaction on the group's nodes whose
+label is known by the day's start, not only the window's (D50): with L = 30 and a 30-day
+window, no window label would ever be known.
 """
 
 from __future__ import annotations
@@ -53,6 +56,8 @@ ENTITY_COLUMNS = {
 }
 EMAIL_COLUMNS = ["P_emaildomain", "R_emaildomain"]
 FEATURE_TYPES = ("card", "email", "address", "device")
+NONHUB_TYPES = ("card", "device")  # entities that can carry relational evidence (D52)
+HUB_QUANTILE = 0.99
 COMPONENT_TYPES = ("uid", "card", "device")
 SETTINGS = ("A", "B", "C")
 
@@ -171,6 +176,56 @@ def _edge_features(edges: pd.DataFrame, setting: str, delay_days: int) -> pd.Dat
     return out
 
 
+# ---- non-hub relational evidence (graph-view availability, D52) -----------------------------
+
+
+def fit_hub_thresholds_on_training_period(
+    df: pd.DataFrame, uid: pd.Series, splits, quantile: float = HUB_QUANTILE
+) -> dict[str, float]:
+    """Hub threshold per entity type from the TRAINING-period rows of df only (D52, review N3).
+
+    The rows are selected here from splits.train, never by the caller; `_fit_hub_thresholds`
+    then refuses any row after the training period's last day as a second guard."""
+    day = df["TransactionDT"].to_numpy(dtype=np.int64) // SECONDS_PER_DAY
+    train = splits.train.contains(day)
+    if not train.any():
+        raise ValueError("no training-period rows to fit hub thresholds on")
+    uid = pd.Series(np.asarray(uid))
+    return _fit_hub_thresholds(df[train], uid[train], quantile, last_day=splits.train.last)
+
+
+def _fit_hub_thresholds(
+    df: pd.DataFrame, uid: pd.Series, quantile: float, last_day: int
+) -> dict[str, float]:
+    """The `quantile` of the number of distinct uids per card / device. An entity whose distinct
+    uids before t exceed it is a hub (a shared terminal, a default device string) and is not
+    evidence. Raises if any row lies after `last_day` (the training period's last day)."""
+    days = df["TransactionDT"].to_numpy(dtype=np.int64) // SECONDS_PER_DAY
+    if len(days) and days.max() > last_day:
+        raise ValueError(
+            f"hub thresholds must be fitted on training-period rows only (day <= {last_day}); "
+            f"got rows up to day {int(days.max())}"
+        )
+    edges = build_edges(df.reset_index(drop=True), uid.reset_index(drop=True))
+    out = {}
+    for etype in NONHUB_TYPES:
+        counts = edges[edges["type"] == etype].groupby("node")["uid"].nunique()
+        out[etype] = float(np.quantile(counts, quantile)) if len(counts) else float("inf")
+    return out
+
+
+def _nonhub_shared(edges: pd.DataFrame, n_rows: int, thresholds: dict[str, float]) -> np.ndarray:
+    """Per row: most other uids sharing one of its non-hub cards / devices (NaN if the row has
+    neither a card nor a device). Uses the edge features (point-in-time in setting C)."""
+    e = edges[edges["type"].isin(NONHUB_TYPES)]
+    limit = e["type"].map(thresholds).to_numpy(dtype=float)
+    shared = np.where(
+        e["deg_uid"].to_numpy(dtype=float) <= limit, e["shared_uids"].to_numpy(dtype=float), 0.0
+    )
+    per_row = pd.Series(shared, index=e["row"].to_numpy()).groupby(level=0).max()
+    return per_row.reindex(np.arange(n_rows)).to_numpy(dtype=float)
+
+
 # ---- components and communities ------------------------------------------------------------
 
 
@@ -234,16 +289,32 @@ def _partitions(tx_nodes: pd.DataFrame, seed: int):
     return nodes, {"comp": _components(nodes, a, b), "comm": _communities(nodes, a, b, w, seed)}
 
 
-def _apply_partitions(out, query_nodes, tx_nodes, nodes, partitions, known_fn, exclude_self):
+def _first_node_in(label_nodes: pd.DataFrame, nodes: pd.Index) -> pd.DataFrame:
+    """One row per transaction: its first entity node (card first) that is in the graph."""
+    inside = label_nodes[label_nodes["node"].isin(nodes)]
+    return inside.drop_duplicates("row").set_index("row")
+
+
+def _apply_partitions(out, query_nodes, tx_nodes, nodes, partitions, known_fn, exclude_self,
+                      label_nodes=None):  # fmt: skip
     """Write group statistics for the query rows. Each transaction is counted once, in the
     group of its first entity node (its card): its nodes share one component, but may fall in
-    different Louvain communities."""
+    different Louvain communities.
+
+    Transactions and uids are counted on the graph's own transactions (tx_nodes). Known labels
+    and frauds are counted on `label_nodes` when given (setting C: every past transaction on
+    the group's nodes, D50), else on tx_nodes."""
     per_tx = tx_nodes.drop_duplicates("row").set_index("row")
     known = known_fn(per_tx)
+    per_label = None if label_nodes is None else _first_node_in(label_nodes, nodes)
     for name, labels in partitions.items():
         node_group = pd.Series(labels, index=nodes)
         group_of_tx = node_group.reindex(per_tx["node"]).set_axis(per_tx.index)
         stats = _group_stats(group_of_tx, per_tx, known)
+        if per_label is not None:
+            group_of_label = node_group.reindex(per_label["node"]).set_axis(per_label.index)
+            lab = _group_stats(group_of_label, per_label, known_fn(per_label))
+            stats[["known", "fraud"]] = lab[["known", "fraud"]].reindex(stats.index).fillna(0.0)
         union = _query_union(query_nodes, node_group, stats)
         if union.empty:
             continue
@@ -269,8 +340,10 @@ def _known_by_day_start(d: int, delay_days: int):
 def _structure_features(edges, n_rows, setting, delay_days, window_days, seed):
     """Component and community features for every transaction row."""
     struct = edges[edges["type"].isin(COMPONENT_TYPES)]
+    # NaN = no group for this row (setting C: none of its entities is in the window graph);
+    # never 0, which would claim an empty group (rule 11, D51)
     out = pd.DataFrame(
-        0.0,
+        np.nan,
         index=np.arange(n_rows),
         columns=["comp_tx", "comp_uids", "comp_known", "comp_fraud", "comm_tx", "comm_known",
                  "comm_fraud"],  # fmt: skip
@@ -285,8 +358,12 @@ def _structure_features(edges, n_rows, setting, delay_days, window_days, seed):
                 continue
             nodes, parts = _partitions(tx_nodes, seed)
             query = struct[struct["row"].isin(day[day == d].index)]
+            # structure from the window; known labels from ALL earlier transactions on the
+            # group's nodes (the label rule still applies: known by the day's start, D50)
+            past = struct[struct["row"].isin(day[day < d].index)]
             _apply_partitions(out, query, tx_nodes, nodes, parts,
-                              _known_by_day_start(d, delay_days), exclude_self=False)  # fmt: skip
+                              _known_by_day_start(d, delay_days), exclude_self=False,
+                              label_nodes=past)  # fmt: skip
         return out
 
     nodes, parts = _partitions(struct, seed)  # A and B: one static graph of all transactions
@@ -310,10 +387,21 @@ def build_graph_features(
     label_delay_days: int = 30,
     window_days: int = 30,
     seed: int = 0,
+    hub_thresholds: dict[str, float] | None = None,
 ) -> pd.DataFrame:
-    """Graph features for every row of df (rows sorted by TransactionDT)."""
+    """Graph features for every row of df (rows sorted by TransactionDT).
+
+    With `hub_thresholds` (fit_hub_thresholds_on_training_period) the output also has
+    g_shared_nonhub: other uids sharing a non-hub card or device before t; the graph view is
+    available only where it is > 0 (D52). Only in setting C: A and B raise (D79)."""
     if setting not in SETTINGS:
         raise ValueError(f"setting must be one of {SETTINGS}")
+    if hub_thresholds is not None and setting != "C":
+        # availability decides whether the graph view exists for a row; settings A and B see
+        # later edges, so their g_shared_nonhub would let the future decide that (N4, D79)
+        raise ValueError(
+            "graph-view availability (g_shared_nonhub) comes from setting C edge features only"
+        )
     time = df["TransactionDT"].to_numpy(dtype=np.int64)
     if np.any(np.diff(time) < 0):
         raise ValueError("rows must be sorted by TransactionDT")
@@ -341,6 +429,8 @@ def build_graph_features(
         with np.errstate(invalid="ignore", divide="ignore"):
             rate = agg["fraud_known"] / agg["n_known"]
         out[f"g_fraud_rate_{etype}"] = rate.where(agg["n_known"] > 0).to_numpy(dtype=float)
+    if hub_thresholds is not None:
+        out["g_shared_nonhub"] = _nonhub_shared(edges, len(df), hub_thresholds)
     entity_edges = edges[edges["type"].isin(FEATURE_TYPES)]
     out["g_twohop_fraud"] = (
         entity_edges.groupby("row")["fraud_known"].sum().reindex(np.arange(len(df)), fill_value=0)
@@ -359,3 +449,64 @@ def build_graph_features(
         )
     out.index = df.index
     return out
+
+
+GRAPH_INPUT_COLUMNS = ["TransactionID", "TransactionDT", "isFraud", *ENTITY_COLUMNS["card"],
+                       "addr1", "addr2", *EMAIL_COLUMNS, "DeviceInfo", "DeviceType"]  # fmt: skip
+
+
+def availability(features: pd.DataFrame, part: pd.Series) -> dict[str, float]:
+    """Share of rows with the graph view available (D52: g_shared_nonhub > 0), per split."""
+    avail = features["g_shared_nonhub"].to_numpy(dtype=float) > 0
+    out = {name: float(avail[(part == name).to_numpy()].mean()) for name in pd.unique(part)}
+    out["all"] = float(avail.mean())
+    return out
+
+
+def main() -> None:
+    """Write data/features/graph_<uid variant>.parquet: setting C, hub thresholds fitted on the
+    training period, and print the share of rows with the graph view available per split."""
+    import argparse
+    import json
+    import time as clock
+
+    from vaultic.data.load import load_merged
+    from vaultic.data.splits import load_splits
+    from vaultic.data.uid import UID_PATH
+    from vaultic.paths import FEATURES_DIR, MERGED_PATH
+
+    parser = argparse.ArgumentParser(description=main.__doc__.splitlines()[0])
+    parser.add_argument("--uid-variant", default=None, help="default: uid_variant in splits.yaml")
+    parser.add_argument("--max-day", type=int, default=None, help="timing check on days <= N")
+    parser.add_argument("--window-days", type=int, default=30)
+    args = parser.parse_args()
+    splits = load_splits()
+    variant = args.uid_variant or splits.uid_variant
+    df = load_merged(MERGED_PATH, columns=GRAPH_INPUT_COLUMNS)
+    uids = pd.read_parquet(UID_PATH, columns=["TransactionID", variant])
+    if not (uids["TransactionID"].to_numpy() == df["TransactionID"].to_numpy()).all():
+        raise ValueError("uids.parquet is out of date; rerun python -m vaultic.data.uid")
+    uid = uids[variant]
+    day = pd.Series(df["TransactionDT"].to_numpy() // SECONDS_PER_DAY, index=df.index)
+    if args.max_day is not None:
+        keep = (day <= args.max_day).to_numpy()
+        df, uid, day = df[keep], uid[keep], day[keep]
+    thresholds = fit_hub_thresholds_on_training_period(df, uid, splits)  # training rows only (D78)
+    started = clock.perf_counter()
+    feats = build_graph_features(df, uid, "C", splits.label_delay_days, args.window_days,
+                                 hub_thresholds=thresholds)  # fmt: skip
+    seconds = clock.perf_counter() - started
+    share = availability(feats, pd.Series(splits.assign(day)))
+    info = {"hub_thresholds": thresholds, "availability": share, "seconds": round(seconds, 1),
+            "rows": len(feats), "label_delay_days": splits.label_delay_days,
+            "window_days": args.window_days}  # fmt: skip
+    print(json.dumps(info, indent=1))
+    if args.max_day is None:
+        out = FEATURES_DIR / f"graph_{variant}.parquet"
+        feats.to_parquet(out, index=False)
+        out.with_suffix(".json").write_text(json.dumps(info, indent=1), encoding="utf-8")
+        print(f"wrote {out}: {len(feats):,} rows x {feats.shape[1] - 1} features")
+
+
+if __name__ == "__main__":
+    main()

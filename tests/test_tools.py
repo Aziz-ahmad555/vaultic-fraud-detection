@@ -36,3 +36,15 @@ def test_allows_code_and_examples():
         )
         == 0
     )
+
+
+def test_graph_availability_script_reports_no_test_period():
+    """Review R2 (D84): the D52 availability script prints training and validation only."""
+    import ast
+
+    src = (REPO_ROOT / "tools" / "graph_availability.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    strings = {
+        n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)
+    }
+    assert {"train", "validation"} <= strings and "test" not in strings

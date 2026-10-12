@@ -195,3 +195,28 @@ def test_changing_future_rows_changes_nothing_before_them():
     new_uid[future] = rng.integers(0, 150, future.sum())
     rebuilt = build_behavioral(altered, new_uid)
     pd.testing.assert_frame_equal(full[~future], rebuilt[~future], check_exact=True)
+
+
+def test_constant_history_gives_finite_values():
+    """D66: equal past amounts (std 0) and past rows in one second (mean gap 0) stay finite."""
+    D = 86_400
+    df = pd.DataFrame(
+        {
+            "TransactionID": range(4),
+            "TransactionDT": [0, 0, 0, D],
+            "TransactionAmt": [10.0, 10.0, 10.0, 50.0],
+            "P_emaildomain": ["a"] * 4,
+            "DeviceInfo": ["d"] * 4,
+            "addr2": [1.0] * 4,
+            "ProductCD": ["W"] * 4,
+            **{f"card{i}": [1.0] * 4 for i in range(1, 7)},
+        }
+    )
+    f = build_behavioral(df, pd.Series(["u"] * 4))
+    assert np.isfinite(
+        f.drop(columns="TransactionID").to_numpy(dtype=float)[
+            ~f.drop(columns="TransactionID").isna().to_numpy()
+        ]
+    ).all()
+    assert f.loc[3, "amt_z"] == pytest.approx(40 / 0.01)
+    assert f.loc[3, "gap_ratio"] == pytest.approx(D / 1.0)

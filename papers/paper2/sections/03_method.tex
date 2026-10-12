@@ -11,6 +11,30 @@
 \subsection{Training}
 % Out-of-sample view predictions, view dropout, weighted BCE, cost-weighted variant (7.3).
 
+% Required disclosure (research/decisions.md D140, phase3-run review #1):
+The gate is trained on cross-fitted, out-of-time view predictions (decision D95): three
+expanding-window folds over the training period and one fixed fold. Within each cross-fitted
+fold, the view models were trained on every label of their training window, including labels
+that a 30-day label delay would not yet have released when the fold's predicted block starts;
+the same holds for the fixed fold's predictions on validation days 128--143, which are also
+gate-training rows. The gate therefore learned from view scores slightly better informed than
+those available in deployment. The view models that score the test period are trained on days
+1--120 and use only labels released before the test period begins. A post-hoc sensitivity
+analysis rebuilds the cross-fitted folds with 30-day label maturity (D141).
+
+% Required disclosure (research/decisions.md D148, phase3-run review #2):
+The view models were tuned on validation days 128--143, and those rows are also gate-training
+rows: about 14\% of all gate rows, but about 83\% of the rows of the gate's inner tuning split
+(tune days 115--117 and 128--143). The gate methods (MVAF, F3--F7) are therefore fitted, and
+their hyperparameters selected, partly on optimistic view outputs, while F0 and B5 are not. The
+direction of the resulting bias on MVAF versus F0 and B5 is unknown; the gates' inner tuning
+PR-AUC (about 0.71) is well above their PR-AUC on the held-out days 147--150 (about 0.60).
+
+% Required disclosure (D149, phase3-run review #7):
+The cross-fitted gate rows (days 31--117) are scored with a ProductCD encoder, graph hub
+thresholds and view hyperparameters fitted on later data (the training period and days
+128--143); this weakens the out-of-time claim for those rows, but it is not test-period leakage.
+
 \subsection{Trust layer}
 % Calibration, split / Mondrian / adaptive conformal prediction, cost-based decisions,
 % budget-aware routing R1-R4 (Phase 8).

@@ -1,0 +1,6 @@
+# Emerging-fraud experiment (validation only, D69/D94): B5 with frozen B5
+# hyperparameters, trained without the training-period frauds of card4 = mastercard.
+extends: EXP-009.yaml
+id: EXP-009-holdout-card4-mastercard
+question: "B5 without card4 = mastercard training frauds (emerging fraud, development)"
+train_drop_fraud: {card4: "mastercard"}

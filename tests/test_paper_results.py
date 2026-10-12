@@ -1,15 +1,58 @@
 import subprocess
 import sys
 
+import pytest
+
 from vaultic.paths import REPO_ROOT
 from vaultic.reports import paper_results
 from vaultic.reports.paper_results import STEPS, Step, run_all
 
 
-def test_registry_wires_table1_and_e2():
+def test_registry_wires_every_paper_table():
     modules = [s.args[1] for s in STEPS]
-    assert modules == ["vaultic.reports.table1", "vaultic.reports.e2_fyp1"]
+    assert modules[:2] == ["vaultic.reports.table1", "vaultic.reports.e2_fyp1"]
     assert ("--mode", "final") == STEPS[0].args[2:]
+    gains = {s.args[s.args.index("--name") + 1] for s in STEPS if "--name" in s.args}
+    assert gains >= {"b5_drop_labels", "e3_tuned", "e5_tuned", "e8_tuned", "e25_L7", "e25_L30",
+                     "e25_L60", "holdout_R_b5", "holdout_R_anomaly"}  # fmt: skip
+    rendered = {s.args[-1] for s in STEPS if s.args[1] == "vaultic.reports.render_saved"}
+    assert rendered == {
+        "d95",
+        "final",
+        "f3-diagnosis",
+        "f3-sensitivity",
+        "e5-drift",
+        "hold-sensitivity",
+        "gate-maturity",
+    }
+    assert any(s.args[1:] == ("vaultic.reports.emerging", "report") for s in STEPS)
+
+
+def test_every_run_a_step_reads_exists():
+    """The pinned runs exist locally. Run folders are not in git (CI has none): skipped there
+    (D157)."""
+    runs = REPO_ROOT / "experiments" / "runs"
+    if not runs.exists():
+        pytest.skip("experiments/runs is not in git (no run folders on CI)")
+    for s in STEPS:
+        for a in s.args:
+            if a.startswith("experiments/runs/"):
+                assert (REPO_ROOT / a).is_dir(), a
+
+
+def test_render_keeps_the_hand_written_section(tmp_path):
+    from vaultic.reports.render_saved import keep_hand_section
+
+    path = tmp_path / "report.md"
+    hand = "## 3. Reading (added by hand, not generated)"
+    path.write_text(f"# R\n\nold table\n\n{hand}\n\nMy notes.\n")
+
+    def write():
+        path.write_text(f"# R\n\nnew table\n\n{hand}\n\n_To be written._\n")
+
+    keep_hand_section(path, write)
+    text = path.read_text()
+    assert "new table" in text and "My notes." in text and "_To be written._" not in text
 
 
 def test_every_step_runs_and_failures_are_reported():

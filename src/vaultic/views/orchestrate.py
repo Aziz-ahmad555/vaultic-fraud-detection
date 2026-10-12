@@ -4,27 +4,31 @@ For every fold of a plan (views/plan.py) each view is trained on the fold's trai
 predicts the fold's later block; the result is one table, one row per predicted transaction:
 
   TransactionID, TransactionDT, day, fold, role, split, label
-  p_<view>     fraud probability of each view, NaN where the view is missing (rule 11)
+  raw_<view>   the view model's own fraud probability, NaN where the view is missing (rule 11)
   m_<view>     availability mask (1 / 0)
-  c_<view>     confidence |2p - 1| (0 where missing)
-  disagreement std of the available probabilities (0 with fewer than two)
   ctx_*        context for the gate: log amount, history length, has_identity, ProductCD code
                (shared training-period encoder, D37), relative hour
 
-for the five views tabular, behavioral, temporal, graph, anomaly. mask / confidence /
-disagreement use exactly MVAF's definitions (fusion.mvaf.view_inputs).
+for the five views tabular, behavioral, temporal, graph, anomaly. `calibrate_views` then fits
+one calibrator per view on the calibrate_views rows only (the earlier slice of the calibrate
+tail, D53/D76; the later calibrate_fused slice is kept for fused-score calibration, conformal,
+thresholds and routing lambdas) and adds, for every row,
+  p_<view>     calibrated probability (NaN where missing)
+  c_<view>     confidence |2p - 1| from the CALIBRATED p (0 where missing)
+  disagreement std of the available CALIBRATED probabilities (0 with fewer than two)
+using exactly MVAF's definitions (fusion.mvaf.view_inputs). Confidence and disagreement are
+never computed from raw scores, whose scales differ between views (D56).
 
 Views that need another environment (the GRU in .venv-torch) are external: they run as a
 separate step (views/temporal_step.py) that writes a parquet file of TransactionID, fold,
 p_<view>, which `view_table` joins. A view that is neither given nor external is missing for
 every row and says so (all NaN, mask 0).
 
-View probabilities are the views' own model outputs; per-view calibration is Phase 8 and
-happens on top of this table.
 """
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Callable, Mapping
 
 import numpy as np
@@ -33,9 +37,12 @@ from sklearn.linear_model import LogisticRegression
 
 from vaultic.features.categories import CategoryEncoder
 from vaultic.fusion.mvaf import view_inputs
+from vaultic.trust.calibration import PlattCalibrator, choose_calibrator
 from vaultic.views.plan import Fold
 
 VIEWS = ("tabular", "behavioral", "temporal", "graph", "anomaly")
+# below this many frauds in a (fold, view)'s calibrate_views rows, use Platt scaling (D83)
+MIN_ISOTONIC_FRAUDS = 100
 CONTEXT = ("ctx_log_amount", "ctx_hist_n_past", "ctx_has_identity", "ctx_product", "ctx_hour")
 
 
@@ -47,10 +54,15 @@ def has_history(frame: pd.DataFrame) -> np.ndarray:
     return frame["hist_n_past"].to_numpy(dtype=float) > 0
 
 
-def has_graph_edges(frame: pd.DataFrame) -> np.ndarray:
-    """Graph view: some entity of the transaction was seen in an earlier transaction."""
-    cols = [c for c in frame.columns if c.startswith("g_deg_tx_")]
-    return (frame[cols].fillna(0).to_numpy(dtype=float) > 0).any(axis=1)
+def has_graph_evidence(frame: pd.DataFrame) -> np.ndarray:
+    """Graph view: a non-hub card or device of the transaction was used by another uid before t
+    (g_shared_nonhub > 0; hub threshold fitted on the training period, D52). An entity seen
+    before only by the same customer, or only hubs, is not relational evidence."""
+    if "g_shared_nonhub" not in frame:
+        raise ValueError(
+            "graph availability needs g_shared_nonhub: build graph features with hub_thresholds"
+        )
+    return frame["g_shared_nonhub"].fillna(0).to_numpy(dtype=float) > 0
 
 
 # ---- in-process views ------------------------------------------------------------------------
@@ -78,6 +90,9 @@ class SupervisedView:
         from vaultic.views.tabular import make_model
 
         rows = self._mask(frame)
+        if not rows.any():  # the view exists for no training row of this fold: missing (rule 11)
+            self.model_ = None
+            return self
         if len(np.unique(y[rows])) < 2:
             raise ValueError("the view's training rows need both classes")
         self.model_ = make_model(self.model, self.params, self.seed)
@@ -86,6 +101,8 @@ class SupervisedView:
 
     def predict(self, frame: pd.DataFrame) -> np.ndarray:
         out = np.full(len(frame), np.nan)
+        if self.model_ is None:
+            return out
         rows = self._mask(frame)
         if rows.any():
             out[rows] = self.model_.predict_proba(frame.loc[rows, self.columns])[:, 1]
@@ -93,15 +110,21 @@ class SupervisedView:
 
 
 class AnomalyScoreView:
-    """Phase 6 anomaly view as a probability: the label-free scores (views/anomaly.py, fitted
-    on legit training rows) mapped to a fraud probability by a logistic regression fitted on
-    the fold's training rows. The per-uid score enters with a missing indicator, so rows
-    without enough history still get a score from the global models."""
+    """Phase 6 anomaly view as a probability (D57). The fold's training rows (time-ordered) are
+    split by time: the anomaly models (views/anomaly.py, legit rows only) are fitted on the
+    earlier `1 - link_fraction`, and the logistic link from their scores to a fraud probability
+    is fitted on the later `link_fraction`, where those scores are out-of-sample. The per-uid
+    score enters with a missing indicator, so rows without enough history still get a score
+    from the global models."""
 
     def __init__(self, columns: list[str], uid_col: str = "uid", n_past_col: str = "hist_n_past",
-                 encoder: CategoryEncoder | None = None, seed: int = 0, **ae_kwargs):  # fmt: skip
+                 encoder: CategoryEncoder | None = None, seed: int = 0, link_fraction: float = 0.2,
+                 **ae_kwargs):  # fmt: skip
+        if not 0 < link_fraction < 1:
+            raise ValueError("link_fraction must be in (0, 1)")
         self.columns, self.uid_col, self.n_past_col = list(columns), uid_col, n_past_col
         self.encoder, self.seed, self.ae_kwargs = encoder, seed, ae_kwargs
+        self.link_fraction = link_fraction
 
     def _scores(self, frame: pd.DataFrame) -> np.ndarray:
         s = self.view_.transform(frame[self.columns], frame[self.uid_col].to_numpy(),
@@ -113,9 +136,19 @@ class AnomalyScoreView:
     def fit(self, frame: pd.DataFrame, y: np.ndarray) -> AnomalyScoreView:
         from vaultic.views.anomaly import AnomalyView
 
+        if "TransactionDT" in frame and np.any(np.diff(frame["TransactionDT"].to_numpy()) < 0):
+            raise ValueError("training rows must be in time order")
+        y = np.asarray(y)
+        cut = int(round(len(frame) * (1 - self.link_fraction)))
+        early, tail = frame.iloc[:cut], frame.iloc[cut:]
+        if len(np.unique(y[cut:])) < 2:
+            raise ValueError(
+                "the link tail needs both classes: use a longer fold or a larger link_fraction"
+            )
         self.view_ = AnomalyView(seed=self.seed, encoder=self.encoder, **self.ae_kwargs)
-        self.view_.fit(frame[self.columns], y, frame[self.uid_col].to_numpy())
-        self.link_ = LogisticRegression(class_weight="balanced").fit(self._scores(frame), y)
+        self.view_.fit(early[self.columns], y[:cut], early[self.uid_col].to_numpy())
+        self.link_ = LogisticRegression(class_weight="balanced").fit(self._scores(tail), y[cut:])
+        self.n_anomaly_rows_, self.n_link_rows_ = len(early), len(tail)
         return self
 
     def predict(self, frame: pd.DataFrame) -> np.ndarray:
@@ -183,17 +216,17 @@ def view_table(
                 "TransactionDT": time[pr],
                 "day": day[pr],
                 "fold": fold.name,
-                "role": fold.role,
+                "role": fold.row_roles(day[pr]),
                 "label": y[pr],
             }
         )
         if splits is not None:
             part.insert(5, "split", splits.assign(day[pr]))
         for name in VIEWS:
-            part[f"p_{name}"] = np.nan
+            part[f"raw_{name}"] = np.nan
         for name, view in views.items():
             view.fit(features.loc[tr].reset_index(drop=True), y[tr])
-            part[f"p_{name}"] = view.predict(features.loc[pr].reset_index(drop=True))
+            part[f"raw_{name}"] = view.predict(features.loc[pr].reset_index(drop=True))
         parts.append(pd.concat([part, ctx.loc[pr].reset_index(drop=True)], axis=1))
     table = pd.concat(parts, ignore_index=True)
 
@@ -203,19 +236,88 @@ def view_table(
         joined = table[["TransactionID", "fold"]].merge(
             ext[["TransactionID", "fold", col]], on=["TransactionID", "fold"], how="left"
         )
-        table[col] = joined[col].to_numpy()
+        table[f"raw_{name}"] = joined[col].to_numpy()
 
-    probs = table[[f"p_{v}" for v in VIEWS]].to_numpy(dtype=float)
-    mask, _, confidence, disagreement = view_inputs(probs)
-    for j, name in enumerate(VIEWS):
-        table[f"m_{name}"] = mask[:, j].astype(np.int8)
-        table[f"c_{name}"] = confidence[:, j]
-    table["disagreement"] = disagreement
+    for name in VIEWS:
+        table[f"m_{name}"] = table[f"raw_{name}"].notna().astype(np.int8)
     return table
+
+
+def calibrate_views(table: pd.DataFrame, folds: int = 5) -> tuple[pd.DataFrame, dict]:
+    """Calibrated p_<view>, then c_<view> and disagreement from them (D56).
+
+    One calibrator per (fold, view) fitted ONLY on that fold's calibrate_views rows (D76, D77)
+    where the view is available, applied to that fold's rows. With at least MIN_ISOTONIC_FRAUDS
+    frauds it is Platt or isotonic, chosen by out-of-fold ECE (D29); with fewer it is Platt
+    scaling (isotonic overfits few positives), and the fallback is logged (review R1, D83). The
+    returned info has, per (fold, view): rows, frauds, method, fallback and the ECEs. A view
+    missing on every row stays missing; a view with too few such rows or one class raises."""
+    from vaultic.views.plan import check_calibration_scope
+
+    out = table.copy()
+    cal = (out["role"] == "calibrate_views").to_numpy()
+    if not cal.any():
+        raise ValueError(
+            "no calibrate_views rows: the plan needs splits.yaml's calibrate slices (D53, D76)"
+        )
+    fold = out["fold"].to_numpy()
+    info = {}
+    p_all = {name: np.full(len(out), np.nan) for name in VIEWS}
+    # one calibrator per (fold, view): a fold is one set of view models (D77)
+    for f in pd.unique(fold):
+        mine = fold == f
+        if not (cal & mine).any():
+            raise ValueError(
+                f"fold {f} has no calibrate_views rows: its views cannot be calibrated"
+            )
+        for name in VIEWS:
+            raw = out[f"raw_{name}"].to_numpy(dtype=float)
+            avail = ~np.isnan(raw) & mine
+            if not avail.any():
+                continue
+            fit_rows = cal & avail
+            y = out["label"].to_numpy()[fit_rows]
+            if fit_rows.sum() < 2 * folds or len(np.unique(y)) < 2:
+                raise ValueError(
+                    f"cannot calibrate view {name} of fold {f}: needs both classes among enough "
+                    "calibrate_views rows"
+                )
+            check_calibration_scope(fold[fit_rows], fold[avail], f"calibrator of view {name}")
+            frauds = int(y.sum())
+            entry = {"rows": int(fit_rows.sum()), "frauds": frauds}
+            if frauds >= MIN_ISOTONIC_FRAUDS:
+                calibrator, ece = choose_calibrator(y, raw[fit_rows], folds=folds)
+                entry.update(method=type(calibrator).__name__, fallback=False, ece=ece)
+            else:
+                calibrator = PlattCalibrator().fit(raw[fit_rows], y)
+                entry.update(method="PlattCalibrator", fallback=True, ece=None)
+                warnings.warn(
+                    f"fold {f}, view {name}: {frauds} frauds in calibrate_views (< "
+                    f"{MIN_ISOTONIC_FRAUDS}); Platt scaling instead of an ECE choice (D83)",
+                    stacklevel=2,
+                )
+            p_all[name][avail] = calibrator.predict(raw[avail])
+            info[(f, name)] = entry
+    for name in VIEWS:
+        out[f"p_{name}"] = p_all[name]
+    mask, _, confidence, disagreement = view_inputs(
+        out[[f"p_{v}" for v in VIEWS]].to_numpy(dtype=float)
+    )
+    for j, name in enumerate(VIEWS):
+        out[f"c_{name}"] = confidence[:, j]
+    out["disagreement"] = disagreement
+    out.attrs["calibrated"] = True
+    return out, info
+
+
+def require_calibrated(table: pd.DataFrame) -> None:
+    if not table.attrs.get("calibrated", False):
+        raise ValueError("view table is not calibrated: run calibrate_views first (D56)")
 
 
 def mvaf_inputs(table: pd.DataFrame, role: str | None = None) -> tuple:
     """(views, context, y) arrays for MVAF / the fusion baselines, optionally for one role."""
+    require_calibrated(table)
     t = table if role is None else table[table["role"] == role]
     views = t[[f"p_{v}" for v in VIEWS]].to_numpy(dtype=float)
     return views, t[list(CONTEXT)].to_numpy(dtype=float), t["label"].to_numpy()

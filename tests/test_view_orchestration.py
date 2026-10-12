@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -19,12 +20,21 @@ from vaultic.views.orchestrate import (
     CONTEXT,
     VIEWS,
     SupervisedView,
-    has_graph_edges,
+    calibrate_views,
+    has_graph_evidence,
     has_history,
     mvaf_inputs,
     view_table,
 )
-from vaultic.views.plan import Fold, fixed_plan, plan_from_json, plan_to_json, rolling_plan
+from vaultic.views.plan import (
+    Fold,
+    check_calibration_scope,
+    fixed_plan,
+    gate_plan,
+    plan_from_json,
+    plan_to_json,
+    rolling_plan,
+)
 
 SPLITS = load_splits()
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +71,7 @@ def _synthetic(n=6000, n_uids=150, seed=0):
             "hist_n_past": n_past,
             "amt_ratio": np.where(n_past > 0, amount / np.where(n_past > 0, mean, 1), np.nan),
             "g_deg_tx_card": card_seen.astype(float),
+            "g_shared_nonhub": np.where(card_seen > 0, rng.poisson(0.8, n), np.nan),
             "g_fraud_rate_card": np.where(card_seen > 0, rng.random(n) * 0.1, np.nan),
         }
     )
@@ -73,8 +84,8 @@ def _views(seed=0):
         "tabular": SupervisedView(["amt", "V1"], params=params, seed=seed),
         "behavioral": SupervisedView(["amt_ratio", "hist_n_past"], params=params,
                                      available=has_history, seed=seed),  # fmt: skip
-        "graph": SupervisedView(["g_deg_tx_card", "g_fraud_rate_card"], params=params,
-                                available=has_graph_edges, seed=seed),  # fmt: skip
+        "graph": SupervisedView(["g_shared_nonhub", "g_fraud_rate_card"], params=params,
+                                available=has_graph_evidence, seed=seed),  # fmt: skip
     }
 
 
@@ -88,10 +99,21 @@ def _encoder(df):
 
 def test_plans_from_splits():
     dev = fixed_plan(SPLITS)
-    assert [(f.name, f.train, f.predict, f.role) for f in dev] == [
-        ("fixed_validation", (1, 120), (128, 150), "gate_train")
+    assert [(f.name, f.train, f.predict, f.role, f.test) for f in dev] == [
+        ("fixed", (1, 120), (128, 150), "gate_train", None)
     ]
-    assert [f.role for f in fixed_plan(SPLITS, final=True)] == ["gate_train", "test"]
+    # D77: ONE fold (one set of view models) predicts validation and test in final runs
+    (final,) = fixed_plan(SPLITS, final=True)
+    assert (final.predict, final.test) == ((128, 182), (151, 182))
+    roles = final.row_roles(np.arange(128, 183))
+    assert set(roles[:16]) == {"gate_train"} and set(roles[23:]) == {"test"}
+    assert plan_from_json(plan_to_json([final])) == [final]
+    gate = gate_plan(SPLITS)
+    assert [(f.name, f.predict, f.calibrate_views) for f in gate] == [
+        ("rolling_0", (91, 120), (118, 120)),  # only rolling folds that end before validation
+        ("fixed", (128, 150), (144, 146)),
+    ]
+    assert [f.name for f in gate_plan(SPLITS, final=True)] == ["rolling_0", "fixed"]
     roll = rolling_plan(SPLITS)
     assert [(f.train, f.predict, f.role) for f in roll] == [
         ((1, 90), (91, 120), "gate_train"),
@@ -133,27 +155,64 @@ def dev_table():
 def test_table_layout_and_missing_views(dev_table):
     df, features, table = dev_table
     expected = ["TransactionID", "TransactionDT", "day", "fold", "role", "split", "label",
-                *[f"p_{v}" for v in VIEWS], *CONTEXT,
-                *[c for v in VIEWS for c in (f"m_{v}", f"c_{v}")], "disagreement"]  # fmt: skip
+                *[f"raw_{v}" for v in VIEWS], *CONTEXT, *[f"m_{v}" for v in VIEWS]]  # fmt: skip
     assert sorted(table.columns) == sorted(expected)
-    assert set(table["split"]) == {"validation"} and set(table["role"]) == {"gate_train"}
+    assert set(table["split"]) == {"validation"} and set(table["role"]) == {
+        "gate_train",
+        "calibrate_views",
+        "calibrate_fused",
+    }
+    assert set(table.loc[table["role"] == "calibrate_views", "day"]) <= set(range(144, 147))  # D76
+    assert set(table.loc[table["role"] == "calibrate_fused", "day"]) <= set(range(147, 151))
     assert table["day"].between(128, 150).all()  # development: no test-period rows at all
     rows = features.loc[SPLITS.validation.contains(df["day"].to_numpy())].reset_index(drop=True)
-    assert np.array_equal(np.isnan(table["p_behavioral"]), ~has_history(rows))
-    assert np.array_equal(np.isnan(table["p_graph"]), ~has_graph_edges(rows))
-    assert table["p_tabular"].notna().all()
-    assert table["p_temporal"].isna().all() and (table["m_temporal"] == 0).all()  # not given
-    assert table["p_anomaly"].isna().all()
-    mask, _, conf, dis = view_inputs(table[[f"p_{v}" for v in VIEWS]].to_numpy())
+    assert np.array_equal(np.isnan(table["raw_behavioral"]), ~has_history(rows))
+    assert np.array_equal(np.isnan(table["raw_graph"]), ~has_graph_evidence(rows))
+    assert table["raw_tabular"].notna().all()
+    assert table["raw_temporal"].isna().all() and (table["m_temporal"] == 0).all()  # not given
+    assert table["raw_anomaly"].isna().all()
+    assert not table.attrs.get("calibrated")  # c_* and disagreement only after calibration (D56)
+
+
+def test_calibration_uses_only_the_calibrate_tail_and_feeds_confidence(dev_table):
+    """D56/D76: p_* are calibrated on calibrate_views rows only; c_* and disagreement come
+    from them."""
+    df, features, table = dev_table
+    cal, info = calibrate_views(table)
+    assert {v for _, v in info} == {
+        "tabular",
+        "behavioral",
+        "graph",
+    }  # temporal / anomaly not given
+    assert {f for f, _ in info} == {"fixed"}
+    assert cal["p_temporal"].isna().all() and (cal["c_temporal"] == 0).all()
+    mask, _, conf, dis = view_inputs(cal[[f"p_{v}" for v in VIEWS]].to_numpy())
     assert np.array_equal(table[[f"m_{v}" for v in VIEWS]].to_numpy() == 1, mask)
-    assert np.allclose(table[[f"c_{v}" for v in VIEWS]].to_numpy(), conf)
-    assert np.allclose(table["disagreement"], dis)
+    assert np.array_equal(mask, cal[[f"m_{v}" for v in VIEWS]].to_numpy() == 1)
+    assert np.allclose(cal[[f"c_{v}" for v in VIEWS]].to_numpy(), conf)
+    assert np.allclose(cal["disagreement"], dis)
+    _, _, raw_conf, raw_dis = view_inputs(cal[[f"raw_{v}" for v in VIEWS]].to_numpy())
+    assert not np.allclose(raw_dis, dis)  # raw-score disagreement would differ
+    # labels outside the calibrate_views slice (incl. the calibrate_fused slice) never reach them
+    flipped = table.copy()
+    outside = (flipped["role"] != "calibrate_views").to_numpy()
+    assert (flipped.loc[outside, "role"] == "calibrate_fused").any()
+    flipped.loc[outside, "label"] = 1 - flipped.loc[outside, "label"]
+    again, _ = calibrate_views(flipped)
+    assert np.allclose(again[[f"p_{v}" for v in VIEWS]].to_numpy(), cal[[f"p_{v}" for v in VIEWS]].to_numpy(),
+                       equal_nan=True)  # fmt: skip
+    with pytest.raises(ValueError, match="calibrate_views rows"):
+        calibrate_views(table[table["role"] != "calibrate_views"])
 
 
 def test_table_feeds_mvaf(dev_table):
     _, _, table = dev_table
+    with pytest.raises(ValueError, match="not calibrated"):
+        mvaf_inputs(table, role="gate_train")
+    table, _ = calibrate_views(table)
     views, ctx, y = mvaf_inputs(table, role="gate_train")
-    assert views.shape == (len(table), 5) and ctx.shape == (len(table), len(CONTEXT))
+    n_gate = int((table["role"] == "gate_train").sum())
+    assert views.shape == (n_gate, 5) and ctx.shape == (n_gate, len(CONTEXT))
     p = MVAF(epochs=3).fit(views, y, ctx).predict_proba(views, ctx)
     assert np.isfinite(p).all()
 
@@ -207,7 +266,7 @@ def test_external_view_is_joined_and_checked(dev_table):
     ext = table[["TransactionID", "fold"]].assign(p_temporal=0.3)
     ext.loc[ext.index[:10], "p_temporal"] = np.nan  # masked rows stay masked
     out = view_table(df, features, _views(), plan, _encoder(df), SPLITS, {"temporal": ext})
-    assert out["p_temporal"].isna().sum() == 10 and (out["m_temporal"] == 0).sum() == 10
+    assert out["raw_temporal"].isna().sum() == 10 and (out["m_temporal"] == 0).sum() == 10
     with pytest.raises(ValueError, match="missing predictions"):
         view_table(df, features, _views(), plan, _encoder(df), SPLITS, {"temporal": ext.iloc[5:]})
     with pytest.raises(ValueError, match="not in the plan"):
@@ -248,8 +307,8 @@ def test_end_to_end_across_venvs(tmp_path, dev_table):
     ext = pd.read_parquet(tmp_path / "p_temporal.parquet")
     out = view_table(df, features, _views(), plan, _encoder(df), SPLITS, {"temporal": ext})
     no_history = out["ctx_hist_n_past"].to_numpy() == 0
-    assert np.array_equal(out["p_temporal"].isna().to_numpy(), no_history)
-    assert out.loc[~no_history, "p_temporal"].between(0, 1).all()
+    assert np.array_equal(out["raw_temporal"].isna().to_numpy(), no_history)
+    assert out.loc[~no_history, "raw_temporal"].between(0, 1).all()
     assert sys.executable != str(TORCH_PY)  # the assembling side really is another venv
 
 
@@ -259,7 +318,155 @@ def test_anomaly_view_scores_every_row_and_stays_label_free_inside():
     df, features, _ = _synthetic(n=3000, n_uids=60)
     view = AnomalyScoreView(["amt", "V1"], max_iter=30)
     table = view_table(df, features, {"anomaly": view}, fixed_plan(SPLITS), _encoder(df), SPLITS)
-    assert table["p_anomaly"].between(0, 1).all()  # global scores exist for every row
+    assert table["raw_anomaly"].between(0, 1).all()  # global scores exist for every row
     train = SPLITS.train.contains(df["day"].to_numpy())
     y = df["isFraud"].to_numpy()[train]
-    assert view.view_.global_if.n_fit_ == int((y == 0).sum())  # anomaly models: legit rows only
+    cut = int(round(train.sum() * 0.8))
+    assert view.view_.global_if.n_fit_ == int((y[:cut] == 0).sum())  # legit rows of the early part
+
+
+def test_anomaly_models_and_link_use_disjoint_time_ordered_rows():
+    """D57: anomaly models on the earlier 80% of the fold's training rows; the link LR only on
+    the later 20%, where the anomaly scores are out-of-sample."""
+    from vaultic.views.orchestrate import AnomalyScoreView
+
+    df, features, _ = _synthetic(n=3000, n_uids=60)
+    features = features.assign(TransactionDT=df["TransactionDT"].to_numpy())
+    train = features.iloc[:2000]
+    y = df["isFraud"].to_numpy()[:2000]
+    view = AnomalyScoreView(["amt", "V1"], max_iter=30).fit(train, y)
+    assert (view.n_anomaly_rows_, view.n_link_rows_) == (1600, 400)
+    legit_early = int((y[:1600] == 0).sum())
+    assert view.view_.global_if.n_fit_ == legit_early  # nothing from the link tail
+    # the link sees only the tail: changing labels in the early part does not move it
+    flipped = y.copy()
+    flipped[:1600] = 1 - flipped[:1600]
+    again = AnomalyScoreView(["amt", "V1"], max_iter=30).fit(train, flipped)
+    assert again.view_.global_if.n_fit_ == int((flipped[:1600] == 0).sum())
+    with pytest.raises(ValueError, match="time order"):
+        AnomalyScoreView(["amt", "V1"]).fit(train.iloc[::-1], y[::-1])
+
+
+# ---- calibration scope (review N2, D77) ------------------------------------------------------
+
+
+def test_calibration_scope_check():
+    check_calibration_scope(["fixed", "fixed"], ["fixed"])
+    with pytest.raises(ValueError, match="cannot be applied"):
+        check_calibration_scope(["fixed"], ["fixed", "rolling_0"])
+    with pytest.raises(ValueError, match="exactly one fold"):
+        check_calibration_scope(["fixed", "rolling_0"], ["fixed"])
+
+
+def test_per_view_calibration_is_per_fold_on_the_gate_plan():
+    """Each fold's views are calibrated on that fold's own calibrate_views rows: labels of the
+    fixed fold's slice never change the rolling fold's probabilities, and vice versa."""
+    df, features, _ = _synthetic()
+    table = view_table(df, features, _views(), gate_plan(SPLITS), _encoder(df), SPLITS)
+    assert set(table.loc[table["fold"] == "rolling_0", "role"]) == {"gate_train", "calibrate_views"}
+    cal, info = calibrate_views(table)
+    assert {f for f, _ in info} == {"rolling_0", "fixed"}
+    flipped = table.copy()
+    hit = ((flipped["fold"] == "fixed") & (flipped["role"] == "calibrate_views")).to_numpy()
+    flipped.loc[hit, "label"] = 1 - flipped.loc[hit, "label"]
+    again, _ = calibrate_views(flipped)
+    roll = (table["fold"] == "rolling_0").to_numpy()
+    cols = [f"p_{v}" for v in VIEWS]
+    assert np.allclose(
+        again.loc[roll, cols].to_numpy(), cal.loc[roll, cols].to_numpy(), equal_nan=True
+    )
+    assert not np.allclose(again.loc[~roll, cols].to_numpy(), cal.loc[~roll, cols].to_numpy(),
+                           equal_nan=True)  # fmt: skip
+    # a fold without its own calibrate_views rows cannot be calibrated with another fold's
+    no_slice = table[~((table["fold"] == "rolling_0") & (table["role"] == "calibrate_views"))]
+    with pytest.raises(ValueError, match="rolling_0 has no calibrate_views"):
+        calibrate_views(no_slice)
+
+
+def test_final_fixed_plan_test_rows_share_the_calibrate_fused_model():
+    from vaultic.fusion.data import fusion_split
+
+    df, features, _ = _synthetic()
+    table = view_table(df, features, _views(), fixed_plan(SPLITS, final=True), _encoder(df), SPLITS)
+    assert set(table["fold"]) == {"fixed"} and (table["role"] == "test").any()
+    cal, _ = calibrate_views(table)
+    split = fusion_split(cal)  # same fold: allowed
+    assert len(split.test) > 0 and split.calibrate.day.min() == 147
+    other = cal.copy()
+    other.loc[other["role"] == "test", "fold"] = "fixed_test"  # test rows from another model
+    other.attrs["calibrated"] = True
+    with pytest.raises(ValueError, match="different model"):
+        fusion_split(other)
+
+
+def test_calibration_falls_back_to_platt_below_100_frauds(dev_table):
+    """Review R1 (D83): a (fold, view) with < 100 frauds in its calibrate_views rows gets Platt
+    scaling, never an ECE choice; the report logs rows, frauds, method and the fallback."""
+    from vaultic.views.orchestrate import MIN_ISOTONIC_FRAUDS
+
+    df, features, table = dev_table
+    cal = table[(table["role"] == "calibrate_views")]
+    frauds = {v: int(cal.loc[cal[f"raw_{v}"].notna(), "label"].sum())
+              for v in ("tabular", "behavioral", "graph")}  # fmt: skip
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _, info = calibrate_views(table)
+    for (fold, view), entry in info.items():
+        assert fold == "fixed" and entry["frauds"] == frauds[view]
+        assert entry["rows"] == int(cal[f"raw_{view}"].notna().sum())
+        if entry["frauds"] < MIN_ISOTONIC_FRAUDS:
+            assert entry["fallback"] and entry["method"] == "PlattCalibrator"
+            assert entry["ece"] is None
+            assert any(
+                f"view {view}" in str(w.message) and "Platt" in str(w.message) for w in caught
+            )
+        else:
+            assert not entry["fallback"] and set(entry["ece"]) == {"platt", "isotonic"}
+    assert any(e["fallback"] for e in info.values())  # the synthetic slice is small
+
+
+def test_calibration_with_enough_frauds_chooses_by_ece(monkeypatch):
+    import vaultic.views.orchestrate as orch
+
+    df, features, _ = _synthetic()
+    table = view_table(df, features, _views(), fixed_plan(SPLITS), _encoder(df), SPLITS)
+    monkeypatch.setattr(orch, "MIN_ISOTONIC_FRAUDS", 1)
+    _, info = orch.calibrate_views(table)
+    assert not any(e["fallback"] for e in info.values())
+
+
+def test_crossfit_plan_expanding_windows():
+    """D95: expanding windows over the training period + the fixed fold; each fold calibrates
+    on its own block's last 3 days; validation and test come from the fixed fold only."""
+    from vaultic.views.plan import crossfit_plan
+
+    plan = crossfit_plan(SPLITS)
+    assert [(f.name, f.train, f.predict, f.calibrate_views) for f in plan] == [
+        ("crossfit_0", (1, 30), (31, 60), (58, 60)),
+        ("crossfit_1", (1, 60), (61, 90), (88, 90)),
+        ("crossfit_2", (1, 90), (91, 120), (118, 120)),
+        ("fixed", (1, 120), (128, 150), (144, 146)),
+    ]
+    final = crossfit_plan(SPLITS, final=True)
+    assert [f.name for f in final if f.test is not None] == ["fixed"]
+    for f in plan[:3]:  # no fold predicts days it trained on, or beyond the training period
+        assert f.train[1] < f.predict[0] and f.predict[1] <= SPLITS.train.last
+
+
+def test_gate_folds_validated():
+    from dataclasses import replace
+
+    from vaultic.data.splits import DayRange, validate
+
+    with pytest.raises(ValueError, match="gate fold"):
+        validate(replace(SPLITS, gate_folds=((DayRange(1, 90), DayRange(91, 130)),)))
+
+
+def test_view_with_no_available_training_rows_is_missing_for_that_fold():
+    """D95: e.g. the anomaly view in the first cross-fitted fold (no scores on days 1-30)."""
+    from vaultic.views.orchestrate import SupervisedView
+
+    frame = pd.DataFrame({"a": [1.0, 2.0, 3.0], "avail": [0, 0, 0]})
+    view = SupervisedView(["a"], "logistic_regression", {}, available=lambda f: f["avail"] > 0)
+    view.fit(frame, np.array([0, 1, 0]))
+    assert np.isnan(view.predict(frame.assign(avail=1))).all()

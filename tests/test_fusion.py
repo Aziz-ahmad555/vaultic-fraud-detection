@@ -235,3 +235,19 @@ def test_f7_reduces_mofe_violations_against_mvaf(seed):
     mvaf = make_fusion("MVAF", epochs=20, seed=seed).fit(views, y, ctx)
     f7 = make_fusion("F7", epochs=20, seed=seed).fit(views, y, ctx)
     assert held_out_mofe(f7) < held_out_mofe(mvaf)
+
+
+def test_masked_softmax_never_overflows_on_masked_entries():
+    """A masked entry far above the available ones must not raise an overflow warning."""
+    import warnings
+
+    from vaultic.fusion.mvaf import masked_softmax
+
+    g = np.array([[0.0, 1.0, 1e4], [2.0, -1e4, 0.0]])
+    mask = np.array([[True, True, False], [True, False, True]])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        w = masked_softmax(g, mask)
+    e = np.exp([0.0, 1.0])
+    assert w[0].tolist() == pytest.approx([e[0] / e.sum(), e[1] / e.sum(), 0.0])
+    assert w[1, 1] == 0.0 and w[1].sum() == pytest.approx(1.0)

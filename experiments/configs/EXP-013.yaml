@@ -1,0 +1,26 @@
+id: EXP-013
+question: 'B4 tuned (Optuna, 25 trials per weighting arm, validation only; winning
+  arm: none)'
+model:
+  name: lightgbm
+  params:
+    num_leaves: 137
+    learning_rate: 0.082508
+    min_child_samples: 23
+    subsample: 0.861072
+    colsample_bytree: 0.955982
+    reg_lambda: 0.001566
+    reg_alpha: 0.117654
+    min_split_gain: 0.040741
+    n_estimators: 1375
+    subsample_freq: 1
+features: raw
+seeds:
+- 0
+- 1
+- 2
+- 3
+- 4
+bootstrap:
+  n: 1000
+  seed: 0

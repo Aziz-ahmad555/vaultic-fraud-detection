@@ -82,3 +82,27 @@ def test_e14_training_window_variants():
         with pytest.raises(ValueError, match="planned experiment"):
             load_config(path)
     assert windows == {"EXP-114-w45": 45, "EXP-114-w60": 60, "EXP-114-w90": 90}
+
+
+def test_no_planned_config_early_stops_on_validation():
+    """D45 / D54: GRU early stopping uses the latest 20% of each fold's training rows."""
+    from vaultic.eval.run import read_config
+
+    for path in sorted(Path(CONFIG_DIR).glob("EXP-1*.yaml")):
+        text = path.read_text(encoding="utf-8")
+        assert (
+            "early_stopping: validation" not in text and "validation_pr_auc" not in text
+        ), path.name
+    temporal = read_config(Path(CONFIG_DIR) / "EXP-104.yaml")["views"]["temporal"]
+    assert temporal["early_stopping"] == {
+        "metric": "pr_auc",
+        "rows": "latest_20pct_of_fold_training_rows",
+    }
+
+
+def test_e10_to_e12_declare_the_same_fold_calibration_scope():
+    """Review N2 (D77): the fusion / calibration experiments use the gate plan with calibration
+    fitted and applied on one fold of view models."""
+    for n in ("110", "111", "112"):
+        cfg = yaml.safe_load((CONFIG_DIR / f"EXP-{n}.yaml").read_text("utf-8"))
+        assert cfg["plan"] == {"name": "gate", "calibration_scope": "same_fold"}, n

@@ -1,0 +1,25 @@
+id: EXP-009
+question: 'B5 tuned (Optuna, 25 trials per weighting arm, validation only; winning
+  arm: none)'
+model:
+  name: xgboost
+  params:
+    max_depth: 10
+    learning_rate: 0.034936
+    min_child_weight: 3.208114
+    subsample: 0.758866
+    colsample_bytree: 0.896783
+    reg_lambda: 0.001099
+    reg_alpha: 0.006097
+    gamma: 1.622601
+    n_estimators: 1350
+features: b5
+seeds:
+- 0
+- 1
+- 2
+- 3
+- 4
+bootstrap:
+  n: 1000
+  seed: 0

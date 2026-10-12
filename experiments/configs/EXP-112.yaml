@@ -22,4 +22,8 @@ report:
   conformal: [coverage, share_uncertain]
   routing: [fraud_value_caught, fraud_count_caught, recall_at_k, money_saved_per_review]
 seeds: [0, 1, 2, 3, 4]
+# Review N2 (D77): every view's validation AND test predictions come from the one fixed-plan
+# model set; calibration, conformal sets, thresholds and routing lambdas are fitted and applied
+# only on that same fold (plan.check_calibration_scope). Rolling folds add earlier gate rows.
+plan: {name: gate, calibration_scope: same_fold}
 bootstrap: {n: 1000, seed: 0}

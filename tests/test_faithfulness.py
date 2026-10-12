@@ -90,3 +90,29 @@ def test_counterfactual_quality_by_hand():
     assert q["sparsity"] == pytest.approx(1.5)  # 1 and 2 features changed
     assert q["proximity"] == pytest.approx((1.0 + 2.0) / 2)  # L1 in units of scale 2
     assert q["actionable_share"] == 0.5  # row 1 changes x0, which is not actionable
+
+
+def test_alert_curves_rank_by_positive_attribution():
+    """D59, by hand. risk = sigmoid(x0 + x1 - x2); one alert with x = (2, 1, 3), baseline 0.
+    Attributions (exact for this linear logit): +2, +1, -3. Positive ranking deletes x0, then
+    x1, then x2: the risk falls first. |attribution| ranking deletes x2 first (|-3| is largest),
+    which REMOVES a risk-lowering feature and raises the risk."""
+    import numpy as np
+
+    from vaultic.explain.faithfulness import deletion_curve, insertion_curve
+
+    sig = lambda z: 1 / (1 + np.exp(-z))  # noqa: E731
+    predict = lambda X: sig(X[:, 0] + X[:, 1] - X[:, 2])  # noqa: E731
+    X = np.array([[2.0, 1.0, 3.0]])
+    att = np.array([[2.0, 1.0, -3.0]])
+    base = np.zeros(3)
+    pos = deletion_curve(predict, X, att, base, max_k=2)
+    absolute = deletion_curve(predict, X, att, base, max_k=2, rank_by="absolute")
+    assert pos.tolist() == pytest.approx(
+        [sig(0.0), sig(-2.0), sig(-3.0)]
+    )  # 0 -> drop x0 -> drop x1
+    assert absolute[1] == pytest.approx(sig(3.0)) and absolute[1] > absolute[0]  # rises
+    ins = insertion_curve(predict, X, att, base, max_k=2)
+    assert ins.tolist() == pytest.approx([sig(0.0), sig(2.0), sig(3.0)])  # adds x0, then x1
+    with pytest.raises(ValueError, match="rank_by"):
+        deletion_curve(predict, X, att, base, max_k=1, rank_by="signed")

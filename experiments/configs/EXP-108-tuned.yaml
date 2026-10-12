@@ -1,0 +1,25 @@
+id: EXP-108-tuned
+question: 'E8 tuned (Optuna, 25 trials per weighting arm, validation only; winning
+  arm: none)'
+model:
+  name: xgboost
+  params:
+    max_depth: 10
+    learning_rate: 0.029863
+    min_child_weight: 6.038668
+    subsample: 0.68351
+    colsample_bytree: 0.632142
+    reg_lambda: 0.002599
+    reg_alpha: 0.058796
+    gamma: 1.438543
+    n_estimators: 1675
+features: b5_anomaly
+seeds:
+- 0
+- 1
+- 2
+- 3
+- 4
+bootstrap:
+  n: 1000
+  seed: 0

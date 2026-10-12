@@ -1,0 +1,25 @@
+id: EXP-V-temporal
+question: 'V-temporal tuned (Optuna, 25 trials per weighting arm, validation only;
+  winning arm: none)'
+model:
+  name: xgboost
+  params:
+    max_depth: 10
+    learning_rate: 0.028092
+    min_child_weight: 3.341336
+    subsample: 0.718504
+    colsample_bytree: 0.836437
+    reg_lambda: 0.008459
+    reg_alpha: 2.780697
+    gamma: 0.844798
+    n_estimators: 250
+features: sequence_only
+seeds:
+- 0
+- 1
+- 2
+- 3
+- 4
+bootstrap:
+  n: 1000
+  seed: 0

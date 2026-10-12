@@ -1,0 +1,6 @@
+# Ablation (development run, validation only): tuned B5 (EXP-009, frozen hyperparameters)
+# without its top SHAP feature uid_fraud_rate_known. Asked by Aziz after Phase 2.
+extends: EXP-009.yaml
+id: EXP-009-drop-ufrk
+question: "B5 tuned, without uid_fraud_rate_known (same frozen hyperparameters)"
+drop_features: [uid_fraud_rate_known]

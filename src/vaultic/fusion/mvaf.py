@@ -57,7 +57,7 @@ def masked_softmax(g: np.ndarray, mask: np.ndarray | None) -> np.ndarray:
     shifted = np.where(mask, g, -np.inf)
     row_max = np.max(shifted, axis=1, keepdims=True)
     row_max = np.where(np.isfinite(row_max), row_max, 0.0)
-    e = np.where(mask, np.exp(g - row_max), 0.0)
+    e = np.exp(np.where(mask, g - row_max, -np.inf))  # masked entries: exp(-inf) = 0, no overflow
     total = e.sum(axis=1, keepdims=True)
     return np.divide(e, total, out=np.zeros_like(e), where=total > 0)
 

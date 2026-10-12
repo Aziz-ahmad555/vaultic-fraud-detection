@@ -13,10 +13,13 @@ missed fraud + C_FP x false positives + C_rev x reviews (eval.stats.cost_breakdo
 
 Training only ever uses labels known at that moment: rows with its_time + L <= the start of
 the training day; with `train_window_days` only the most recent such days (default: all
-history; after a drift a long history dilutes the new pattern). Each model is fitted on those rows minus the most recent `holdout_days` of
-them; its cost threshold and reference scores come from that holdout. Champion-challenger
-gate (D45): the challenger replaces the champion only if, on the challenger's holdout (the
-most recent matured labels, excluding any row the champion trained on), its PR-AUC gain over
+history; after a drift a long history dilutes the new pattern). The matured rows are split by
+time into three parts (D58): the model is fitted on all but the most recent
+`threshold_days + gate_days`; its cost threshold and reference scores are chosen on the next
+`threshold_days` (the threshold slice); the most recent `gate_days` are its gate window, which
+nothing about the model was chosen on. Champion-challenger gate (D45): the challenger replaces
+the champion only if, on the challenger's gate window (the most recent matured labels,
+excluding any row the champion trained on), its PR-AUC gain over
 the champion is significant by a paired bootstrap (95% CI of the gain entirely above 0,
 `gate_n_boot` resamples) AND its cost is not higher. A rejected challenger is logged.
 P2/P3 wait `cooldown_days` between retraining attempts. An alarm stays pending until a
@@ -49,7 +52,8 @@ class Model:
     threshold: float
     trained_day: int
     train_rows: np.ndarray  # row positions used for fitting
-    holdout_rows: np.ndarray
+    threshold_rows: np.ndarray  # threshold slice: cost threshold and reference scores
+    gate_rows: np.ndarray  # gate window: only the champion-challenger comparison
     reference_scores: np.ndarray
 
 
@@ -91,7 +95,8 @@ def simulate(
     delay_days: int = 30,
     retrain_every: int = 30,
     cooldown_days: int = 7,
-    holdout_days: int = 14,
+    threshold_days: int = 7,
+    gate_days: int = 7,
     gate_alpha: float = 0.05,
     gate_n_boot: int = 1000,
     c_fp: float = C_FP,
@@ -115,12 +120,17 @@ def simulate(
         known = np.flatnonzero(time + delay_days * SECONDS_PER_DAY <= as_of * SECONDS_PER_DAY)
         if train_window_days is not None:
             known = known[time[known] > time[known].max() - train_window_days * SECONDS_PER_DAY]
-        cut = time[known].max() - holdout_days * SECONDS_PER_DAY
-        fit_rows, hold = known[time[known] <= cut], known[time[known] > cut]
+        latest = time[known].max()
+        gate_cut = latest - gate_days * SECONDS_PER_DAY
+        fit_cut = gate_cut - threshold_days * SECONDS_PER_DAY
+        t = time[known]
+        fit_rows = known[t <= fit_cut]
+        thr_rows = known[(t > fit_cut) & (t <= gate_cut)]
+        gate_rows = known[t > gate_cut]
         est = fit(X.iloc[fit_rows], y[fit_rows])
-        s_hold = est.predict_proba(X.iloc[hold])[:, 1]
-        thr = choose_cost_threshold(y[hold], s_hold, amount[hold], c_fp, c_rev)
-        return Model(est, thr, as_of, fit_rows, hold, s_hold)
+        s_thr = est.predict_proba(X.iloc[thr_rows])[:, 1]
+        thr = choose_cost_threshold(y[thr_rows], s_thr, amount[thr_rows], c_fp, c_rev)
+        return Model(est, thr, as_of, fit_rows, thr_rows, gate_rows, s_thr)
 
     def score(model: Model, rows: np.ndarray) -> np.ndarray:
         return model.estimator.predict_proba(X.iloc[rows])[:, 1]
@@ -172,7 +182,7 @@ def simulate(
         last_attempt = d + 1
         tries += 1
         challenger = train(d + 1)
-        gate = np.setdiff1d(challenger.holdout_rows, champion.train_rows)
+        gate = np.setdiff1d(challenger.gate_rows, champion.train_rows)
         ev = {"day": d + 1, "trigger": "schedule" if policy == "P1" else "alarm",
               "gate_rows": len(gate)}  # fmt: skip
         if len(gate) and y[gate].min() != y[gate].max():

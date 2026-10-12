@@ -105,17 +105,24 @@ def threshold_at(scores: np.ndarray, alpha: float) -> float:
 class AdaptiveConformal:
     """Adaptive conformal inference (Gibbs and Candes, 2021) over a time-ordered stream.
 
-    The stream is processed in batches (e.g. days). Each batch gets sets from the calibration
-    scores at the current error level alpha_t. Once a batch's labels are known, alpha moves
-    towards the target:  alpha_{t+1} = alpha_t + gamma * (alpha - err_t),  where err_t is the
-    batch's miscoverage. Under-coverage lowers alpha_t (wider sets) and over-coverage raises it.
-    With `delay` > 0, a batch's error is applied `delay` batches later (labels arrive late, as
-    in Vaultic's label-delay rule). `mondrian=True` keeps one alpha per class.
+    The stream is processed day by day. Each day gets sets from the calibration scores at the
+    current error level alpha_t. Once a day's labels are known, alpha moves towards the target:
+    alpha <- alpha + gamma * (alpha_target - err_day), where err_day is that day's miscoverage.
+    Under-coverage lowers alpha (wider sets) and over-coverage raises it.
+
+    `label_delay_days` is REQUIRED (D55) and is the label-delay rule in days: the error of day b
+    is used from day d on only if b + L < d (its transactions' its_time + L <= start of day d).
+    With L = 0 a day's error is used from the next day. Pass the run's `label_delay_days`
+    (splits.yaml); there is no default, so it can never silently be zero.
+    `mondrian=True` keeps one alpha per class.
     """
 
-    def __init__(self, alpha: float = 0.1, gamma: float = 0.05, mondrian: bool = False,
-                 delay: int = 0):  # fmt: skip
-        self.alpha, self.gamma, self.mondrian, self.delay = alpha, gamma, mondrian, delay
+    def __init__(self, alpha: float = 0.1, gamma: float = 0.05, mondrian: bool = False, *,
+                 label_delay_days: int):  # fmt: skip
+        if label_delay_days is None or int(label_delay_days) < 0:
+            raise ValueError("label_delay_days must be a non-negative number of days")
+        self.alpha, self.gamma, self.mondrian = alpha, gamma, mondrian
+        self.label_delay_days = int(label_delay_days)
 
     def fit(self, y, p) -> AdaptiveConformal:
         y = np.asarray(y).astype(int)
@@ -127,16 +134,24 @@ class AdaptiveConformal:
             self.cal_scores_ = [shared, shared]
         return self
 
-    def run(self, batch, y, p) -> tuple[np.ndarray, list[dict]]:
-        """Sets for every row (rows must be in time order) and the alpha used per batch."""
-        batch, y = np.asarray(batch), np.asarray(y).astype(int)
+    def run(self, day, y, p) -> tuple[np.ndarray, list[dict]]:
+        """Sets for every row (rows must be in time order) and the alpha used per day."""
+        day, y = np.asarray(day), np.asarray(y).astype(int)
+        if np.any(np.diff(day) < 0):
+            raise ValueError("rows must be in time order (day must not decrease)")
         scores = _label_scores(p)
         sets = np.zeros((len(y), 2), dtype=bool)
         alphas = np.full(2, float(self.alpha))
-        pending: list[np.ndarray] = []  # per-batch errors waiting for their labels
+        pending: list[tuple[int, np.ndarray]] = []  # (day, errors) waiting for their labels
         trace = []
-        for b in pd.unique(batch):
-            rows = np.flatnonzero(batch == b)
+        for b in pd.unique(day):
+            # apply every earlier day whose labels are known by the start of day b
+            while pending and pending[0][0] + self.label_delay_days < b:
+                _, known = pending.pop(0)
+                for c in (0, 1):
+                    if not np.isnan(known[c]):
+                        alphas[c] += self.gamma * (self.alpha - known[c])
+            rows = np.flatnonzero(day == b)
             thresholds = np.array([threshold_at(self.cal_scores_[c], alphas[c]) for c in (0, 1)])
             sets[rows] = scores[rows] <= thresholds[None, :]
             covered = sets[rows, y[rows]]
@@ -145,14 +160,9 @@ class AdaptiveConformal:
                        for c in (0, 1)]  # fmt: skip
             else:
                 err = [np.mean(~covered)] * 2
-            trace.append({"batch": b, "alpha_legit": alphas[0], "alpha_fraud": alphas[1],
+            trace.append({"day": int(b), "alpha_legit": alphas[0], "alpha_fraud": alphas[1],
                           "coverage": float(covered.mean())})  # fmt: skip
-            pending.append(np.array(err, dtype=float))
-            if len(pending) > self.delay:
-                known = pending.pop(0)
-                for c in (0, 1):
-                    if not np.isnan(known[c]):
-                        alphas[c] += self.gamma * (self.alpha - known[c])
+            pending.append((int(b), np.array(err, dtype=float)))
         return sets, trace
 
 

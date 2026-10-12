@@ -1,0 +1,51 @@
+[
+ {
+  "C": 0.001,
+  "val PR-AUC": 0.3298,
+  "seconds": 89.0,
+  "iterations": 106,
+  "converged": true
+ },
+ {
+  "C": 0.01,
+  "val PR-AUC": 0.3413,
+  "seconds": 134.0,
+  "iterations": 271,
+  "converged": true
+ },
+ {
+  "C": 0.1,
+  "val PR-AUC": 0.3556,
+  "seconds": 252.0,
+  "iterations": 654,
+  "converged": true
+ },
+ {
+  "C": 1.0,
+  "val PR-AUC": 0.3678,
+  "seconds": 391.0,
+  "iterations": 1422,
+  "converged": true
+ },
+ {
+  "C": 10.0,
+  "val PR-AUC": 0.3703,
+  "seconds": 383.0,
+  "iterations": 1667,
+  "converged": true
+ },
+ {
+  "C": 100.0,
+  "val PR-AUC": 0.3704,
+  "seconds": 17829.0,
+  "iterations": 1659,
+  "converged": true
+ },
+ {
+  "C": 1000.0,
+  "val PR-AUC": 0.3706,
+  "seconds": 527.0,
+  "iterations": 1691,
+  "converged": true
+ }
+]

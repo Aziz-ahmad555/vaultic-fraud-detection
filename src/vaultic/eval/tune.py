@@ -20,20 +20,20 @@ experiments/configs/<config-id>.yaml.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import time
 from datetime import date
+from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import yaml
 
-from vaultic.data.load import load_merged
 from vaultic.data.splits import load_splits
 from vaultic.eval.metrics import pr_auc
-from vaultic.features.pipeline import features_path
-from vaultic.features.sets import NEEDS_BASE, design_matrix
-from vaultic.paths import CONFIG_DIR, MERGED_PATH, REPO_ROOT, RESEARCH_DIR
+from vaultic.eval.warn_capture import capture_warnings
+from vaultic.features.sets import design_matrix
+from vaultic.paths import CONFIG_DIR, REPO_ROOT, RESEARCH_DIR
 from vaultic.views.tabular import resolve_device
 
 TUNING_DIR = REPO_ROOT / "experiments" / "tuning"
@@ -41,7 +41,8 @@ ARMS = ("none", "scale_pos_weight")
 MAX_TREES = 2000
 EARLY_STOPPING = 100  # rounds without a better validation PR-AUC
 CHECK_EVERY = 25  # rounds between validation PR-AUC checks (pruning and early stopping)
-STARTUP_TRIALS = 5  # trials per arm that always run to completion before pruning starts
+STARTUP_TRIALS = 10  # trials per arm that always run to completion before pruning starts
+WARMUP_ROUNDS = 200  # no trial is pruned before this many boosting rounds (D30)
 LEARNING_RATE = (0.02, 0.3)
 
 
@@ -71,6 +72,17 @@ def suggest_params_lightgbm(trial) -> dict:
         "reg_alpha": trial.suggest_float("reg_alpha", 1e-3, 10.0, log=True),
         "min_split_gain": trial.suggest_float("min_split_gain", 0.0, 1.0),
     }
+
+
+def make_pruner():
+    """The one pruner every tuned baseline uses (B3, B4, B5): median pruning, but only after
+    STARTUP_TRIALS complete trials and never before WARMUP_ROUNDS boosting rounds (reported
+    steps are tree counts), so slow, low-learning-rate trials are not cut off early."""
+    import optuna
+
+    return optuna.pruners.MedianPruner(
+        n_startup_trials=STARTUP_TRIALS, n_warmup_steps=WARMUP_ROUNDS
+    )
 
 
 class ValidationMonitor:
@@ -168,18 +180,49 @@ MODELS = {
 }
 
 
+# B1 as redefined in D61: clip to training quantiles, then standardise; lbfgs gets enough
+# iterations to converge (convergence is recorded per C, never silenced)
+LR_FIXED = {"max_iter": 5000, "clip_quantiles": [0.001, 0.999]}
+# D62 flat-curve rule for every grid search: take the smallest C (most regularised) whose
+# validation PR-AUC is within FLAT_TOL of the grid's highest; extend the grid only when that
+# chosen C is the largest value in it (at_upper_edge). No comparison of neighbours.
+FLAT_TOL = 0.001
+
+
+def choose_c(rows: list[dict], tol: float = FLAT_TOL) -> dict:
+    """The smallest C whose validation PR-AUC is within `tol` of the best (D62)."""
+    best = max(r["val PR-AUC"] for r in rows)
+    return min((r for r in rows if r["val PR-AUC"] >= best - tol), key=lambda r: r["C"])
+
+
+def at_upper_edge(rows: list[dict], chosen: dict) -> bool:
+    """True when the chosen C is the largest in the grid: the grid should be extended."""
+    return chosen["C"] == max(r["C"] for r in rows)
+
+
 def grid_logistic_regression(X_tr, y_tr, X_va, y_va, grid_c) -> list[dict]:
     """B1: one model per C (lbfgs is deterministic, so one seed suffices)."""
+    import warnings
+
+    from sklearn.exceptions import ConvergenceWarning
+
     from vaultic.views.tabular import make_model
 
     rows = []
     for c in grid_c:
         started = time.perf_counter()
-        model = make_model("logistic_regression", {"C": c, "max_iter": 1000}, seed=0)
-        model.fit(X_tr, y_tr)
+        model = make_model("logistic_regression", {"C": c, **LR_FIXED}, seed=0)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", ConvergenceWarning)
+            model.fit(X_tr, y_tr)
+        converged = not any(issubclass(w.category, ConvergenceWarning) for w in caught)
         score = pr_auc(y_va, model.predict_proba(X_va)[:, 1])
-        rows.append({"C": c, "val PR-AUC": score, "seconds": time.perf_counter() - started})
-        print(f"[B1 grid] C={c}: val PR-AUC {score:.4f}")
+        n_iter = int(model[-1].n_iter_[0])
+        rows.append({"C": c, "val PR-AUC": score, "seconds": time.perf_counter() - started,
+                     "iterations": n_iter, "converged": converged})  # fmt: skip
+        print(
+            f"[B1 grid] C={c}: val PR-AUC {score:.4f}, {n_iter} iterations, converged {converged}"
+        )
     return rows
 
 
@@ -194,7 +237,7 @@ def run_arm(
         storage=storage,
         direction="maximize",
         sampler=optuna.samplers.TPESampler(seed=seed),
-        pruner=optuna.pruners.MedianPruner(n_startup_trials=STARTUP_TRIALS, n_warmup_steps=0),
+        pruner=make_pruner(),
         load_if_exists=True,
     )
     weight = float((y_tr == 0).sum() / max((y_tr == 1).sum(), 1))
@@ -229,24 +272,75 @@ def main() -> None:
     parser.add_argument("--device", choices=["cpu", "cuda"], default=None)
     parser.add_argument("--grid-c", type=float, nargs="+", default=[0.001, 0.01, 0.1, 1.0, 10.0])
     parser.add_argument("--config-id", required=True, help="id of the tuned config to write")
+    parser.add_argument("--val-days", type=int, nargs=2, default=None, metavar=("FIRST", "LAST"),
+                        help="score trials on these validation days only (D95: 128 143, never "
+                        "the calibrate tail)")  # fmt: skip
+    parser.add_argument("--view", default=None,
+                        help="tune a view model on the rows where the view exists (D95)")  # fmt: skip
+    parser.add_argument(
+        "--from-grid",
+        type=Path,
+        help="logistic regression: re-apply the selection rule to a saved grid (JSON written by "
+        "an earlier run) instead of refitting",
+    )
     args = parser.parse_args()
+    if args.from_grid:
+        rows = json.loads(args.from_grid.read_text(encoding="utf-8"))
+        _write_lr_results(args.name, args.features, args.config_id, rows)
+        return
 
     splits = load_splits()
-    df = load_merged(MERGED_PATH)
-    base = (
-        pd.read_parquet(features_path(splits.uid_variant)) if args.features in NEEDS_BASE else None
-    )
+    # the same inputs as the harness (base features plus any attached view files, D90)
+    from vaultic.eval.run import load_inputs
+
+    df, base, _ = load_inputs({"features": args.features}, splits)
     X = design_matrix(df, base, args.features)
     y = df["isFraud"].to_numpy()
     part = splits.assign(df["day"])
     tr, va = part == "train", part == "validation"
+    if args.val_days is not None:  # inner validation split (D95)
+        lo, hi = args.val_days
+        if splits.calibrate is not None and hi >= splits.calibrate.first:
+            raise ValueError("--val-days must end before the calibrate tail (D95)")
+        va = va & (df["day"].to_numpy() >= lo) & (df["day"].to_numpy() <= hi)
+    if args.view is not None:  # a view is trained and scored only where it exists
+        from vaultic.views.definitions import available
+
+        avail = available(args.view, X)
+        tr, va = tr & avail, va & avail
     X_tr, y_tr, X_va, y_va = X[tr], y[tr], X[va], y[va]
     del df, base, X  # the test period is never handed to the tuner
 
-    if args.model == "logistic_regression":
-        _tune_logistic_regression(args, X_tr, y_tr, X_va, y_va)
+    with capture_warnings() as caught:
+        if args.model == "logistic_regression":
+            _tune_logistic_regression(args, X_tr, y_tr, X_va, y_va)
+        else:
+            _tune_boosting(args, X_tr, y_tr, X_va, y_va)
+    _append_warnings(RESEARCH_DIR / f"tuning_{args.name}.md", caught)
+    if args.val_days is not None or args.view is not None:  # D95 scope of this tuning
+        with open(RESEARCH_DIR / f"tuning_{args.name}.md", "a", encoding="utf-8") as f:
+            f.write(
+                f"\nScope (D95): view `{args.view or 'all rows'}`; trials scored on validation "
+                f"days {args.val_days or 'all'} only; {int(tr.sum())} training rows, "
+                f"{int(va.sum())} scoring rows ({int(y[va].sum())} frauds).\n"
+            )
+
+
+def _append_warnings(report: Path, caught) -> None:
+    """Warnings raised while tuning go into the tuning report (flagged ones in bold)."""
+    summary = caught.summary()
+    flag = caught.flag_text()
+    lines = ["", "## Warnings during tuning", ""]
+    if not summary["groups"]:
+        lines.append(f"None (apart from {summary['n_ignored']} deprecation/future warnings).")
     else:
-        _tune_boosting(args, X_tr, y_tr, X_va, y_va)
+        if flag:
+            lines += [f"**{flag}**", ""]
+        lines += [f"- {g['count']} x {g['category']} at `{g['origin']}`: {g['message']}"
+                  for g in summary["groups"]]  # fmt: skip
+    with open(report, "a", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    print(flag or "no flagged warnings while tuning")
 
 
 def _write_config(config_id: str, question: str, model: str, params: dict, features: str) -> None:
@@ -265,31 +359,55 @@ def _write_config(config_id: str, question: str, model: str, params: dict, featu
 
 def _tune_logistic_regression(args, X_tr, y_tr, X_va, y_va) -> None:
     rows = grid_logistic_regression(X_tr, y_tr, X_va, y_va, args.grid_c)
-    best = max(rows, key=lambda r: r["val PR-AUC"])
+    _write_lr_results(args.name, args.features, args.config_id, rows)
+
+
+def _write_lr_results(name: str, features: str, config_id: str, rows: list[dict]) -> None:
+    (RESEARCH_DIR / f"tuning_{name}_grid.json").write_text(
+        json.dumps(rows, indent=1), encoding="utf-8"
+    )
+    best = choose_c(rows)
+    top = max(rows, key=lambda r: r["val PR-AUC"])
+    edge = at_upper_edge(rows, best)
     _write_config(
-        args.config_id,
-        f"{args.name} logistic regression, C chosen on validation from a grid of "
-        f"{len(rows)} values",
+        config_id,
+        f"{name} logistic regression, C chosen on validation from a grid of "
+        f"{len(rows)} values (D62 flat-curve rule)",
         "logistic_regression",
-        {"C": best["C"], "max_iter": 1000},
-        args.features,
+        {"C": best["C"], **LR_FIXED},
+        features,
     )
     lines = [
-        f"# Tuning {args.name} (feature set `{args.features}`)",
+        f"# Tuning {name} (feature set `{features}`)",
         "",
         f"Generated {date.today().isoformat()} by `python -m vaultic.eval.tune`. Grid over the "
         "inverse regularisation strength C, one fit per value (lbfgs is deterministic), scored "
-        "on the validation period only.",
+        "on the validation period only. Model as redefined in D61: median imputation, clipping "
+        "to the training 0.1%/99.9% quantiles, standardisation, lbfgs with up to 5000 iterations.",
         "",
-        "| C | val PR-AUC | seconds |",
-        "|---|---|---|",
-        *[f"| {r['C']:g} | {r['val PR-AUC']:.4f} | {r['seconds']:.0f} |" for r in rows],
+        "| C | val PR-AUC | seconds | iterations | converged |",
+        "|---|---|---|---|---|",
+        *[f"| {r['C']:g} | {r['val PR-AUC']:.4f} | {r['seconds']:.0f} | {r['iterations']} | "
+          f"{'yes' if r['converged'] else '**no**'} |" for r in rows],  # fmt: skip
         "",
-        f"Chosen: **C = {best['C']:g}**. Config: `experiments/configs/{args.config_id}.yaml`.",
+        f"Highest val PR-AUC: C = {top['C']:g} ({top['val PR-AUC']:.4f}). Selection rule (D62): "
+        f"the smallest C within {FLAT_TOL} of the highest.",
+        "",
+        f"Chosen: **C = {best['C']:g}** ({best['val PR-AUC']:.4f}). "
+        f"Config: `experiments/configs/{config_id}.yaml`.",
+        *(
+            ["", "**The chosen C is at the upper edge of the grid: extend the grid.**"]
+            if edge
+            else []
+        ),
+        "",
+        f"Grid rows: `research/tuning_{name}_grid.json`.",
         "",
     ]
-    (RESEARCH_DIR / f"tuning_{args.name}.md").write_text("\n".join(lines), encoding="utf-8")
-    print(f"chose C={best['C']:g} ({best['val PR-AUC']:.4f}); wrote {args.config_id}.yaml")
+    (RESEARCH_DIR / f"tuning_{name}.md").write_text("\n".join(lines), encoding="utf-8")
+    print(
+        f"chose C={best['C']:g} ({best['val PR-AUC']:.4f}); upper edge: {edge}; wrote {config_id}.yaml"
+    )
 
 
 def _tune_boosting(args, X_tr, y_tr, X_va, y_va) -> None:
@@ -348,7 +466,8 @@ def _tune_boosting(args, X_tr, y_tr, X_va, y_va) -> None:
         "",
         f"Generated {date.today().isoformat()} by `python -m vaultic.eval.tune`. Validation period "
         "only; validation PR-AUC is checked every "
-        f"{CHECK_EVERY} rounds for median pruning and early stopping (max {MAX_TREES} trees, "
+        f"{CHECK_EVERY} rounds for median pruning (after {STARTUP_TRIALS} complete trials, never "
+        f"before {WARMUP_ROUNDS} rounds) and early stopping (max {MAX_TREES} trees, "
         f"stop after {EARLY_STOPPING} rounds without improvement; learning rate "
         f"{LEARNING_RATE[0]}–{LEARNING_RATE[1]}). Same sampler seed and budget per arm. "
         f"Device: {resolve_device(args.device)} (GPU and CPU results can differ slightly).",
