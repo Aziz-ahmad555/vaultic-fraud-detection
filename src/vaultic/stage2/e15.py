@@ -20,7 +20,8 @@ Explained systems (the frozen final-run models, refitted by stage2/system.py):
                  (stage2/amount.py); top-3 Jaccard and share of alerts whose top-1 changes
   1.5 seeds      top-5 Jaccard over the 10 seed pairs (MVAF: gate seeds; B5: model seeds)
 
-A secondary deletion curve ranks by positive attribution (D59's order), labelled secondary.
+D167 adds a declared secondary analysis: the deletion test with D59's positive-attribution
+order, labelled SECONDARY_LABEL wherever it appears; H6a / H6b are decided by 1.1 alone.
 """
 
 from __future__ import annotations
@@ -33,6 +34,9 @@ import pandas as pd
 from vaultic.fusion.final_eval import _ci, _p_two_sided, holm_nan
 
 KS = tuple(range(1, 11))
+# D167's exact label for the positive-order analysis; used wherever the secondary appears (D175)
+SECONDARY_LABEL = "SECONDARY (added after a validation check, D166)"
+SECONDARY_KEY = f"attribution_positive_order: {SECONDARY_LABEL}"
 RANDOM_ORDERS = 20
 PERM_REPEATS = 5
 PERTURBATIONS = (0.99, 1.01, 0.95, 1.05)
@@ -236,13 +240,13 @@ def faithfulness(expl, frame, context, avail, medians, importance, n_boot: int =
     for key, p in zip(sec, holm_nan([sec[k]["p_value"] for k in sec]), strict=True):
         sec[key]["p_holm"] = p
         sec[key]["ci_excludes_0_above"] = bool(sec[key]["ci_low"] > 0 and p < 0.05)
-    log(f"{expl.name}: secondary positive-order deletion done")
+    log(f"{expl.name}: positive-order deletion done, {SECONDARY_LABEL}")
     return {"aopc": {"attribution": mean_ci(a_attr), "random": mean_ci(a_rand),
                      "permutation": mean_ci(a_perm),
-                     "attribution_positive_order (secondary)": mean_ci(a_pos)},
+                     SECONDARY_KEY: mean_ci(a_pos)},
             "hypotheses": h,
             "secondary_positive_order": {
-                "label": "SECONDARY (D167, added after a validation check, D166); not H6a / H6b",
+                "label": SECONDARY_LABEL,
                 "tests": sec, "deletion_curve": curve_pos.mean(axis=1).tolist()},
             "deletion_curve": curve.mean(axis=1).tolist(),
             "insertion": {k: mean_ci(v) for k, v in ins.items()},
