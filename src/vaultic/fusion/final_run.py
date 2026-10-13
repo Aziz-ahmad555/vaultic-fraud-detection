@@ -162,6 +162,18 @@ def check_git(frozen: Path, repo: Path = REPO_ROOT, log_files=None, freeze_recor
     if other:
         raise RuntimeError(f"files changed since the frozen commit {frozen_commit[:12]}: "
                            f"{sorted(other)}; re-freeze (logged) first")  # fmt: skip
+    if outputs:  # D177: a stage-2 result file may be added once, never changed or removed
+        history = git("log", "--no-renames", "--name-status", "--format=",
+                      f"{frozen_commit}..{head}", "--", *outputs).stdout  # fmt: skip
+        statuses: dict[str, list[str]] = {}
+        for line in history.splitlines():
+            if line.strip():
+                status, path = line.split("\t", 1)
+                statuses.setdefault(path, []).append(status[0])
+        touched = {p: s for p, s in statuses.items() if s != ["A"]}
+        if touched:
+            raise RuntimeError(f"stage-2 results may only be added after the freeze, never "
+                               f"changed or removed: {touched}")  # fmt: skip
     # D113: the two logs may only gain lines after the frozen commit
     for name in sorted((log_files - {freeze_record}) & changed):
         stat = git("diff", "--numstat", "--no-renames", frozen_commit, head, "--", name).stdout

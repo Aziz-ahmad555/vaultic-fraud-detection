@@ -66,6 +66,24 @@ def test_check_git_allows_only_logs_record_and_stage2_outputs(tmp_path):
     _git(repo, "add", ".")
     _git(repo, "commit", "-qm", "E23 results")
     assert check()
+    (out / "ladder_steps.csv").write_text("b\n")  # a later run adds its own file: allowed
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "ladder results")
+    assert check()
+    (out / "e23_groups.csv").write_text("changed\n")  # an earlier run's file changed (D177)
+    _git(repo, "commit", "-qam", "edit E23 results")
+    with pytest.raises(RuntimeError, match="only be added"):
+        check()
+    _git(repo, "revert", "--no-edit", "HEAD")  # reverting is a further change, still refused
+    with pytest.raises(RuntimeError, match="only be added"):
+        check()
+    _git(repo, "reset", "-q", "--hard", "HEAD~2")
+    assert check()
+    (out / "e23_groups.csv").unlink()  # removing one is refused too
+    _git(repo, "commit", "-qam", "remove E23 results")
+    with pytest.raises(RuntimeError, match="only be added"):
+        check()
+    _git(repo, "reset", "-q", "--hard", "HEAD~1")
     (repo / "research" / "tables" / "other.csv").write_text("a\n")
     _git(repo, "add", ".")
     _git(repo, "commit", "-qm", "another table")
