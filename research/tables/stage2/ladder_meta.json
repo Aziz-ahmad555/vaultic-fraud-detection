@@ -1,0 +1,49 @@
+{
+ "rung5_reproduction": {
+  "n_rows": 92427,
+  "n_compared": 92427,
+  "n_missing": 0,
+  "max_abs_diff": 0.0,
+  "corr": 1.0
+ },
+ "rung5_threshold_diff": 0.0,
+ "thresholds": {
+  "rung 1": 0.816108769904621,
+  "rung 2": 0.8653700084275373,
+  "rung 3": 0.8819364675656965,
+  "rung 4": 0.8602462822387382,
+  "rung 5": 0.835372622447,
+  "MVAF": 0.8812372071871475,
+  "B5": 0.1894540994910159
+ },
+ "h1": [
+  {
+   "step": "E3 (+behavioral)",
+   "diff": 0.06656413870924938,
+   "p_holm": 0.0,
+   "h1_supported": true
+  },
+  {
+   "step": "E4 (+temporal)",
+   "diff": 0.0035686188192026735,
+   "p_holm": 0.0,
+   "h1_supported": true
+  },
+  {
+   "step": "E5 (+graph)",
+   "diff": 0.0024724797628332684,
+   "p_holm": 0.0,
+   "h1_supported": true
+  },
+  {
+   "step": "E8 (+anomaly)",
+   "diff": 2.7114118563154044e-05,
+   "p_holm": 0.978,
+   "h1_supported": false
+  }
+ ],
+ "bounded_gate_max": 366.0,
+ "evaluation_rows": 92427,
+ "evaluation_frauds": 3213,
+ "git_commit": "964002531b883476f80618929370c27c4fa84626"
+}
