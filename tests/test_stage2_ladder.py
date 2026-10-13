@@ -50,6 +50,7 @@ def test_bounded_context_caps_and_logs_the_count_only():
 
 
 def test_tuning_and_fitting_a_rung():
+    pytest.importorskip("optuna")  # the ladder runs in .venv (EXP-210-final); .venv-dice has none
     split = FusionSplit(fit=_rows(600, 1), tune=_rows(300, 2), calibrate=_rows(300, 3),
                         test=_rows(300, 4))  # fmt: skip
     tuned = tune_rungs(split, n_trials=2, log=lambda m: None)
