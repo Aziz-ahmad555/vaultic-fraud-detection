@@ -111,3 +111,11 @@ def test_final_procedure_is_not_called_when_the_start_fails(monkeypatch):
     with pytest.raises(RuntimeError, match="push failed"):
         s2.main()
     assert called == []
+
+
+def test_stage2_library_list_adds_dice_ml_and_leaves_exp200_unchanged():
+    from vaultic.fusion import final_run
+
+    assert "dice-ml" not in final_run.LIBRARIES  # EXP-200-final's record is unchanged
+    versions = s2.library_versions()
+    assert "dice-ml" in versions and set(final_run.library_versions()) < set(versions)

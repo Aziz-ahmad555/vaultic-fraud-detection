@@ -35,6 +35,7 @@ E10_RUN = "experiments/runs/EXP-200-final/20261011-002400-202994"
 EXPERIMENTS = ("EXP-223-final", "EXP-210-final", "EXP-215-final")  # run order (D121 section 5)
 VENVS = {".venv": REPO_ROOT.parent.parent / ".venv" if (REPO_ROOT.parent.name == ".worktrees")
          else REPO_ROOT / ".venv", ".venv-dice": REPO_ROOT / ".venv-dice"}  # fmt: skip
+STAGE2_EXTRA_LIBRARIES = ("dice-ml",)  # D172: on top of fusion/final_run.LIBRARIES
 WHAT = {"EXP-223-final": "E23 subgroup gaps final run",
         "EXP-210-final": "ablation ladder (E3-E5, E8) final run",
         "EXP-215-final": "E15 explanation final run"}  # fmt: skip
@@ -115,10 +116,26 @@ def data_files() -> list[Path]:
             REPO_ROOT / "experiments/runs/EXP-009/20261008-211052-888539/predictions.parquet"]  # fmt: skip
 
 
+def library_versions() -> dict[str, str]:
+    """EXP-200-final's library list (fusion/final_run.LIBRARIES, unchanged) plus dice-ml, which
+    E15's counterfactuals use (D172)."""
+    import importlib.metadata as md
+
+    from vaultic.fusion.final_run import library_versions as base
+
+    out = base()
+    for name in STAGE2_EXTRA_LIBRARIES:
+        try:
+            out[name] = md.version(name)
+        except md.PackageNotFoundError:
+            out[name] = "not installed"
+    return out
+
+
 def venv_versions(venv: str) -> dict[str, str]:
     """library_versions() as seen by one environment's interpreter."""
     py = VENVS[venv] / "Scripts" / "python.exe"
-    code = ("import json; from vaultic.fusion.final_run import library_versions; "
+    code = ("import json; from vaultic.stage2.final import library_versions; "
             "print(json.dumps(library_versions()))")  # fmt: skip
     env = {**os.environ, "PYTHONPATH": str(REPO_ROOT / "src")}
     out = subprocess.run([str(py), "-c", code], capture_output=True, text=True, env=env,
@@ -135,7 +152,7 @@ def library_section_venvs() -> str:
 
 
 def check_libraries_venv(record: str, venv: str) -> dict[str, str]:
-    from vaultic.fusion.final_run import LIB_ROW, library_versions
+    from vaultic.fusion.final_run import LIB_ROW
 
     frozen = {k.split(":", 1)[1]: v for k, v in LIB_ROW.findall(record)
               if k.startswith(f"{venv}:")}  # fmt: skip
