@@ -391,7 +391,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # run the importable module's main, so pickled objects name vaultic.stage2.system, not
+    # __main__ (other processes load them)
+    from vaultic.stage2 import system as _system
+
+    _system.main()
 
 
 def check_test(system: FrozenSystem, parts: dict, stored: pd.DataFrame) -> dict:
