@@ -1,12 +1,12 @@
 # Frozen configs for the stage-2 final runs (E23, ablation ladder, E15; D121)
 
-Frozen 2026-10-13T23:08:00 at git commit `8c4e70de6d996211f44dc05ad57984fc868d4db3`, before any --final run. Final runs are made once per baseline and never repeated after seeing results (a forced re-run is logged in research/decisions.md as FINAL-RERUN).
+Frozen 2026-10-13T23:49:22 at git commit `40158e70dc4e3a7d8b51176bb10b61907b7150bd`, before any --final run. Final runs are made once per baseline and never repeated after seeing results (a forced re-run is logged in research/decisions.md as FINAL-RERUN).
 
 | file | sha256 |
 |---|---|
 | `experiments/configs/EXP-223-final.yaml` | `e9eb03478a1eed999542f2a9d347dc649a28e5a7ab6d23533a4ecec848808b22` |
 | `experiments/configs/EXP-210-final.yaml` | `b96881af0023ca1ec4d451e2ecc30de32ae0e5371050d3dde5a15890c864d45c` |
-| `experiments/configs/EXP-215-final.yaml` | `ff770710a713656733f4fe272062f6b41a4f82a03e8d8be98cce2154065d01e2` |
+| `experiments/configs/EXP-215-final.yaml` | `deb80e742957dd266fe09c59410c9b5501a09ece243a92ab759788117deae50e` |
 | `experiments/configs/splits.yaml` | `96666efd2da333cffab20c1f4ce8a567481d8fb5da5724a2e9757bd40e5c6955` |
 | `experiments/configs/v_columns.yaml` | `34909dc424a2db19cf8684368213847dc2edeff159deed7e07e7ba8c62c04e7b` |
 | `experiments/configs/EXP-009.yaml` | `fe949b9cb9fc2074c8d649e7bfdab9d3c13c8042ebb9b40107ef6b538515e29a` |
