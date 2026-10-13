@@ -129,8 +129,8 @@
    ],
    "inference_ms_per_1000": 55.449607273182494,
    "predict_rows": 60602,
-   "tuning_hours": 3.808281131944063,
-   "tuning_source": "estimated: 50 trials x measured fit time"
+   "tuning_hours": 1.85,
+   "tuning_source": "research/tuning_V-tabular.md"
   },
   {
    "model": "view: behavioral",
@@ -143,8 +143,8 @@
    ],
    "inference_ms_per_1000": 5.42352562635625,
    "predict_rows": 60602,
-   "tuning_hours": 0.27013346388897236,
-   "tuning_source": "estimated: 50 trials x measured fit time"
+   "tuning_hours": 0.15,
+   "tuning_source": "research/tuning_V-behavioral.md"
   },
   {
    "model": "view: temporal",
@@ -157,8 +157,8 @@
    ],
    "inference_ms_per_1000": 7.382736543543785,
    "predict_rows": 60602,
-   "tuning_hours": 0.510015073611511,
-   "tuning_source": "estimated: 50 trials x measured fit time"
+   "tuning_hours": 0.3333333333333333,
+   "tuning_source": "research/tuning_V-temporal.md"
   },
   {
    "model": "view: graph",
@@ -171,8 +171,8 @@
    ],
    "inference_ms_per_1000": 3.6844378074857986,
    "predict_rows": 60602,
-   "tuning_hours": 0.20714385833384263,
-   "tuning_source": "estimated: 50 trials x measured fit time"
+   "tuning_hours": 0.08333333333333333,
+   "tuning_source": "research/tuning_V-graph.md"
   },
   {
    "model": "view: anomaly",
@@ -185,8 +185,8 @@
    ],
    "inference_ms_per_1000": 0.5702468563015798,
    "predict_rows": 60602,
-   "tuning_hours": 0.013444743055313464,
-   "tuning_source": "estimated: 50 trials x measured fit time"
+   "tuning_hours": 0.03333333333333333,
+   "tuning_source": "research/tuning_V-anomaly.md"
   },
   {
    "model": "MVAF",
@@ -401,11 +401,11 @@
  ],
  "summary": {
   "training_hours": 0.7591522664721803,
-  "tuning_hours": 29.613075214332557,
-  "compute_hours": 30.37222748080474,
+  "tuning_hours": 27.254056943498853,
+  "compute_hours": 28.01320920997103,
   "carbon": {
-   "energy_kwh": 0.45558341221207105,
-   "co2_kg": 0.15291657230898165,
+   "energy_kwh": 0.42019813814956547,
+   "co2_kg": 0.14103950506990165,
    "note": "estimate, not a measurement: wall-clock under load x CPU TDP x grid carbon intensity; no PUE (laptop)"
   }
  }

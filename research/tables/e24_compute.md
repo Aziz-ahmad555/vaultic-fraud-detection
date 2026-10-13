@@ -13,11 +13,11 @@ Hardware: Intel(R) Core(TM) i5-8265U CPU @ 1.60GHz, 4 physical / 8 logical cores
 | B5 | baseline | 137.8 | 34.40 | 1.88 | research/tuning_B5.md |
 | B6 | baseline | 314.9 | 72.09 | 0.00 | not tuned |
 | F0 | baseline | 265.1 | 30.89 | 2.03 | research/tuning_F0-inner.md |
-| view: tabular | view | 274.2 | 55.45 | 3.81 | estimated: 50 trials x measured fit time |
-| view: behavioral | view | 19.4 | 5.42 | 0.27 | estimated: 50 trials x measured fit time |
-| view: temporal | view | 36.7 | 7.38 | 0.51 | estimated: 50 trials x measured fit time |
-| view: graph | view | 14.9 | 3.68 | 0.21 | estimated: 50 trials x measured fit time |
-| view: anomaly | view | 1.0 | 0.57 | 0.01 | estimated: 50 trials x measured fit time |
+| view: tabular | view | 274.2 | 55.45 | 1.85 | research/tuning_V-tabular.md |
+| view: behavioral | view | 19.4 | 5.42 | 0.15 | research/tuning_V-behavioral.md |
+| view: temporal | view | 36.7 | 7.38 | 0.33 | research/tuning_V-temporal.md |
+| view: graph | view | 14.9 | 3.68 | 0.08 | research/tuning_V-graph.md |
+| view: anomaly | view | 1.0 | 0.57 | 0.03 | research/tuning_V-anomaly.md |
 | MVAF | fusion | 73.9 | 2.70 | 1.03 | estimated: 50 trials x measured fit time |
 | F1 | fusion | 0.0 | 0.11 | 0.00 | not tuned |
 | F2 | fusion | 59.1 | 2.36 | 0.00 | not tuned |
@@ -34,6 +34,6 @@ Hardware: Intel(R) Core(TM) i5-8265U CPU @ 1.60GHz, 4 physical / 8 logical cores
 | anomaly: autoencoder | anomaly-score model | 133.6 | 13.17 | 0.00 | not tuned |
 | anomaly: per-uid IF | anomaly-score model | 29.4 | 6.15 | 0.00 | not tuned |
 
-Compute hours: training 0.76 + tuning 29.61 = **30.37 h**.
+Compute hours: training 0.76 + tuning 27.25 = **28.01 h**.
 
-**Carbon (estimate, not a measurement):** 0.456 kWh x 335.65 gCO2/kWh = **0.153 kg CO2**. Energy = wall-clock under load x TDP 15 W (Intel's specified TDP for the Core i5-8265U, 15 W (cTDP 10-25 W), as listed by TechPowerUp, https://www.techpowerup.com/cpu-specs/core-i5-8265u.c2102); no PUE (laptop). Grid intensity: Ember, Yearly Electricity Data (CC BY 4.0), Pakistan, 2024, https://ember-energy.org/data/yearly-electricity-data/, accessed 2026-10-13 (downloaded 18:30 UTC).
+**Carbon (estimate, not a measurement):** 0.420 kWh x 335.65 gCO2/kWh = **0.141 kg CO2**. Energy = wall-clock under load x TDP 15 W (Intel's specified TDP for the Core i5-8265U, 15 W (cTDP 10-25 W), as listed by TechPowerUp, https://www.techpowerup.com/cpu-specs/core-i5-8265u.c2102); no PUE (laptop). Grid intensity: Ember, Yearly Electricity Data (CC BY 4.0), Pakistan, 2024, https://ember-energy.org/data/yearly-electricity-data/, accessed 2026-10-13 (downloaded 18:30 UTC).

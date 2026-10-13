@@ -119,11 +119,12 @@ def tuning_minutes(log_id: str, research: Path = RESEARCH_DIR) -> float | None:
 def tuning_entry(name: str, fit_seconds: float, research: Path = RESEARCH_DIR) -> dict:
     if name in UNTUNED:
         return {"tuning_hours": 0.0, "tuning_source": "not tuned"}
-    if name in TUNING_LOGS:
-        minutes = tuning_minutes(TUNING_LOGS[name], research)
+    key = name.removeprefix("view: ")  # view rows are named "view: <view>" (D171)
+    if key in TUNING_LOGS:
+        minutes = tuning_minutes(TUNING_LOGS[key], research)
         if minutes is not None:
             return {"tuning_hours": minutes / 60,
-                    "tuning_source": f"research/tuning_{TUNING_LOGS[name]}.md"}  # fmt: skip
+                    "tuning_source": f"research/tuning_{TUNING_LOGS[key]}.md"}  # fmt: skip
     trials = ESTIMATED_TRIALS.get(name.split(" ")[0], 50)  # ladder rungs: F4's 50 trials
     return {"tuning_hours": trials * fit_seconds / 3600,
             "tuning_source": f"estimated: {trials} trials x measured fit time"}  # fmt: skip
@@ -345,6 +346,8 @@ def main() -> None:
         if args.add_anomaly:
             keep = [r for r in result["models"] if r["kind"] != "anomaly-score model"]
             result["models"] = keep + time_anomaly(log)
+        for r in result["models"]:  # tuning entries recomputed from the recorded fit times
+            r.update(tuning_entry(r["model"], r["fit_seconds"]))
         result["settings"] = settings
         result["summary"] = summarise(result["models"], settings)
     else:

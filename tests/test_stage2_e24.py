@@ -40,6 +40,12 @@ def test_tuning_minutes_and_entries(tmp_path):
     )
     assert tuning_entry("F4 rung 2", 72.0, tmp_path)["tuning_hours"] == pytest.approx(1.0)
     assert tuning_entry("B2", 5.0, tmp_path) == {"tuning_hours": 0.0, "tuning_source": "not tuned"}
+    # view rows ("view: <view>") read their own tuning log, not the 50-trial estimate (D171)
+    (tmp_path / "tuning_V-graph.md").write_text(
+        "| weighting | trials | pruned | best val PR-AUC | trees | total minutes |\n"
+        "|---|---|---|---|---|---|\n| none | 25 | 0 | 0.5 | 100 | 30 |\n", "utf-8")  # fmt: skip
+    view = tuning_entry("view: graph", 999.0, tmp_path)
+    assert view == {"tuning_hours": 0.5, "tuning_source": "research/tuning_V-graph.md"}
 
 
 def test_carbon_is_a_labelled_estimate():
