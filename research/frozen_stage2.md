@@ -1,6 +1,6 @@
 # Frozen configs for the stage-2 final runs (E23, ablation ladder, E15; D121)
 
-Frozen 2026-10-13T23:49:22 at git commit `40158e70dc4e3a7d8b51176bb10b61907b7150bd`, before any --final run. Final runs are made once per baseline and never repeated after seeing results (a forced re-run is logged in research/decisions.md as FINAL-RERUN).
+Frozen 2026-10-14T01:22:38 at git commit `291207c4a9f6c4404f2e1acd33d2aa3e76e58e99`, before any --final run. Final runs are made once per baseline and never repeated after seeing results (a forced re-run is logged in research/decisions.md as FINAL-RERUN).
 
 | file | sha256 |
 |---|---|
@@ -64,6 +64,7 @@ Environment at freeze: VAULTIC_DATA_DIR = `E:/old work/fyp 11/fraud-detection/da
 | library `.venv:pyyaml` | `6.0.3` |
 | library `.venv:matplotlib` | `3.11.2` |
 | library `.venv:torch` | `not installed` |
+| library `.venv:dice-ml` | `not installed` |
 | library `.venv-dice:python` | `3.11.9` |
 | library `.venv-dice:numpy` | `1.26.4` |
 | library `.venv-dice:pandas` | `2.2.3` |
@@ -76,3 +77,4 @@ Environment at freeze: VAULTIC_DATA_DIR = `E:/old work/fyp 11/fraud-detection/da
 | library `.venv-dice:pyyaml` | `6.0.3` |
 | library `.venv-dice:matplotlib` | `not installed` |
 | library `.venv-dice:torch` | `not installed` |
+| library `.venv-dice:dice-ml` | `0.12` |
