@@ -211,8 +211,10 @@ def _ladder_run(both, cal, ev, amount_cal, amount_ev, cfg, out_dir, refs: dict, 
     log("ladder rungs fitted")
     th = {m: choose_cost_threshold(cal.y, s_cal[m], amount_cal) for m in s_cal}
     if stored_f4 is not None:  # final: rung 5 must reproduce E10's F4, then the stored scores
+        from vaultic.stage2.system import refit_complete
+
         meta["rung5_reproduction"] = refit_check(stored_f4, ev.ids, s_ev[rung_name(5)])
-        if not meta["rung5_reproduction"]["max_abs_diff"] <= 1e-6:
+        if not refit_complete(meta["rung5_reproduction"], len(ev.ids)):  # D173
             raise RuntimeError(f"rung 5 does not reproduce E10's F4: {meta['rung5_reproduction']}")
         s_ev[rung_name(5)] = stored_f4.reindex(ev.ids).to_numpy()
     scores = dict(s_ev)

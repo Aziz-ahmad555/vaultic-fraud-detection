@@ -119,3 +119,17 @@ def test_view_deletion_needs_enough_views(fake):
     assert set(out) >= {"top-1 view", "top-2 views", "random view"}
     n_av = avail.sum(axis=1)
     assert out["top-2 views"]["n"] == int((n_av >= 3).sum())
+
+
+def test_refit_checks_require_every_row():
+    import pandas as pd
+
+    from vaultic.fusion.final_eval import refit_check
+    from vaultic.stage2.system import refit_complete
+
+    stored = pd.Series([0.1, 0.2, 0.3], index=[1, 2, 3])
+    assert refit_complete(refit_check(stored, [1, 2, 3], [0.1, 0.2, 0.3]), 3)
+    # one row missing from the stored run: the remaining rows match, but the check fails (D173)
+    assert not refit_complete(refit_check(stored, [1, 2, 4], [0.1, 0.2, 0.9]), 3)
+    assert not refit_complete(refit_check(stored, [1, 2, 3], [0.1, 0.2, float("nan")]), 3)
+    assert not refit_complete(refit_check(stored, [1, 2, 3], [0.1, 0.2, 0.31]), 3)

@@ -47,6 +47,14 @@ FINAL_RESULTS = RESEARCH_DIR / "tables" / "final_results.json"
 ANOMALY = {"block_days": 30, "max_fit_rows": 150_000, "ae_max_iter": 50, "seed": 0}
 
 
+def refit_complete(rc: dict, n: int, tol: float = TOLERANCE) -> bool:
+    """A refit check (fusion/final_eval.refit_check) passes only if EVERY row was compared and
+    the largest difference is within tol (D173): no row missing from the stored run, none
+    non-finite on either side."""
+    return bool(rc["n_missing"] == 0 and rc["n_compared"] == n and rc["n_rows"] == n
+                and rc["max_abs_diff"] <= tol)  # fmt: skip
+
+
 def load_parts(dev: bool) -> dict:
     """Data and features as the final run loads them (build_table parts_only). dev=True drops
     every test-period row before anything else happens."""
@@ -353,8 +361,14 @@ def check_validation(system: FrozenSystem, parts: dict, table: pd.DataFrame | No
         rc = refit_check(b5_stored, val["TransactionID"].to_numpy(), s)
         out["b5_validation"] = rc["max_abs_diff"]
         out["b5_validation_rows"] = rc["n_compared"]
-    out["passed"] = all(v <= TOLERANCE for k, v in out.items()
-                        if k not in ("rows", "b5_validation_rows"))  # fmt: skip
+        out["b5_validation_missing"] = rc["n_missing"]
+        complete = refit_complete(rc, len(val))
+    else:
+        complete = True
+    out["passed"] = complete and all(
+        v <= TOLERANCE for k, v in out.items()
+        if k not in ("rows", "b5_validation_rows", "b5_validation_missing")
+    )  # fmt: skip
     return out
 
 
@@ -416,9 +430,13 @@ def check_test(system: FrozenSystem, parts: dict, stored: pd.DataFrame) -> dict:
     cost = total_cost(system.decide(sc["risk"], sc["p"], amount), y, amount)
     final = json.loads(FINAL_RESULTS.read_text("utf-8"))
     want = final["e12"]["MVAF"]["decision"]["default"]["evaluation_cost"]
-    out = {"rows": int(len(pos)),
-           "mvaf": float(np.max(np.abs(sc["risk"] - stored["score_MVAF"].reindex(ids).to_numpy()))),
-           "b5": float(np.max(np.abs(b5 - stored["score_B5"].reindex(ids).to_numpy()))),
+    from vaultic.fusion.final_eval import refit_check
+
+    rc = {"mvaf": refit_check(stored["score_MVAF"], ids, sc["risk"]),
+          "b5": refit_check(stored["score_B5"], ids, b5)}  # fmt: skip
+    out = {"rows": int(len(pos)), "mvaf": rc["mvaf"]["max_abs_diff"], "b5": rc["b5"]["max_abs_diff"],
+           "mvaf_missing": rc["mvaf"]["n_missing"], "b5_missing": rc["b5"]["n_missing"],
            "e12_cost": abs(cost - want)}  # fmt: skip
-    out["passed"] = out["mvaf"] <= TOLERANCE and out["b5"] <= TOLERANCE and out["e12_cost"] <= 0.01
+    out["passed"] = bool(all(refit_complete(r, len(ids)) for r in rc.values())
+                         and out["e12_cost"] <= 0.01)  # fmt: skip
     return out
