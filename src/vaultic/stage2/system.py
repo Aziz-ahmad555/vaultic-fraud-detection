@@ -424,12 +424,16 @@ def check_test(system: FrozenSystem, parts: dict, stored: pd.DataFrame) -> dict:
 DEV_DIR = Path("E:/dev-cache/stage2")  # development outputs, on drive E, never in the repository
 
 
-def dev_system_path() -> Path:
-    return DEV_DIR / "system_dev.joblib"
+def dev_system_path(tag: str = "dev") -> Path:
+    return DEV_DIR / f"system_{tag}.joblib"
 
 
 def main() -> None:
-    """Development refit and validation check: python -m vaultic.stage2.system"""
+    """Development refit and validation check: python -m vaultic.stage2.system [--tag dice]
+    (the tag names the outputs: system_<tag>.joblib, system_check_<tag>.json; default dev)."""
+    import argparse
+    import platform
+    import sys
     import time
 
     import joblib
@@ -437,16 +441,25 @@ def main() -> None:
 
     from vaultic.fusion.final_run import CONFIG, _stored
 
+    parser = argparse.ArgumentParser(description="stage-2 refit and validation check")
+    parser.add_argument("--tag", default="dev")
+    tag = parser.parse_args().tag
     started = time.perf_counter()
     cfg = yaml.safe_load(CONFIG.read_text("utf-8"))
     parts = load_parts(dev=True)
     system = fit_system(parts, log=lambda m: print(f"[{time.perf_counter() - started:6.0f}s] {m}",
                                                    flush=True))  # fmt: skip
     report = check_validation(system, parts, b5_stored=_stored(cfg["b5_run"], "validation"))
+    from vaultic.stage2.final import library_versions
+
     report["seconds"] = round(time.perf_counter() - started)
-    out = dev_system_path()
+    report["interpreter"] = sys.executable
+    report["python"] = platform.python_version()
+    report["libraries"] = library_versions()
+    out = dev_system_path(tag)
     out.parent.mkdir(parents=True, exist_ok=True)
-    (out.parent / "system_check.json").write_text(json.dumps(report, indent=1), "utf-8")
+    name = "system_check.json" if tag == "dev" else f"system_check_{tag}.json"
+    (out.parent / name).write_text(json.dumps(report, indent=1), "utf-8")
     print(json.dumps(report, indent=1), flush=True)
     joblib.dump(system, out)
     if not report["passed"]:
