@@ -309,6 +309,21 @@ def fit_system(parts: dict, table: pd.DataFrame | None = None, seeds=SEEDS,
     )  # fmt: skip
 
 
+def anomaly_diff(system: FrozenSystem, frame: pd.DataFrame) -> dict[str, float]:
+    """Max abs difference between the refitted anomaly models' scores and the stored anomaly
+    features of these rows; inf if a score is missing on one side only (D174)."""
+    sc = system.anomaly_scores(frame)
+    out = {}
+    for c in sc.columns:
+        stored, new = frame[c].to_numpy(float), sc[c].to_numpy(float)
+        if not np.array_equal(np.isnan(stored), np.isnan(new)):
+            out[c] = float("inf")
+            continue
+        ok = ~np.isnan(stored)
+        out[c] = float(np.max(np.abs(stored[ok] - new[ok]))) if ok.any() else 0.0
+    return out
+
+
 def check_validation(system: FrozenSystem, parts: dict, table: pd.DataFrame | None = None,
                      b5_stored: pd.Series | None = None) -> dict:  # fmt: skip
     """The refits against what was stored, on validation rows (fixed fold, days 128-150)."""
@@ -372,6 +387,40 @@ def check_validation(system: FrozenSystem, parts: dict, table: pd.DataFrame | No
     return out
 
 
+def check_test(system: FrozenSystem, parts: dict, stored: pd.DataFrame) -> dict:
+    """Final runs only: the refitted MVAF and B5 on the test rows against the stored
+    EXP-200-final scores, the refitted anomaly models' scores against the stored anomaly
+    features of the test rows (D174; NaN where no model scored a row, on both sides), and the
+    rebuilt E12 decisions against E12's default-cost total."""
+    from vaultic.trust.decision import total_cost
+
+    if parts["dev"]:
+        raise RuntimeError("check_test reads the test period; final runs only")
+    df, features = parts["df"], parts["features"]
+    pos = np.flatnonzero(df["day"].to_numpy() >= parts["splits"].test.first)
+    frame = features.loc[pos].reset_index(drop=True)
+    rows = df.loc[pos].reset_index(drop=True)
+    ids = rows["TransactionID"].to_numpy()
+    sc = system.score(frame, system.context(rows, frame))
+    b5, _ = system.b5(frame)
+    amount, y = rows["TransactionAmt"].to_numpy(float), rows["isFraud"].to_numpy()
+    cost = total_cost(system.decide(sc["risk"], sc["p"], amount), y, amount)
+    final = json.loads(FINAL_RESULTS.read_text("utf-8"))
+    want = final["e12"]["MVAF"]["decision"]["default"]["evaluation_cost"]
+    from vaultic.fusion.final_eval import refit_check
+
+    rc = {"mvaf": refit_check(stored["score_MVAF"], ids, sc["risk"]),
+          "b5": refit_check(stored["score_B5"], ids, b5)}  # fmt: skip
+    out = {"rows": int(len(pos)), "mvaf": rc["mvaf"]["max_abs_diff"], "b5": rc["b5"]["max_abs_diff"],
+           "mvaf_missing": rc["mvaf"]["n_missing"], "b5_missing": rc["b5"]["n_missing"],
+           "e12_cost": abs(cost - want)}  # fmt: skip
+    out["anomaly"] = anomaly_diff(system, frame)
+    out["passed"] = bool(all(refit_complete(r, len(ids)) for r in rc.values())
+                         and out["e12_cost"] <= 0.01
+                         and all(v <= TOLERANCE for v in out["anomaly"].values()))  # fmt: skip
+    return out
+
+
 DEV_DIR = Path("E:/dev-cache/stage2")  # development outputs, on drive E, never in the repository
 
 
@@ -410,33 +459,3 @@ if __name__ == "__main__":
     from vaultic.stage2 import system as _system
 
     _system.main()
-
-
-def check_test(system: FrozenSystem, parts: dict, stored: pd.DataFrame) -> dict:
-    """Final runs only: the refitted MVAF and B5 on the test rows against the stored
-    EXP-200-final scores, and the rebuilt E12 decisions against E12's default-cost total."""
-    from vaultic.trust.decision import total_cost
-
-    if parts["dev"]:
-        raise RuntimeError("check_test reads the test period; final runs only")
-    df, features = parts["df"], parts["features"]
-    pos = np.flatnonzero(df["day"].to_numpy() >= parts["splits"].test.first)
-    frame = features.loc[pos].reset_index(drop=True)
-    rows = df.loc[pos].reset_index(drop=True)
-    ids = rows["TransactionID"].to_numpy()
-    sc = system.score(frame, system.context(rows, frame))
-    b5, _ = system.b5(frame)
-    amount, y = rows["TransactionAmt"].to_numpy(float), rows["isFraud"].to_numpy()
-    cost = total_cost(system.decide(sc["risk"], sc["p"], amount), y, amount)
-    final = json.loads(FINAL_RESULTS.read_text("utf-8"))
-    want = final["e12"]["MVAF"]["decision"]["default"]["evaluation_cost"]
-    from vaultic.fusion.final_eval import refit_check
-
-    rc = {"mvaf": refit_check(stored["score_MVAF"], ids, sc["risk"]),
-          "b5": refit_check(stored["score_B5"], ids, b5)}  # fmt: skip
-    out = {"rows": int(len(pos)), "mvaf": rc["mvaf"]["max_abs_diff"], "b5": rc["b5"]["max_abs_diff"],
-           "mvaf_missing": rc["mvaf"]["n_missing"], "b5_missing": rc["b5"]["n_missing"],
-           "e12_cost": abs(cost - want)}  # fmt: skip
-    out["passed"] = bool(all(refit_complete(r, len(ids)) for r in rc.values())
-                         and out["e12_cost"] <= 0.01)  # fmt: skip
-    return out

@@ -133,3 +133,17 @@ def test_refit_checks_require_every_row():
     assert not refit_complete(refit_check(stored, [1, 2, 4], [0.1, 0.2, 0.9]), 3)
     assert not refit_complete(refit_check(stored, [1, 2, 3], [0.1, 0.2, float("nan")]), 3)
     assert not refit_complete(refit_check(stored, [1, 2, 3], [0.1, 0.2, 0.31]), 3)
+
+
+def test_anomaly_diff_compares_refitted_and_stored_scores(fake):
+    from vaultic.stage2.system import anomaly_diff
+
+    system, rows = fake[0], fake[1].copy()
+    sc = system.anomaly_scores(rows)
+    for c in ("anomaly_if", "anomaly_ae", "anomaly_uid_if"):
+        rows[c] = sc[c].to_numpy()  # stored = refitted
+    assert all(v == 0.0 for v in anomaly_diff(system, rows).values())
+    rows.loc[0, "anomaly_if"] += 0.01
+    assert anomaly_diff(system, rows)["anomaly_if"] == pytest.approx(0.01, rel=1e-3)
+    rows.loc[1, "anomaly_ae"] = np.nan  # stored missing where the refit scores: a mismatch
+    assert anomaly_diff(system, rows)["anomaly_ae"] == float("inf")

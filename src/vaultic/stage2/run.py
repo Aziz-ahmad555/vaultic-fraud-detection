@@ -217,6 +217,11 @@ def _ladder_run(both, cal, ev, amount_cal, amount_ev, cfg, out_dir, refs: dict, 
         if not refit_complete(meta["rung5_reproduction"], len(ev.ids)):  # D173
             raise RuntimeError(f"rung 5 does not reproduce E10's F4: {meta['rung5_reproduction']}")
         s_ev[rung_name(5)] = stored_f4.reindex(ev.ids).to_numpy()
+        # D174: rung 5 is E10's F4, so its cost threshold must be E10's F4 threshold
+        meta["rung5_threshold_diff"] = abs(th[rung_name(5)] - _e10_thresholds()["F4"])
+        if meta["rung5_threshold_diff"] > 1e-6:
+            raise RuntimeError(f"rung 5's threshold {th[rung_name(5)]} differs from E10's F4 "
+                               f"threshold {_e10_thresholds()['F4']}")  # fmt: skip
     scores = dict(s_ev)
     for name, (s, t) in refs.items():
         scores[name], th[name] = s, t
