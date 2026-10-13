@@ -157,3 +157,20 @@ def test_final_runs_go_in_order(tmp_path):
         s2.require_order("EXP-215-final", tmp_path)
     run("EXP-210-final", "completed")
     s2.require_order("EXP-215-final", tmp_path)
+
+
+def test_e15_final_refuses_a_config_whose_varied_inputs_differ_from_the_code(monkeypatch):
+    from vaultic.stage2 import run as s2run
+    from vaultic.stage2 import system
+
+    def no_load(*a, **k):
+        raise AssertionError("data must not be loaded before the check")
+
+    monkeypatch.setattr(system, "load_parts", no_load)
+    cfg = s2.load_config("EXP-215-final")
+    with pytest.raises(RuntimeError, match="differs from the code's VARY"):
+        s2run.e15_final(
+            {**cfg, "cf_vary": ["TransactionAmt", "ProductCD", "DeviceInfo"]}, None, None
+        )
+    with pytest.raises(AssertionError, match="must not be loaded"):
+        s2run.e15_final(cfg, None, None)  # the frozen config passes the check, then loading starts

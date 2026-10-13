@@ -487,9 +487,14 @@ def e15_dev(quick: bool) -> None:
 
 
 def e15_final(cfg, run_dir, head) -> dict:
+    from vaultic.stage2.counterfactuals import VARY
     from vaultic.stage2.final import OUTPUT_DIR
     from vaultic.stage2.system import check_test, check_validation, fit_system, load_parts
 
+    # D178: the frozen config's varied inputs must be the ones the code varies (D163), checked
+    # before anything is loaded (an explicit check, not an assert that python -O would strip)
+    if tuple(cfg["cf_vary"]) != VARY:
+        raise RuntimeError(f"cf_vary {cfg['cf_vary']} differs from the code's VARY {VARY}")
     log = _clock()
     parts = load_parts(dev=False)
     system = fit_system(parts, log=log)
