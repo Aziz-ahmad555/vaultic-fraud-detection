@@ -1,0 +1,366 @@
+{
+ "hardware": {
+  "cpu": "Intel(R) Core(TM) i5-8265U CPU @ 1.60GHz",
+  "logical_cores": 8,
+  "os": "Windows-10-10.0.26200-SP0",
+  "python": "3.11.9",
+  "physical_cores": 4,
+  "ram_gb": 15.9
+ },
+ "settings": {
+  "cpu": "Intel(R) Core(TM) i5-8265U CPU @ 1.60GHz",
+  "cpu_tdp_watts": 15,
+  "tdp_source": "Intel's specified TDP for the Core i5-8265U, 15 W (cTDP 10-25 W), as listed by TechPowerUp, https://www.techpowerup.com/cpu-specs/core-i5-8265u.c2102",
+  "grid_g_co2_per_kwh": null,
+  "grid_source": "Ember, Yearly Electricity Data (CC BY 4.0), Pakistan, 2024, https://ember-energy.org/data/yearly-electricity-data/",
+  "grid_accessed": null
+ },
+ "models": [
+  {
+   "model": "B1",
+   "kind": "baseline",
+   "fit_seconds": 444.9708338000346,
+   "fit_seconds_all": [
+    443.96680920000654,
+    445.7954536000034,
+    444.9708338000346
+   ],
+   "inference_ms_per_1000": 12.642331936006222,
+   "predict_rows": 60602,
+   "tuning_hours": 0.8652210657222895,
+   "tuning_source": "estimated: 7 trials x measured fit time"
+  },
+  {
+   "model": "B2",
+   "kind": "baseline",
+   "fit_seconds": 110.4327189999749,
+   "fit_seconds_all": [
+    110.25801310001407,
+    110.4327189999749,
+    111.33153540000785
+   ],
+   "inference_ms_per_1000": 18.091218111568356,
+   "predict_rows": 60602,
+   "tuning_hours": 0.0,
+   "tuning_source": "not tuned"
+  },
+  {
+   "model": "B3",
+   "kind": "baseline",
+   "fit_seconds": 416.23919409996597,
+   "fit_seconds_all": [
+    408.85759430000326,
+    420.81159330002265,
+    416.23919409996597
+   ],
+   "inference_ms_per_1000": 44.78264908740258,
+   "predict_rows": 60602,
+   "tuning_hours": 5.933333333333334,
+   "tuning_source": "research/tuning_B3.md"
+  },
+  {
+   "model": "B4",
+   "kind": "baseline",
+   "fit_seconds": 179.85738300002413,
+   "fit_seconds_all": [
+    179.85738300002413,
+    183.08719320001546,
+    175.54666420002468
+   ],
+   "inference_ms_per_1000": 85.31893171828422,
+   "predict_rows": 60602,
+   "tuning_hours": 10.133333333333333,
+   "tuning_source": "research/tuning_B4.md"
+  },
+  {
+   "model": "B5",
+   "kind": "baseline",
+   "fit_seconds": 137.81211729999632,
+   "fit_seconds_all": [
+    137.81211729999632,
+    136.1546252000262,
+    186.01036780001596
+   ],
+   "inference_ms_per_1000": 34.396552918986906,
+   "predict_rows": 60602,
+   "tuning_hours": 1.8833333333333333,
+   "tuning_source": "research/tuning_B5.md"
+  },
+  {
+   "model": "B6",
+   "kind": "baseline",
+   "fit_seconds": 314.85923589998856,
+   "fit_seconds_all": [
+    314.85923589998856,
+    313.77799790003337,
+    316.50851610000245
+   ],
+   "inference_ms_per_1000": 72.08803504750794,
+   "predict_rows": 60602,
+   "tuning_hours": 0.0,
+   "tuning_source": "not tuned"
+  },
+  {
+   "model": "F0",
+   "kind": "baseline",
+   "fit_seconds": 265.10726749995956,
+   "fit_seconds_all": [
+    258.1141314000124,
+    267.55723739997484,
+    265.10726749995956
+   ],
+   "inference_ms_per_1000": 30.89423616342249,
+   "predict_rows": 60602,
+   "tuning_hours": 2.033333333333333,
+   "tuning_source": "research/tuning_F0-inner.md"
+  },
+  {
+   "model": "view: tabular",
+   "kind": "view",
+   "fit_seconds": 274.19624149997253,
+   "fit_seconds_all": [
+    274.8358053000411,
+    274.19624149997253,
+    268.7953350000316
+   ],
+   "inference_ms_per_1000": 55.449607273182494,
+   "predict_rows": 60602,
+   "tuning_hours": 3.808281131944063,
+   "tuning_source": "estimated: 50 trials x measured fit time"
+  },
+  {
+   "model": "view: behavioral",
+   "kind": "view",
+   "fit_seconds": 19.44960940000601,
+   "fit_seconds_all": [
+    19.51178760000039,
+    19.44960940000601,
+    18.84866979997605
+   ],
+   "inference_ms_per_1000": 5.42352562635625,
+   "predict_rows": 60602,
+   "tuning_hours": 0.27013346388897236,
+   "tuning_source": "estimated: 50 trials x measured fit time"
+  },
+  {
+   "model": "view: temporal",
+   "kind": "view",
+   "fit_seconds": 36.72108530002879,
+   "fit_seconds_all": [
+    36.805721000011545,
+    36.72108530002879,
+    36.61036069999682
+   ],
+   "inference_ms_per_1000": 7.382736543543785,
+   "predict_rows": 60602,
+   "tuning_hours": 0.510015073611511,
+   "tuning_source": "estimated: 50 trials x measured fit time"
+  },
+  {
+   "model": "view: graph",
+   "kind": "view",
+   "fit_seconds": 14.914357800036669,
+   "fit_seconds_all": [
+    15.272319299983792,
+    14.911136999959126,
+    14.914357800036669
+   ],
+   "inference_ms_per_1000": 3.6844378074857986,
+   "predict_rows": 60602,
+   "tuning_hours": 0.20714385833384263,
+   "tuning_source": "estimated: 50 trials x measured fit time"
+  },
+  {
+   "model": "view: anomaly",
+   "kind": "view",
+   "fit_seconds": 0.9680214999825694,
+   "fit_seconds_all": [
+    0.9681789000169374,
+    0.9680214999825694,
+    0.9652508000144735
+   ],
+   "inference_ms_per_1000": 0.5702468563015798,
+   "predict_rows": 60602,
+   "tuning_hours": 0.013444743055313464,
+   "tuning_source": "estimated: 50 trials x measured fit time"
+  },
+  {
+   "model": "MVAF",
+   "kind": "fusion",
+   "fit_seconds": 73.9182416999829,
+   "fit_seconds_all": [
+    74.59794050001074,
+    73.67525490000844,
+    73.9182416999829
+   ],
+   "inference_ms_per_1000": 2.7022479594503515,
+   "predict_rows": 10276,
+   "tuning_hours": 1.026642245833096,
+   "tuning_source": "estimated: 50 trials x measured fit time"
+  },
+  {
+   "model": "F1",
+   "kind": "fusion",
+   "fit_seconds": 0.0006384999724105,
+   "fit_seconds_all": [
+    0.0007359000155702233,
+    0.0006384999724105,
+    0.0006244999822229147
+   ],
+   "inference_ms_per_1000": 0.10819385224629198,
+   "predict_rows": 10276,
+   "tuning_hours": 0.0,
+   "tuning_source": "not tuned"
+  },
+  {
+   "model": "F2",
+   "kind": "fusion",
+   "fit_seconds": 59.05001790000824,
+   "fit_seconds_all": [
+    59.05001790000824,
+    58.781574800028466,
+    59.72330429998692
+   ],
+   "inference_ms_per_1000": 2.3572109754292643,
+   "predict_rows": 10276,
+   "tuning_hours": 0.0,
+   "tuning_source": "not tuned"
+  },
+  {
+   "model": "F3",
+   "kind": "fusion",
+   "fit_seconds": 1.0794470999971963,
+   "fit_seconds_all": [
+    1.0794470999971963,
+    1.1235525000374764,
+    1.0677087999647483
+   ],
+   "inference_ms_per_1000": 0.6347119457636909,
+   "predict_rows": 10276,
+   "tuning_hours": 0.014992320833294394,
+   "tuning_source": "estimated: 50 trials x measured fit time"
+  },
+  {
+   "model": "F4",
+   "kind": "fusion",
+   "fit_seconds": 3.545311399968341,
+   "fit_seconds_all": [
+    3.545311399968341,
+    4.039612399996258,
+    3.3114794000284746
+   ],
+   "inference_ms_per_1000": 5.849659397676819,
+   "predict_rows": 10276,
+   "tuning_hours": 0.0492404361106714,
+   "tuning_source": "estimated: 50 trials x measured fit time"
+  },
+  {
+   "model": "F5",
+   "kind": "fusion",
+   "fit_seconds": 63.61037720000604,
+   "fit_seconds_all": [
+    64.144482099975,
+    63.61037720000604,
+    63.381335799989756
+   ],
+   "inference_ms_per_1000": 1.6241144427794743,
+   "predict_rows": 10276,
+   "tuning_hours": 0.8834774611111951,
+   "tuning_source": "estimated: 50 trials x measured fit time"
+  },
+  {
+   "model": "F6",
+   "kind": "fusion",
+   "fit_seconds": 42.52752030000556,
+   "fit_seconds_all": [
+    42.52752030000556,
+    39.65525670000352,
+    43.90104239998618
+   ],
+   "inference_ms_per_1000": 3.0599649635398434,
+   "predict_rows": 10276,
+   "tuning_hours": 0.5906600041667439,
+   "tuning_source": "estimated: 50 trials x measured fit time"
+  },
+  {
+   "model": "F7",
+   "kind": "fusion",
+   "fit_seconds": 92.82119549997151,
+   "fit_seconds_all": [
+    92.82119549997151,
+    89.97233419999247,
+    107.84490359999472
+   ],
+   "inference_ms_per_1000": 3.26469443145191,
+   "predict_rows": 10276,
+   "tuning_hours": 1.2891832708329376,
+   "tuning_source": "estimated: 50 trials x measured fit time"
+  },
+  {
+   "model": "F4 rung 1",
+   "kind": "ladder",
+   "fit_seconds": 1.410549699969124,
+   "fit_seconds_all": [
+    1.3940020999871194,
+    1.452477800019551,
+    1.410549699969124
+   ],
+   "inference_ms_per_1000": 2.266124947224597,
+   "predict_rows": 10276,
+   "tuning_hours": 0.019590968055126723,
+   "tuning_source": "estimated: 50 trials x measured fit time"
+  },
+  {
+   "model": "F4 rung 2",
+   "kind": "ladder",
+   "fit_seconds": 1.7842626000056043,
+   "fit_seconds_all": [
+    1.7842626000056043,
+    2.0141399999847636,
+    1.776127000048291
+   ],
+   "inference_ms_per_1000": 3.046603733709944,
+   "predict_rows": 10276,
+   "tuning_hours": 0.024781425000077836,
+   "tuning_source": "estimated: 50 trials x measured fit time"
+  },
+  {
+   "model": "F4 rung 3",
+   "kind": "ladder",
+   "fit_seconds": 1.8681229999638163,
+   "fit_seconds_all": [
+    1.8742395999724977,
+    1.831917000003159,
+    1.8681229999638163
+   ],
+   "inference_ms_per_1000": 3.0677111706279185,
+   "predict_rows": 10276,
+   "tuning_hours": 0.025946152777275227,
+   "tuning_source": "estimated: 50 trials x measured fit time"
+  },
+  {
+   "model": "F4 rung 4",
+   "kind": "ladder",
+   "fit_seconds": 2.23115470004268,
+   "fit_seconds_all": [
+    2.220428599976003,
+    2.23115470004268,
+    2.47328659996856
+   ],
+   "inference_ms_per_1000": 4.297956406630419,
+   "predict_rows": 10276,
+   "tuning_hours": 0.030988259722815,
+   "tuning_source": "estimated: 50 trials x measured fit time"
+  }
+ ],
+ "summary": {
+  "training_hours": 0.7109374738055178,
+  "tuning_hours": 29.613075214332557,
+  "compute_hours": 30.324012688138076,
+  "carbon": {
+   "energy_kwh": 0.4548601903220711,
+   "co2_kg": null,
+   "note": "grid carbon intensity not entered yet (Ember, Pakistan, 2024; D158 (3))"
+  }
+ }
+}
