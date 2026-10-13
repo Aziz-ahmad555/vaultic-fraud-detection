@@ -225,11 +225,25 @@ def faithfulness(expl, frame, context, avail, medians, importance, n_boot: int =
     ins["random"] = np.mean([insertion_gain(expl, frame, context, avail, medians, o)
                              for o in rand], axis=0)  # fmt: skip
     log(f"{expl.name}: insertion done")
-    a_pos = deletion_aopc(expl, frame, context, avail, medians, order_by(attr, "positive"))[0]
+    # D167: declared SECONDARY analysis (added after the D166 validation check): the same
+    # deletion test with D59's positive-attribution order, same comparators, its own Holm family;
+    # H6a / H6b above stay decided by D121's absolute order
+    a_pos, curve_pos = deletion_aopc(
+        expl, frame, context, avail, medians, order_by(attr, "positive")
+    )
+    sec = {"positive - random": paired_mean_test(a_pos, a_rand, n_boot, seed),
+           "positive - permutation": paired_mean_test(a_pos, a_perm, n_boot, seed)}  # fmt: skip
+    for key, p in zip(sec, holm_nan([sec[k]["p_value"] for k in sec]), strict=True):
+        sec[key]["p_holm"] = p
+        sec[key]["ci_excludes_0_above"] = bool(sec[key]["ci_low"] > 0 and p < 0.05)
+    log(f"{expl.name}: secondary positive-order deletion done")
     return {"aopc": {"attribution": mean_ci(a_attr), "random": mean_ci(a_rand),
                      "permutation": mean_ci(a_perm),
                      "attribution_positive_order (secondary)": mean_ci(a_pos)},
             "hypotheses": h,
+            "secondary_positive_order": {
+                "label": "SECONDARY (D167, added after a validation check, D166); not H6a / H6b",
+                "tests": sec, "deletion_curve": curve_pos.mean(axis=1).tolist()},
             "deletion_curve": curve.mean(axis=1).tolist(),
             "insertion": {k: mean_ci(v) for k, v in ins.items()},
             "insertion_tests": {f"attribution - {k}": paired_mean_test(ins["attribution"], ins[k],

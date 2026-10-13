@@ -12,7 +12,8 @@
   carbon      a labelled ESTIMATE: energy = wall-clock under load x the CPU's TDP (no PUE,
               laptop), x the grid carbon intensity (Ember, Pakistan, 2024; D158 (3))
 
-Models: B1-B6, F0, the five views, F1-F7, MVAF and the ladder's F4 rungs 1-4.
+Models: B1-B6, F0, the five views, F1-F7, MVAF, the ladder's F4 rungs 1-4 and the anomaly-score
+models behind the anomaly view (global IF, autoencoder, per-uid IF; D168).
 """
 
 from __future__ import annotations
@@ -39,7 +40,15 @@ TUNING_LOGS = {"B3": "B3", "B4": "B4", "B5": "B5", "F0": "F0-inner", "tabular": 
                "behavioral": "V-behavioral", "temporal": "V-temporal", "graph": "V-graph",
                "anomaly": "V-anomaly"}  # fmt: skip
 ESTIMATED_TRIALS = {"B1": 7, "MVAF": 50, "F3": 50, "F4": 50, "F5": 50, "F6": 50, "F7": 50}
-UNTUNED = ("B2", "B6", "F1", "F2")  # B2 defaults, B6 FYP-1 settings, F1 / F2 not searched
+UNTUNED = (
+    "B2",
+    "B6",
+    "F1",
+    "F2",
+    "anomaly: global IF",
+    "anomaly: autoencoder",
+    "anomaly: per-uid IF",
+)  # B2 defaults, B6 FYP-1, F1 / F2 unsearched, anomaly D68
 
 
 def hardware() -> dict:
@@ -224,6 +233,51 @@ def run(settings: dict, ladder_params: dict | None, log=print) -> dict:
             "summary": summarise(rows, settings)}  # fmt: skip
 
 
+def time_anomaly(log=print) -> list[dict]:
+    """D168: the anomaly-score models (views/anomaly.py), fitted as anomaly_build fitted the
+    model that scored every row after the training period (last forward-chained cut: legit rows
+    of days 1-120, at most 150,000 sampled, autoencoder 50 iterations, seed 0); each component
+    timed separately; inference on the validation rows."""
+    from vaultic.stage2.system import ANOMALY, anomaly_fit_rows, load_parts
+    from vaultic.views.anomaly import (
+        AutoencoderAnomaly,
+        GlobalIsolationForest,
+        PerUidIsolationForest,
+    )
+    from vaultic.views.definitions import LABEL_DERIVED
+
+    parts = load_parts(dev=True)
+    df, features, splits = parts["df"], parts["features"], parts["splits"]
+    day = df["day"].to_numpy()
+    cols = [c for c in parts["b5_cols"] if c not in LABEL_DERIVED]
+    fit = anomaly_fit_rows(day, splits.train.first, splits.train.last, ANOMALY["block_days"],
+                           ANOMALY["max_fit_rows"], ANOMALY["seed"])  # fmt: skip
+    X = features[cols].to_numpy(dtype=float)
+    y = df["isFraud"].to_numpy()
+    uid = features["uid"].to_numpy()
+    n_past = features["uid_n_past"].to_numpy()
+    va = splits.validation.contains(day)
+    Xf, yf, uf = X[fit], y[fit], uid[fit]
+    seed = ANOMALY["seed"]
+    models = (
+        ("anomaly: global IF", lambda: GlobalIsolationForest(seed=seed),
+         lambda m: m.fit(Xf, yf), lambda m: m.transform(X[va])),
+        ("anomaly: autoencoder",
+         lambda: AutoencoderAnomaly(seed=seed, max_iter=ANOMALY["ae_max_iter"]),
+         lambda m: m.fit(Xf, yf), lambda m: m.transform(X[va])),
+        ("anomaly: per-uid IF", lambda: PerUidIsolationForest(seed=seed),
+         lambda m: m.fit(Xf, uf), lambda m: m.transform(X[va], uid[va], n_past[va])),
+    )  # fmt: skip
+    rows = []
+    for name, make, do_fit, do_pred in models:
+        t = time_model(make, do_fit, do_pred, int(va.sum()))
+        rows.append({"model": name, "kind": "anomaly-score model", **t,
+                     **tuning_entry(name, t["fit_seconds"])})  # fmt: skip
+        log(f"{name}: fit {t['fit_seconds']:.1f} s, "
+            f"{t['inference_ms_per_1000']:.2f} ms / 1,000 rows")  # fmt: skip
+    return rows
+
+
 def write_report(result: dict, out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "e24_compute.json").write_text(json.dumps(result, indent=1, default=str), "utf-8")
@@ -266,12 +320,36 @@ def main() -> None:
     parser.add_argument("--settings", type=Path, required=True)
     parser.add_argument("--ladder", type=Path, default=None, help="ladder tuning JSON")
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument(
+        "--add-anomaly",
+        type=Path,
+        default=None,
+        help="existing e24_compute.json: add the anomaly-score models (D168)",
+    )
+    parser.add_argument(
+        "--resummarise",
+        type=Path,
+        default=None,
+        help="existing e24_compute.json: recompute the summary with --settings",
+    )
     args = parser.parse_args()
     settings = yaml.safe_load(args.settings.read_text("utf-8"))["e24"]
-    ladder = json.loads(args.ladder.read_text("utf-8"))["rungs"] if args.ladder else None
     started = time.perf_counter()
-    result = run(settings, ladder, log=lambda m: print(
-        f"[{time.perf_counter() - started:6.0f}s] {m}", flush=True))  # fmt: skip
+
+    def log(m):
+        print(f"[{time.perf_counter() - started:6.0f}s] {m}", flush=True)
+
+    existing = args.add_anomaly or args.resummarise
+    if existing:
+        result = json.loads(existing.read_text("utf-8"))
+        if args.add_anomaly:
+            keep = [r for r in result["models"] if r["kind"] != "anomaly-score model"]
+            result["models"] = keep + time_anomaly(log)
+        result["settings"] = settings
+        result["summary"] = summarise(result["models"], settings)
+    else:
+        ladder = json.loads(args.ladder.read_text("utf-8"))["rungs"] if args.ladder else None
+        result = run(settings, ladder, log=log)
     print(f"wrote {write_report(result, args.out)}")
 
 

@@ -9,6 +9,10 @@ e24:
   cpu: "Intel(R) Core(TM) i5-8265U CPU @ 1.60GHz"
   cpu_tdp_watts: 15
   tdp_source: "Intel's specified TDP for the Core i5-8265U, 15 W (cTDP 10-25 W), as listed by TechPowerUp, https://www.techpowerup.com/cpu-specs/core-i5-8265u.c2102"
-  grid_g_co2_per_kwh: null   # Ember, Yearly Electricity Data, Pakistan, 2024 (D158 (3)); to be entered
+  grid_g_co2_per_kwh: 335.65   # Ember yearly data, Pakistan, 2024, Power sector emissions / CO2 intensity (D169)
   grid_source: "Ember, Yearly Electricity Data (CC BY 4.0), Pakistan, 2024, https://ember-energy.org/data/yearly-electricity-data/"
-  grid_accessed: null
+  grid_accessed: "2026-10-13 (downloaded 18:30 UTC)"
+  grid_file: "https://files.ember-energy.org/public-downloads/yearly_full_release_long_format.csv"
+  grid_file_sha256: 259e1095ee8ffeaf0aff37ad557916ae1823a2da13312da50ba4cec6b4574c3b
+  grid_file_bytes: 49079981
+  grid_file_last_modified: "2026-06-23 10:58:24 GMT"   # server header; kept on E:, not committed

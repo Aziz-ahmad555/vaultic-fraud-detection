@@ -62,7 +62,7 @@ EXPECTED = {
         ("status",): "frozen-final", ("venv",): ".venv-dice", ("e10_run",): E10_RUN,
         ("seeds",): [0, 1, 2, 3, 4], ("alerts",): 1000, ("counterfactual_alerts",): 500,
         ("sample_seed",): 0, ("ks",): list(range(1, 11)), ("random_orders",): 20,
-        ("permutation_repeats",): 5, ("perturbations",): [0.99, 1.01, 0.95, 1.05],
+        ("permutation_repeats",): 5, ("perturbations",): [0.99, 1.01, 0.95, 1.05], ("secondary_ordering",): "positive",
         ("stability_top",): 3, ("seed_top",): 5, ("bootstrap", "n"): 1000,
         ("bootstrap", "seed"): 0, ("cf_vary",): ["TransactionAmt", "ProductCD"],
         ("cf_setting",): "research/tables/stage2_cf_setting.json", ("validity_target",): 0.9,

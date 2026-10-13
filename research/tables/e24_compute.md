@@ -30,7 +30,10 @@ Hardware: Intel(R) Core(TM) i5-8265U CPU @ 1.60GHz, 4 physical / 8 logical cores
 | F4 rung 2 | ladder | 1.8 | 3.05 | 0.02 | estimated: 50 trials x measured fit time |
 | F4 rung 3 | ladder | 1.9 | 3.07 | 0.03 | estimated: 50 trials x measured fit time |
 | F4 rung 4 | ladder | 2.2 | 4.30 | 0.03 | estimated: 50 trials x measured fit time |
+| anomaly: global IF | anomaly-score model | 10.5 | 27.07 | 0.00 | not tuned |
+| anomaly: autoencoder | anomaly-score model | 133.6 | 13.17 | 0.00 | not tuned |
+| anomaly: per-uid IF | anomaly-score model | 29.4 | 6.15 | 0.00 | not tuned |
 
-Compute hours: training 0.71 + tuning 29.61 = **30.32 h**.
+Compute hours: training 0.76 + tuning 29.61 = **30.37 h**.
 
-**Carbon:** pending, 0.455 kWh estimated; grid carbon intensity not entered yet (Ember, Pakistan, 2024; D158 (3)). Energy = wall-clock under load x TDP 15 W (Intel's specified TDP for the Core i5-8265U, 15 W (cTDP 10-25 W), as listed by TechPowerUp, https://www.techpowerup.com/cpu-specs/core-i5-8265u.c2102); no PUE (laptop).
+**Carbon (estimate, not a measurement):** 0.456 kWh x 335.65 gCO2/kWh = **0.153 kg CO2**. Energy = wall-clock under load x TDP 15 W (Intel's specified TDP for the Core i5-8265U, 15 W (cTDP 10-25 W), as listed by TechPowerUp, https://www.techpowerup.com/cpu-specs/core-i5-8265u.c2102); no PUE (laptop). Grid intensity: Ember, Yearly Electricity Data (CC BY 4.0), Pakistan, 2024, https://ember-energy.org/data/yearly-electricity-data/, accessed 2026-10-13 (downloaded 18:30 UTC).

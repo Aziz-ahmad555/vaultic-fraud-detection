@@ -85,6 +85,10 @@ def test_faithfulness_report_and_holm(fake):
     h = out["hypotheses"]
     assert set(h) == {"H6a", "H6b"} and all(h[k]["p_holm"] >= h[k]["p_value"] for k in h)
     assert len(out["deletion_curve"]) == 10
+    sec = out["secondary_positive_order"]  # D167: declared secondary, own Holm family
+    assert sec["label"].startswith("SECONDARY") and len(sec["deletion_curve"]) == 10
+    assert set(sec["tests"]) == {"positive - random", "positive - permutation"}
+    assert all(t["p_holm"] >= t["p_value"] for t in sec["tests"].values())
     assert global_order(imp, 3).shape == (3, len(imp))
 
 

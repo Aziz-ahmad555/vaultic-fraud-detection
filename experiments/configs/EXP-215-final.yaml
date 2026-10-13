@@ -16,6 +16,7 @@ ks: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 random_orders: 20
 permutation_repeats: 5       # on calibrate_fused (147-150), D160
 perturbations: [0.99, 1.01, 0.95, 1.05]
+secondary_ordering: positive   # D167: D59's order as a declared secondary analysis (D166)
 stability_top: 3
 seed_top: 5
 bootstrap: {n: 1000, seed: 0}

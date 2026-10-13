@@ -11,9 +11,13 @@
   "cpu": "Intel(R) Core(TM) i5-8265U CPU @ 1.60GHz",
   "cpu_tdp_watts": 15,
   "tdp_source": "Intel's specified TDP for the Core i5-8265U, 15 W (cTDP 10-25 W), as listed by TechPowerUp, https://www.techpowerup.com/cpu-specs/core-i5-8265u.c2102",
-  "grid_g_co2_per_kwh": null,
+  "grid_g_co2_per_kwh": 335.65,
   "grid_source": "Ember, Yearly Electricity Data (CC BY 4.0), Pakistan, 2024, https://ember-energy.org/data/yearly-electricity-data/",
-  "grid_accessed": null
+  "grid_accessed": "2026-10-13 (downloaded 18:30 UTC)",
+  "grid_file": "https://files.ember-energy.org/public-downloads/yearly_full_release_long_format.csv",
+  "grid_file_sha256": "259e1095ee8ffeaf0aff37ad557916ae1823a2da13312da50ba4cec6b4574c3b",
+  "grid_file_bytes": 49079981,
+  "grid_file_last_modified": "2026-06-23 10:58:24 GMT"
  },
  "models": [
   {
@@ -351,16 +355,58 @@
    "predict_rows": 10276,
    "tuning_hours": 0.030988259722815,
    "tuning_source": "estimated: 50 trials x measured fit time"
+  },
+  {
+   "model": "anomaly: global IF",
+   "kind": "anomaly-score model",
+   "fit_seconds": 10.535413099976722,
+   "fit_seconds_all": [
+    10.678830000048038,
+    10.517482299997937,
+    10.535413099976722
+   ],
+   "inference_ms_per_1000": 27.070976205292542,
+   "predict_rows": 60602,
+   "tuning_hours": 0.0,
+   "tuning_source": "not tuned"
+  },
+  {
+   "model": "anomaly: autoencoder",
+   "kind": "anomaly-score model",
+   "fit_seconds": 133.60186609998345,
+   "fit_seconds_all": [
+    121.39262520003831,
+    133.8756713999901,
+    133.60186609998345
+   ],
+   "inference_ms_per_1000": 13.174837464404913,
+   "predict_rows": 60602,
+   "tuning_hours": 0.0,
+   "tuning_source": "not tuned"
+  },
+  {
+   "model": "anomaly: per-uid IF",
+   "kind": "anomaly-score model",
+   "fit_seconds": 29.43597440002486,
+   "fit_seconds_all": [
+    29.429224699968472,
+    29.92826909996802,
+    29.43597440002486
+   ],
+   "inference_ms_per_1000": 6.146148641854915,
+   "predict_rows": 60602,
+   "tuning_hours": 0.0,
+   "tuning_source": "not tuned"
   }
  ],
  "summary": {
-  "training_hours": 0.7109374738055178,
+  "training_hours": 0.7591522664721803,
   "tuning_hours": 29.613075214332557,
-  "compute_hours": 30.324012688138076,
+  "compute_hours": 30.37222748080474,
   "carbon": {
-   "energy_kwh": 0.4548601903220711,
-   "co2_kg": null,
-   "note": "grid carbon intensity not entered yet (Ember, Pakistan, 2024; D158 (3))"
+   "energy_kwh": 0.45558341221207105,
+   "co2_kg": 0.15291657230898165,
+   "note": "estimate, not a measurement: wall-clock under load x CPU TDP x grid carbon intensity; no PUE (laptop)"
   }
  }
 }
