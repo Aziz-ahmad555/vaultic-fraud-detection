@@ -114,6 +114,8 @@ def d95_views(tab_cols: list[str], cols: dict[str, list[str]]) -> dict:
     """The five D95 view models (unfitted): XGBoost with the tuned EXP-V-<view> settings, each
     trained and scored only where its view is available. Shared by build_table and the stage-2
     refits (stage2/system.py), so both use exactly the same views."""
+    from functools import partial
+
     import yaml
 
     from vaultic.paths import CONFIG_DIR
@@ -124,8 +126,8 @@ def d95_views(tab_cols: list[str], cols: dict[str, list[str]]) -> dict:
         cfg = yaml.safe_load((CONFIG_DIR / f"EXP-V-{view}.yaml").read_text("utf-8"))
         return cfg["model"]["params"]
 
-    def avail(view):
-        return lambda f: available(view, f)
+    def avail(view):  # a partial of a module-level function, so fitted views can be pickled
+        return partial(available, view)
 
     return {
         "tabular": SupervisedView(tab_cols, "xgboost", tuned("tabular")),

@@ -133,9 +133,12 @@ def summarise(rows: list[dict], settings: dict) -> dict:
     train_s = sum(r["fit_seconds"] for r in rows)
     tune_h = sum(r["tuning_hours"] for r in rows)
     wall = train_s + tune_h * 3600
+    grid = settings.get("grid_g_co2_per_kwh")
     return {"training_hours": train_s / 3600, "tuning_hours": tune_h,
             "compute_hours": wall / 3600,
-            "carbon": carbon(wall, settings["cpu_tdp_watts"], settings["grid_g_co2_per_kwh"])}  # fmt: skip
+            "carbon": carbon(wall, settings["cpu_tdp_watts"], grid) if grid else
+            {"energy_kwh": wall * settings["cpu_tdp_watts"] / 3.6e6, "co2_kg": None,
+             "note": "grid carbon intensity not entered yet (Ember, Pakistan, 2024; D158 (3))"}}  # fmt: skip
 
 
 # ---- the real models ---------------------------------------------------------------------
@@ -238,11 +241,16 @@ def write_report(result: dict, out_dir: Path) -> Path:
                      f"{r['tuning_source']} |")  # fmt: skip
     c = sm["carbon"]
     lines += ["", f"Compute hours: training {sm['training_hours']:.2f} + tuning "
-                  f"{sm['tuning_hours']:.2f} = **{sm['compute_hours']:.2f} h**.", "",
-              f"**Carbon (estimate, not a measurement):** {c['energy_kwh']:.3f} kWh x "
-              f"{s['grid_g_co2_per_kwh']} gCO2/kWh = **{c['co2_kg']:.3f} kg CO2**. Energy = "
-              f"wall-clock under load x TDP {s['cpu_tdp_watts']} W ({s['tdp_source']}); no PUE "
-              f"(laptop). Grid intensity: {s['grid_source']}, accessed {s['grid_accessed']}."]  # fmt: skip
+                  f"{sm['tuning_hours']:.2f} = **{sm['compute_hours']:.2f} h**.", ""]  # fmt: skip
+    energy = (f"Energy = wall-clock under load x TDP {s['cpu_tdp_watts']} W ({s['tdp_source']}); "
+              "no PUE (laptop).")  # fmt: skip
+    if c["co2_kg"] is None:
+        lines.append(f"**Carbon:** pending, {c['energy_kwh']:.3f} kWh estimated; {c['note']}. "
+                     + energy)  # fmt: skip
+    else:
+        lines.append(f"**Carbon (estimate, not a measurement):** {c['energy_kwh']:.3f} kWh x "
+                     f"{s['grid_g_co2_per_kwh']} gCO2/kWh = **{c['co2_kg']:.3f} kg CO2**. {energy} "
+                     f"Grid intensity: {s['grid_source']}, accessed {s['grid_accessed']}.")  # fmt: skip
     path = out_dir / "e24_compute.md"
     path.write_text("\n".join(lines) + "\n", "utf-8")
     return path

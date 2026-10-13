@@ -383,9 +383,9 @@ def main() -> None:
     report["seconds"] = round(time.perf_counter() - started)
     out = dev_system_path()
     out.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(system, out)
     (out.parent / "system_check.json").write_text(json.dumps(report, indent=1), "utf-8")
-    print(json.dumps(report, indent=1))
+    print(json.dumps(report, indent=1), flush=True)
+    joblib.dump(system, out)
     if not report["passed"]:
         raise SystemExit("the refitted system does not reproduce the stored validation scores")
 

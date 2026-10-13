@@ -1,0 +1,14 @@
+# Stage 2: E24 compute cost per model (pre-registered D121 section 4; details D158 (3), D162).
+# Reporting only, validation-only refits, no test data:
+#   python -m vaultic.stage2.e24 --settings experiments/configs/EXP-224.yaml \
+#       --ladder research/tables/stage2_ladder_tuned.json --out research/tables/stage2_dev
+# Not a harness config (no model / features keys); vaultic.eval.run does not read it.
+id: EXP-224
+status: reporting
+e24:
+  cpu: "Intel(R) Core(TM) i5-8265U CPU @ 1.60GHz"
+  cpu_tdp_watts: 15
+  tdp_source: "Intel's specified TDP for the Core i5-8265U, 15 W (cTDP 10-25 W), as listed by TechPowerUp, https://www.techpowerup.com/cpu-specs/core-i5-8265u.c2102"
+  grid_g_co2_per_kwh: null   # Ember, Yearly Electricity Data, Pakistan, 2024 (D158 (3)); to be entered
+  grid_source: "Ember, Yearly Electricity Data (CC BY 4.0), Pakistan, 2024, https://ember-energy.org/data/yearly-electricity-data/"
+  grid_accessed: null
