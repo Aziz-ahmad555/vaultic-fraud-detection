@@ -117,7 +117,7 @@ def e23_tables(y, scores: dict, groups: dict, cost_thresholds: dict, n_boot: int
                         bratio = np.nanmax(bmat, 0) / np.nanmin(bmat, 0)
                     entry.update(max_minus_min=float(vals.max() - vals.min()),
                                  max_over_min=float(vals.max() / vals.min()) if vals.min() > 0 else np.inf,
-                                 best=reliable[int(np.argmax(vals))], worst=reliable[int(np.argmin(vals))])  # fmt: skip
+                                 highest=reliable[int(np.argmax(vals))], lowest=reliable[int(np.argmin(vals))])  # fmt: skip
                     entry["max_minus_min_ci_low"], entry["max_minus_min_ci_high"] = _ci(bdiff)
                     entry["max_over_min_ci_low"], entry["max_over_min_ci_high"] = _ci(bratio)
                 gaps.append(entry)
