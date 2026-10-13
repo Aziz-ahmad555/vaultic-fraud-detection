@@ -56,8 +56,11 @@ def refit_complete(rc: dict, n: int, tol: float = TOLERANCE) -> bool:
 
 
 def load_parts(dev: bool) -> dict:
-    """Data and features as the final run loads them (build_table parts_only). dev=True drops
-    every test-period row before anything else happens."""
+    """Data and features as the final run loads them (build_table parts_only). build_table reads
+    every row, test period included (data and features only; no model is fitted or applied
+    there). With dev=True the test-period rows are dropped right after loading, before any
+    model is fitted or any row is scored, and require_no_test refuses one that gets through;
+    they are loaded, never scored (D180)."""
     from vaultic.fusion.dev_compare import build_table
 
     parts = build_table(False, d95=True, parts_only=True)

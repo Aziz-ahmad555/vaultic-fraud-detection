@@ -1,7 +1,8 @@
 """Stage-2 experiments: development runs (validation only) and the final procedures that
 stage2/final.py calls after its guards (D121; D158-D164).
 
-Development (validation only, outputs to E:/dev-cache/stage2, never results):
+Development (evaluated on validation rows; test-period rows are loaded with the data and dropped
+before anything is fitted or scored, D180; outputs to E:/dev-cache/stage2, never results):
   python -m vaultic.stage2.run ladder-tune          F4 tuned per rung 1-4 on the inner split ->
                                                     research/tables/stage2_ladder_tuned.json
   python -m vaultic.stage2.run ladder-dev           pipeline check: calibrate 147-148, eval 149-150
