@@ -119,3 +119,23 @@ def test_stage2_library_list_adds_dice_ml_and_leaves_exp200_unchanged():
     assert "dice-ml" not in final_run.LIBRARIES  # EXP-200-final's record is unchanged
     versions = s2.library_versions()
     assert "dice-ml" in versions and set(final_run.library_versions()) < set(versions)
+
+
+def test_final_runs_go_in_order(tmp_path):
+    def run(exp, status):
+        d = tmp_path / exp / f"2026-{status}"
+        d.mkdir(parents=True)
+        (d / "metrics.json").write_text(json.dumps({"mode": "final", "status": status}), "utf-8")
+
+    s2.require_order("EXP-223-final", tmp_path)  # E23 is first
+    with pytest.raises(RuntimeError, match="must wait"):
+        s2.require_order("EXP-210-final", tmp_path)
+    run("EXP-223-final", "started")  # started but not completed does not count
+    with pytest.raises(RuntimeError, match="must wait"):
+        s2.require_order("EXP-210-final", tmp_path)
+    run("EXP-223-final", "completed")
+    s2.require_order("EXP-210-final", tmp_path)
+    with pytest.raises(RuntimeError, match="EXP-210-final"):
+        s2.require_order("EXP-215-final", tmp_path)
+    run("EXP-210-final", "completed")
+    s2.require_order("EXP-215-final", tmp_path)

@@ -190,6 +190,31 @@ def freeze() -> None:
     print(f"wrote {FROZEN}; logged the freeze of {commit[:12]}")
 
 
+def completed_final_runs(exp: str, runs_dir: Path = RUNS_DIR) -> list[Path]:
+    """Run folders of exp whose metrics.json says mode final and status completed."""
+    root = runs_dir / exp
+    if not root.exists():
+        return []
+    done = []
+    for d in sorted(root.iterdir()):
+        m = d / "metrics.json"
+        if m.exists():
+            meta = json.loads(m.read_text("utf-8"))
+            if meta.get("mode") == "final" and meta.get("status") == "completed":
+                done.append(d)
+    return done
+
+
+def require_order(exp: str, runs_dir: Path = RUNS_DIR) -> None:
+    """D176: the stage-2 final runs go in D121's order, E23 -> ladder -> E15; an experiment is
+    refused until every earlier one has a completed final run."""
+    missing = [e for e in EXPERIMENTS[: EXPERIMENTS.index(exp)]
+               if not completed_final_runs(e, runs_dir)]  # fmt: skip
+    if missing:
+        raise RuntimeError(f"{exp} must wait: no completed final run of {missing} (order "
+                           f"{' -> '.join(EXPERIMENTS)}, D121 section 5)")  # fmt: skip
+
+
 def start(exp: str, cfg: dict, rerun_reason: str | None) -> tuple[Path, str]:
     """All guards, then FINAL-STARTED committed and pushed. Nothing reads test data before."""
     from vaultic.eval.run import _guard_final_rerun, previous_final_runs
@@ -207,6 +232,7 @@ def start(exp: str, cfg: dict, rerun_reason: str | None) -> tuple[Path, str]:
     from vaultic.reports.phase2_summary import check_freeze
 
     check_settings(exp, cfg)
+    require_order(exp)  # D176
     check_package_location()
     if not FROZEN.exists() or check_freeze(FROZEN):
         raise RuntimeError(f"{FROZEN} is missing or a frozen file changed: "
