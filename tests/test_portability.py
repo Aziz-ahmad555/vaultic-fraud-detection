@@ -20,9 +20,8 @@ def test_data_dirs_follow_environment(monkeypatch, tmp_path):
         assert reloaded.DATA_DIR == tmp_path / "work"
         assert reloaded.RAW_DIR == tmp_path / "input"
         assert reloaded.MERGED_PATH == tmp_path / "work" / "interim" / "merged.parquet"
-    finally:
-        monkeypatch.delenv("VAULTIC_DATA_DIR")
-        monkeypatch.delenv("VAULTIC_RAW_DIR")
+    finally:  # restore the caller's environment (not delete it), then the module
+        monkeypatch.undo()
         importlib.reload(paths)
 
 
@@ -33,8 +32,8 @@ def test_raw_dir_defaults_under_data_dir(monkeypatch, tmp_path):
     monkeypatch.delenv("VAULTIC_RAW_DIR", raising=False)
     try:
         assert importlib.reload(paths).RAW_DIR == tmp_path / "raw"
-    finally:
-        monkeypatch.delenv("VAULTIC_DATA_DIR")
+    finally:  # restore the caller's environment (not delete it), then the module
+        monkeypatch.undo()
         importlib.reload(paths)
 
 

@@ -47,6 +47,7 @@ the data layer, and `src/api/mock/mockApi.test.ts` tests them:
 | Model lab | PR and calibration curves, ablation, fusion, cost sensitivity (mock numbers) |
 | Scenario simulator | Live risk, braid and reasons as inputs change |
 | Reports and settings | Print report, role, admin-only thresholds, audit log |
+| Test Lab | Live scoring of one transaction by the frozen system: real held-out transactions (label hidden until revealed), custom transactions, batch CSV; parity-gated (see Running the Test Lab) |
 
 Keyboard: Ctrl+K palette, J/K, F/L/U, G then a page letter, `[` / `]` for the as-of time, `?` for help.
 
@@ -104,6 +105,54 @@ listens on the two ports:
 Get-NetTCPConnection -LocalPort 8000, 5173 -State Listen -ErrorAction SilentlyContinue |
   ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
 ```
+
+## Running the Test Lab
+
+The Test Lab page (`/testlab`, G then T) scores one transaction live with the frozen final-run
+system (MVAF over the five views, E12 decisions): every feature is computed from the stored
+history strictly before the transaction, with the research pipeline's own feature code. It needs
+the real-data setup above (bundle and data files on drive E) and the frozen stage-2 system cache
+(`E:\dev-cache\stage2\system_dev.joblib` or `E:\dev-cache	estlab\system.joblib`; built
+automatically on first start if neither exists, about 25 minutes).
+
+**1. Start the backend with the Test Lab** (window 1, repository root):
+
+```powershell
+$env:PYTHONPATH = "src"
+$env:VAULTIC_DATA_DIR = "E:/old work/fyp 11/fraud-detection/data"
+$env:VAULTIC_DEMO_BUNDLE = "E:\old workyp 11raud-detection\data\interim\demo_final_bundle.parquet"
+$env:VAULTIC_TESTLAB = "1"
+.\.venv\Scripts\python.exe -m uvicorn services.api.demo_server:app --port 8000
+```
+
+The server answers at once; the Test Lab loads in the background (history store about 4
+minutes; on the very first start also the parity check, about 20 minutes). Follow it with
+`curl http://127.0.0.1:8000/api/live/status`: `loading`, then `ready`, or `refused` with the
+features that failed parity.
+
+**2. Start the dashboard on the API** (window 2): `cd dashboard`, `$env:VITE_DATA_SOURCE = "http"`,
+`npm run dev`, then open <http://localhost:5173/testlab>.
+
+**Parity gate.** Before it scores anything, the Test Lab recomputes the features of 2,000 random
+real test transactions online and requires them, and the live MVAF and B5 scores, to equal the
+offline frozen features and the stored final-run scores within 1e-6. If they do not, the page
+says so and refuses to score. The result is cached in `E:\dev-cache	estlab` and recomputed
+only when the data, the feature code or the system cache change.
+
+**Modes.**
+- *Real test transaction*: pick a random held-out test transaction (fraud / legitimate / cold
+  start / any); its label stays hidden until "Reveal truth". The session scoreboard counts caught,
+  missed, false alarms and correct passes (an alert is an E12 decision of step-up or higher), and
+  each live score shows "matches frozen run ✓" when it equals the stored final-run score.
+- *Build your own transaction*: custom input, no ground truth. An existing customer's masked
+  fields come from their latest earlier transaction and D1 is set so the transaction is theirs; a
+  new customer gets an unseen card and D1 = 0.
+- *Batch test (CSV)*: download the template (IEEE-CIS columns), upload up to 1,000 rows in the
+  test period; each row is scored independently against the stored history before its own time.
+  With an `isFraud` column: PR-AUC, recall at the E12 alert and at MVAF's E10 cost threshold
+  (0.881), and the confusion matrix. Bad files are refused with the reason.
+
+**Stop:** `Ctrl+C` in both windows (or the `Get-NetTCPConnection` command above).
 
 ## Real data: the final-run demo backend
 

@@ -26,6 +26,7 @@ const Drift = page("Drift");
 const Lab = page("Lab");
 const Simulator = page("Simulator");
 const Settings = page("Settings");
+const TestLab = page("TestLab");
 
 export function App() {
   return (
@@ -44,6 +45,7 @@ export function App() {
               <Route path="/lab" element={<Lab />} />
               <Route path="/simulate" element={<Simulator />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/testlab" element={<TestLab />} />
               <Route
                 path="*"
                 element={
