@@ -60,3 +60,4 @@ Development runs report validation metrics only. Test-period metrics come only f
 | EXP-210-final | 2026-10-14 | FINAL-STARTED: ablation ladder (E3-E5, E8) final run started at commit `964002531b88` (D121); test data not scored or evaluated yet | run `experiments/runs/EXP-210-final/20261014-013647-453613` | — |
 | EXP-215-final | 2026-10-14 | FINAL-STARTED: E15 explanation final run started at commit `cf3ad729f9c6` (D121); test data not scored or evaluated yet | run `experiments/runs/EXP-215-final/20261014-023608-332572` | — |
 | EXP-215-final | 2026-10-14 | FINAL-STARTED: E15 explanation final run started at commit `ddfc6f153772` (D121); test data not scored or evaluated yet | run `experiments/runs/EXP-215-final/20261014-114738-307178` | — |
+| EXP-215-final | 2026-10-17 | FINAL-STARTED: E15 explanation final run started at commit `35e40b603623` (D121); test data not scored or evaluated yet | run `experiments/runs/EXP-215-final/20261017-221438-920841` | — |
