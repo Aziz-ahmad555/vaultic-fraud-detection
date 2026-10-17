@@ -1,0 +1,172 @@
+[
+ {
+  "attribute": "ProductCD",
+  "group": "C",
+  "diff": -0.0215693872574048,
+  "ci_low": -0.0311227643976405,
+  "ci_high": -0.0120994739130462,
+  "p_value": 0.0,
+  "reliable": true,
+  "p_holm": 0.0
+ },
+ {
+  "attribute": "ProductCD",
+  "group": "H",
+  "diff": -0.0428148692934909,
+  "ci_low": -0.0712159285649743,
+  "ci_high": -0.0134778541136751,
+  "p_value": 0.002,
+  "reliable": true,
+  "p_holm": 0.006
+ },
+ {
+  "attribute": "ProductCD",
+  "group": "R",
+  "diff": -0.0128558381230471,
+  "ci_low": -0.026082517099784,
+  "ci_high": 0.001120750191251,
+  "p_value": 0.076,
+  "reliable": true,
+  "p_holm": 0.152
+ },
+ {
+  "attribute": "ProductCD",
+  "group": "S",
+  "diff": 0.0155227245197957,
+  "ci_low": -0.008008775470227,
+  "ci_high": 0.037642576626659,
+  "p_value": 0.216,
+  "reliable": true,
+  "p_holm": 0.216
+ },
+ {
+  "attribute": "ProductCD",
+  "group": "W",
+  "diff": -0.0378898246258713,
+  "ci_low": -0.0478011472298843,
+  "ci_high": -0.0282686956232406,
+  "p_value": 0.0,
+  "reliable": true,
+  "p_holm": 0.0
+ },
+ {
+  "attribute": "DeviceType",
+  "group": "desktop",
+  "diff": -0.0194777735045375,
+  "ci_low": -0.0274431010709777,
+  "ci_high": -0.011444425719632,
+  "p_value": 0.0,
+  "reliable": true,
+  "p_holm": 0.0
+ },
+ {
+  "attribute": "DeviceType",
+  "group": "missing",
+  "diff": -0.0346769622066966,
+  "ci_low": -0.0450457604469582,
+  "ci_high": -0.0251695742955642,
+  "p_value": 0.0,
+  "reliable": true,
+  "p_holm": 0.0
+ },
+ {
+  "attribute": "DeviceType",
+  "group": "mobile",
+  "diff": -0.022672483493033,
+  "ci_low": -0.0332149779293717,
+  "ci_high": -0.0124467525934481,
+  "p_value": 0.0,
+  "reliable": true,
+  "p_holm": 0.0
+ },
+ {
+  "attribute": "P_emaildomain",
+  "group": "anonymous.com",
+  "diff": -0.063187632575607,
+  "ci_low": -0.1124183347072615,
+  "ci_high": -0.0108843624144592,
+  "p_value": 0.02,
+  "reliable": true,
+  "p_holm": 0.06
+ },
+ {
+  "attribute": "P_emaildomain",
+  "group": "aol.com",
+  "diff": -0.0419048400319241,
+  "ci_low": -0.074999339059945,
+  "ci_high": -0.0167109731743278,
+  "p_value": 0.0,
+  "reliable": true,
+  "p_holm": 0.0
+ },
+ {
+  "attribute": "P_emaildomain",
+  "group": "gmail.com",
+  "diff": -0.0415024689382805,
+  "ci_low": -0.051090779084415,
+  "ci_high": -0.0320824339789677,
+  "p_value": 0.0,
+  "reliable": true,
+  "p_holm": 0.0
+ },
+ {
+  "attribute": "P_emaildomain",
+  "group": "hotmail.com",
+  "diff": -0.0202416522736754,
+  "ci_low": -0.0330841943985191,
+  "ci_high": -0.0071240853411159,
+  "p_value": 0.0,
+  "reliable": true,
+  "p_holm": 0.0
+ },
+ {
+  "attribute": "P_emaildomain",
+  "group": "missing",
+  "diff": -0.0127329206168109,
+  "ci_low": -0.0280993815193251,
+  "ci_high": 0.0020480457046239,
+  "p_value": 0.094,
+  "reliable": true,
+  "p_holm": 0.094
+ },
+ {
+  "attribute": "P_emaildomain",
+  "group": "other",
+  "diff": -0.0148155780210952,
+  "ci_low": -0.0305188828033624,
+  "ci_high": -0.0008498595233831,
+  "p_value": 0.04,
+  "reliable": true,
+  "p_holm": 0.08
+ },
+ {
+  "attribute": "P_emaildomain",
+  "group": "yahoo.com",
+  "diff": -0.0330096485213569,
+  "ci_low": -0.0490914766097564,
+  "ci_high": -0.0175707536417805,
+  "p_value": 0.0,
+  "reliable": true,
+  "p_holm": 0.0
+ },
+ {
+  "attribute": "cold start",
+  "group": "cold start",
+  "diff": -0.0282840853993553,
+  "ci_low": -0.037522864063616,
+  "ci_high": -0.0195097428615008,
+  "p_value": 0.0,
+  "reliable": true,
+  "p_holm": 0.0
+ },
+ {
+  "attribute": "cold start",
+  "group": "history",
+  "diff": -0.0316332631036988,
+  "ci_low": -0.0389542382216961,
+  "ci_high": -0.024431048872255,
+  "p_value": 0.0,
+  "reliable": true,
+  "p_holm": 0.0
+ }
+]

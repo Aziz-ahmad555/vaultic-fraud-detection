@@ -1,0 +1,67 @@
+{
+ "e15_B5_counterfactuals.json": {
+  "from": "e15_B5_counterfactuals.csv",
+  "rows": 500,
+  "csv_sha256": "09c7739bb91f0e0ee681aeb11945d2de5f8317c9781872b8a7c22f86bb022445"
+ },
+ "e15_MVAF_counterfactuals.json": {
+  "from": "e15_MVAF_counterfactuals.csv",
+  "rows": 500,
+  "csv_sha256": "e9038917f221fa66f5531900d621a8e7c97839879582d376d6965ff80f442878"
+ },
+ "e23_gaps.json": {
+  "from": "e23_gaps.csv",
+  "rows": 48,
+  "csv_sha256": "93033667872a98e1f696f82d48648c229ecb53742549f59c12b2b897a196359a"
+ },
+ "e23_groups.json": {
+  "from": "e23_groups.csv",
+  "rows": 68,
+  "csv_sha256": "216dbce837c95563902d18db12a969fe13d09261dcfb940c0fc058c53fff98c2"
+ },
+ "e23_mvaf_minus_b5.json": {
+  "from": "e23_mvaf_minus_b5.csv",
+  "rows": 17,
+  "csv_sha256": "8ec67212ba929a4e82612f0d51e4271449aefc2ae8e198ae7ac84acf5a5ecfb2"
+ },
+ "ladder_bounded_metrics.json": {
+  "from": "ladder_bounded_metrics.csv",
+  "rows": 7,
+  "csv_sha256": "16ee40787ab738b798b4a1b00482faee1694b18dc1e4956a12d488df772e6be4"
+ },
+ "ladder_bounded_references.json": {
+  "from": "ladder_bounded_references.csv",
+  "rows": 6,
+  "csv_sha256": "b77dfd7ed4a17bbb897de8fc5dcbc55aa385cbe99e6dcc8303476b86926867dc"
+ },
+ "ladder_bounded_steps.json": {
+  "from": "ladder_bounded_steps.csv",
+  "rows": 12,
+  "csv_sha256": "d4c007d114b1cafdd37896631ed4e59f13d2008d37df72f09c1216a8b966b868"
+ },
+ "ladder_bounded_subgroups.json": {
+  "from": "ladder_bounded_subgroups.csv",
+  "rows": 9,
+  "csv_sha256": "b2d7766636b1f755b28525334b65266f2ca58ab92fbd4d5a3728a614d6b2bc2b"
+ },
+ "ladder_metrics.json": {
+  "from": "ladder_metrics.csv",
+  "rows": 7,
+  "csv_sha256": "975ffc787d00cf5e6bdf601f78ef7197a8f6935e5ee9bc2ceeb81e939e016d74"
+ },
+ "ladder_references.json": {
+  "from": "ladder_references.csv",
+  "rows": 6,
+  "csv_sha256": "b77dfd7ed4a17bbb897de8fc5dcbc55aa385cbe99e6dcc8303476b86926867dc"
+ },
+ "ladder_steps.json": {
+  "from": "ladder_steps.csv",
+  "rows": 12,
+  "csv_sha256": "f1ec76d688567dfd047f09cbc19378c9804ef3bb818e0e72488e0f98433b5bef"
+ },
+ "ladder_subgroups.json": {
+  "from": "ladder_subgroups.csv",
+  "rows": 9,
+  "csv_sha256": "8181995b0cb721c526e6b653a15e802579e7d7192acccf65c4d01a17bfe27cda"
+ }
+}

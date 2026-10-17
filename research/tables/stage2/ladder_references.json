@@ -1,0 +1,62 @@
+[
+ {
+  "metric": "pr_auc",
+  "comparison": "MVAF - rung 5",
+  "diff": 0.0012507630516168,
+  "ci_low": -0.0035216573984256,
+  "ci_high": 0.0056652862662038,
+  "p_value": 0.678,
+  "relative_pct": 0.2015273111458368,
+  "cohens_d_paired": null
+ },
+ {
+  "metric": "pr_auc",
+  "comparison": "B5 - rung 5",
+  "diff": 0.0325887268133436,
+  "ci_low": 0.0253860329169539,
+  "ci_high": 0.0394824714918091,
+  "p_value": 0.0,
+  "relative_pct": 5.250809479756805,
+  "cohens_d_paired": null
+ },
+ {
+  "metric": "recall_at_1pct_fpr",
+  "comparison": "MVAF - rung 5",
+  "diff": -0.0021786492374727,
+  "ci_low": -0.0107539326961369,
+  "ci_high": 0.006122004502503,
+  "p_value": 0.702,
+  "relative_pct": null,
+  "cohens_d_paired": null
+ },
+ {
+  "metric": "recall_at_1pct_fpr",
+  "comparison": "B5 - rung 5",
+  "diff": 0.0236539060068471,
+  "ci_low": 0.0147749644125653,
+  "ci_high": 0.0337934618413747,
+  "p_value": 0.0,
+  "relative_pct": null,
+  "cohens_d_paired": null
+ },
+ {
+  "metric": "cost",
+  "comparison": "MVAF - rung 5",
+  "diff": 1828.168000000005,
+  "ci_low": -4807.726574999994,
+  "ci_high": 8316.600774999986,
+  "p_value": 0.626,
+  "relative_pct": null,
+  "cohens_d_paired": null
+ },
+ {
+  "metric": "cost",
+  "comparison": "B5 - rung 5",
+  "diff": 33767.00700000001,
+  "ci_low": 21003.37657499999,
+  "ci_high": 46857.08582500003,
+  "p_value": 0.0,
+  "relative_pct": null,
+  "cohens_d_paired": null
+ }
+]
