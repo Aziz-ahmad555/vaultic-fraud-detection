@@ -1,0 +1,39 @@
+{
+ "validation": {
+  "rows": 60602,
+  "raw_tabular": 0.0,
+  "p_tabular": 0.0,
+  "raw_behavioral": 0.0,
+  "p_behavioral": 0.0,
+  "raw_temporal": 0.0,
+  "p_temporal": 0.0,
+  "raw_graph": 0.0,
+  "p_graph": 0.0,
+  "raw_anomaly": 0.0,
+  "p_anomaly": 0.0,
+  "context": 0.0,
+  "anomaly_if": 0.0,
+  "anomaly_ae": 0.0,
+  "anomaly_uid_if": 0.0,
+  "thresholds_mvaf": 0.0,
+  "threshold_b5": 0.0,
+  "b5_validation": 1.0728836064011205e-07,
+  "b5_validation_rows": 60602,
+  "b5_validation_missing": 0,
+  "passed": true
+ },
+ "test": {
+  "rows": 92427,
+  "mvaf": 0.0,
+  "b5": 0.0,
+  "mvaf_missing": 0,
+  "b5_missing": 0,
+  "e12_cost": 0.0,
+  "anomaly": {
+   "anomaly_if": 0.0,
+   "anomaly_ae": 0.0,
+   "anomaly_uid_if": 0.0
+  },
+  "passed": true
+ }
+}

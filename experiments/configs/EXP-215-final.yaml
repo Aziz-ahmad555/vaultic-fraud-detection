@@ -1,0 +1,25 @@
+# Stage 2: E15 explanation faithfulness, stability, seed consistency and counterfactual
+# validity (pre-registered D121 section 1; details D158-D164). Runs in .venv-dice.
+# Run ONLY with `.venv-dice\Scripts\python -m vaultic.stage2.final --exp EXP-215-final` after
+# Aziz's go-ahead; frozen and hashed in research/frozen_stage2.md; settings checked at startup.
+id: EXP-215-final
+status: frozen-final
+experiment: E15
+question: "Are MVAF's (and B5's) explanations faithful, stable and seed-consistent, and are its counterfactuals valid (RQ6)?"
+venv: .venv-dice
+e10_run: experiments/runs/EXP-200-final/20261011-002400-202994
+seeds: [0, 1, 2, 3, 4]
+alerts: 1000                 # main sample per system (D160: first 1,000 of one permutation)
+counterfactual_alerts: 500   # nested: the first 500 of the main sample
+sample_seed: 0
+ks: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+random_orders: 20
+permutation_repeats: 5       # on calibrate_fused (147-150), D160
+perturbations: [0.99, 1.01, 0.95, 1.05]
+secondary_ordering: positive   # D167: D59's order as a declared secondary analysis (D166)
+stability_top: 3
+seed_top: 5
+bootstrap: {n: 1000, seed: 0}
+cf_vary: [TransactionAmt, ProductCD]                # D163 (NEEDS CONFIRMATION)
+cf_setting: research/tables/stage2_cf_setting.json   # chosen on validation (cf-grid)
+validity_target: 0.9         # roadmap 9.3 exit criterion, judged under D159

@@ -61,6 +61,50 @@ Pages were checked in a browser in both themes, at desktop and tablet widths. Pl
 installed: the browser checks were done by hand with Claude's built-in browser pane, not as
 automated tests.
 
+## Running on real data
+
+Two servers, each in its own PowerShell window, both started from the repository root (the
+folder with `src/`, `services/` and `dashboard/`). The bundle files must already exist on drive E
+(see the next section for how they are made).
+
+**First time only** — install the dashboard's packages, with npm's cache on drive E:
+
+```powershell
+cd dashboard
+npm ci --cache "E:\dev-cache\npm"
+cd ..
+```
+
+**1. Start the demo API** (window 1; serves the final run's test period on port 8000):
+
+```powershell
+$env:PYTHONPATH = "src"
+$env:VAULTIC_DEMO_BUNDLE = "E:\old work\fyp 11\fraud-detection\data\interim\demo_final_bundle.parquet"
+.\.venv\Scripts\python.exe -m uvicorn services.api.demo_server:app --port 8000
+```
+
+It refuses to start unless the bundle carries the guarded export's test-data marker (D154).
+Check it: `curl http://127.0.0.1:8000/api/meta` should report `"source": "IEEE-CIS test period, final run"`.
+
+**2. Start the dashboard on the API** (window 2; Vite dev server on port 5173):
+
+```powershell
+cd dashboard
+$env:VITE_DATA_SOURCE = "http"
+npm run dev
+```
+
+**3. Open** <http://localhost:5173>. The top bar must say "IEEE-CIS test period, final run"
+(without `VITE_DATA_SOURCE=http` it says "Synthetic mock data").
+
+**Stop:** press `Ctrl+C` in each window. If a window is gone and a port stays busy, stop whatever
+listens on the two ports:
+
+```powershell
+Get-NetTCPConnection -LocalPort 8000, 5173 -State Listen -ErrorAction SilentlyContinue |
+  ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+```
+
 ## Real data: the final-run demo backend
 
 The dashboard can read the EXP-200-final test period instead of the mock (labelled

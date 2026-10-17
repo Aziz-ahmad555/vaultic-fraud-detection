@@ -1,0 +1,57 @@
+{
+ "generated": "2026-10-13",
+ "git_commit": "ecb98f4040bc5cabf824049318786cb30d9a7a00",
+ "note": "F4 tuned per ladder rung on the inner split of the D95 gate rows (fit -> tune, validation only), 50 Optuna trials, TPE seed 0 (D121 section 2)",
+ "rungs": {
+  "1": {
+   "views": [
+    "tabular"
+   ],
+   "params": {
+    "n_estimators": 98,
+    "num_leaves": 12
+   },
+   "tune_pr_auc": 0.646720758477953,
+   "trials": 50
+  },
+  "2": {
+   "views": [
+    "tabular",
+    "behavioral"
+   ],
+   "params": {
+    "n_estimators": 139,
+    "num_leaves": 7
+   },
+   "tune_pr_auc": 0.7037683945960798,
+   "trials": 50
+  },
+  "3": {
+   "views": [
+    "tabular",
+    "behavioral",
+    "temporal"
+   ],
+   "params": {
+    "n_estimators": 135,
+    "num_leaves": 7
+   },
+   "tune_pr_auc": 0.7026450497794927,
+   "trials": 50
+  },
+  "4": {
+   "views": [
+    "tabular",
+    "behavioral",
+    "temporal",
+    "graph"
+   ],
+   "params": {
+    "n_estimators": 155,
+    "num_leaves": 10
+   },
+   "tune_pr_auc": 0.7036297726071312,
+   "trials": 50
+  }
+ }
+}

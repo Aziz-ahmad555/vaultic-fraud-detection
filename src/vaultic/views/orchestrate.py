@@ -243,7 +243,9 @@ def view_table(
     return table
 
 
-def calibrate_views(table: pd.DataFrame, folds: int = 5) -> tuple[pd.DataFrame, dict]:
+def calibrate_views(
+    table: pd.DataFrame, folds: int = 5, return_calibrators: bool = False
+) -> tuple[pd.DataFrame, dict] | tuple[pd.DataFrame, dict, dict]:
     """Calibrated p_<view>, then c_<view> and disagreement from them (D56).
 
     One calibrator per (fold, view) fitted ONLY on that fold's calibrate_views rows (D76, D77)
@@ -251,7 +253,9 @@ def calibrate_views(table: pd.DataFrame, folds: int = 5) -> tuple[pd.DataFrame, 
     frauds it is Platt or isotonic, chosen by out-of-fold ECE (D29); with fewer it is Platt
     scaling (isotonic overfits few positives), and the fallback is logged (review R1, D83). The
     returned info has, per (fold, view): rows, frauds, method, fallback and the ECEs. A view
-    missing on every row stays missing; a view with too few such rows or one class raises."""
+    missing on every row stays missing; a view with too few such rows or one class raises.
+    return_calibrators=True also returns the fitted calibrators per (fold, view) (stage 2
+    rescores perturbed rows with the fixed fold's calibrators)."""
     from vaultic.views.plan import check_calibration_scope
 
     out = table.copy()
@@ -261,7 +265,7 @@ def calibrate_views(table: pd.DataFrame, folds: int = 5) -> tuple[pd.DataFrame, 
             "no calibrate_views rows: the plan needs splits.yaml's calibrate slices (D53, D76)"
         )
     fold = out["fold"].to_numpy()
-    info = {}
+    info, calibrators = {}, {}
     p_all = {name: np.full(len(out), np.nan) for name in VIEWS}
     # one calibrator per (fold, view): a fold is one set of view models (D77)
     for f in pd.unique(fold):
@@ -298,6 +302,7 @@ def calibrate_views(table: pd.DataFrame, folds: int = 5) -> tuple[pd.DataFrame, 
                 )
             p_all[name][avail] = calibrator.predict(raw[avail])
             info[(f, name)] = entry
+            calibrators[(f, name)] = calibrator
     for name in VIEWS:
         out[f"p_{name}"] = p_all[name]
     mask, _, confidence, disagreement = view_inputs(
@@ -307,6 +312,8 @@ def calibrate_views(table: pd.DataFrame, folds: int = 5) -> tuple[pd.DataFrame, 
         out[f"c_{name}"] = confidence[:, j]
     out["disagreement"] = disagreement
     out.attrs["calibrated"] = True
+    if return_calibrators:
+        return out, info, calibrators
     return out, info
 
 

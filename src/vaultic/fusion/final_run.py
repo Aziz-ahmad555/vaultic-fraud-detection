@@ -130,11 +130,17 @@ def check_settings(cfg: dict) -> None:
         )
 
 
-def check_git(frozen: Path, repo: Path = REPO_ROOT) -> str:
+def check_git(frozen: Path, repo: Path = REPO_ROOT, log_files=None, freeze_record: str | None = None,
+              outputs: tuple[str, ...] = ()) -> str:  # fmt: skip
     """Final mode: a clean working tree whose HEAD is the commit recorded in the freeze record;
     only the freeze record itself and the two logs may differ from it (they are written after
     freezing: the record is committed after it is made, FINAL-STARTED / FINAL-RERUN lines are
-    appended by the run). Returns HEAD."""
+    appended by the run). Returns HEAD.
+
+    Stage 2 (stage2/final.py) passes its own freeze record and log set, and `outputs`: path
+    prefixes of result files that earlier stage-2 final runs added after the freeze."""
+    log_files = LOG_FILES if log_files is None else set(log_files)
+    freeze_record = FREEZE_RECORD if freeze_record is None else freeze_record
 
     def git(*a):
         return subprocess.run(["git", *a], cwd=repo, capture_output=True, text=True)
@@ -152,11 +158,24 @@ def check_git(frozen: Path, repo: Path = REPO_ROOT) -> str:
     changed = set(
         git("diff", "--name-only", "--no-renames", frozen_commit, head).stdout.splitlines()
     )
-    if changed - LOG_FILES:
+    other = {c for c in changed - log_files if not (outputs and c.startswith(tuple(outputs)))}
+    if other:
         raise RuntimeError(f"files changed since the frozen commit {frozen_commit[:12]}: "
-                           f"{sorted(changed - LOG_FILES)}; re-freeze (logged) first")  # fmt: skip
+                           f"{sorted(other)}; re-freeze (logged) first")  # fmt: skip
+    if outputs:  # D177: a stage-2 result file may be added once, never changed or removed
+        history = git("log", "--no-renames", "--name-status", "--format=",
+                      f"{frozen_commit}..{head}", "--", *outputs).stdout  # fmt: skip
+        statuses: dict[str, list[str]] = {}
+        for line in history.splitlines():
+            if line.strip():
+                status, path = line.split("\t", 1)
+                statuses.setdefault(path, []).append(status[0])
+        touched = {p: s for p, s in statuses.items() if s != ["A"]}
+        if touched:
+            raise RuntimeError(f"stage-2 results may only be added after the freeze, never "
+                               f"changed or removed: {touched}")  # fmt: skip
     # D113: the two logs may only gain lines after the frozen commit
-    for name in sorted((LOG_FILES - {FREEZE_RECORD}) & changed):
+    for name in sorted((log_files - {freeze_record}) & changed):
         stat = git("diff", "--numstat", "--no-renames", frozen_commit, head, "--", name).stdout
         for line in stat.splitlines():
             added, deleted, _ = line.split("\t", 2)
@@ -164,7 +183,7 @@ def check_git(frozen: Path, repo: Path = REPO_ROOT) -> str:
                 raise RuntimeError(f"{name} lost or changed {deleted} line(s) since the frozen "
                                    f"commit {frozen_commit[:12]}; the logs may only gain lines")  # fmt: skip
     # D113: a changed freeze record needs a decisions.md row naming its frozen commit
-    if FREEZE_RECORD in changed:
+    if freeze_record in changed:
         decisions = git("show", f"{head}:research/decisions.md").stdout
         if not any(line.startswith("|") and frozen_commit in line
                    for line in decisions.splitlines()):  # fmt: skip
@@ -256,7 +275,9 @@ def repo_relative(path, repo: Path = REPO_ROOT) -> str:
 
 def record_start(run_dir: Path, head: str, experiment_log: Path, extra_logs=(),
                  repo: Path = REPO_ROOT, push: bool = True,
-                 data_hashes: dict[str, str] | None = None) -> None:  # fmt: skip
+                 data_hashes: dict[str, str] | None = None,
+                 what: str = "E10-E12 final run", prereg: str = "D101",
+                 freeze_record: str = FREEZE_RECORD) -> None:  # fmt: skip
     """D109: mark the final run as started, committed and pushed; test data is not scored or
     evaluated before FINAL-STARTED.
 
@@ -286,14 +307,14 @@ def record_start(run_dir: Path, head: str, experiment_log: Path, extra_logs=(),
          "data_hashes": data_hashes or {}}, indent=1), "utf-8")  # fmt: skip
     rel = repo_relative(run_dir, repo)
     with open(experiment_log, "a", encoding="utf-8") as f:
-        f.write(f"| {run_dir.parent.name} | {date.today().isoformat()} | FINAL-STARTED: E10-E12 "
-                f"final run started at commit `{head[:12]}` (D101); test data not scored or evaluated yet | run "
+        f.write(f"| {run_dir.parent.name} | {date.today().isoformat()} | FINAL-STARTED: {what} "
+                f"started at commit `{head[:12]}` ({prereg}); test data not scored or evaluated yet | run "
                 f"`{rel}` | — |\n")  # fmt: skip
     logs = [experiment_log, *extra_logs]
     git("add", *[repo_relative(p, repo) for p in logs])
     message = f"FINAL-STARTED {run_dir.parent.name} ({run_dir.name})"
     if data_hashes:  # D112: the data the run is about to use, as checked against the freeze
-        message += ("\n\nData files (SHA-256, checked against research/frozen_final.md):\n"
+        message += (f"\n\nData files (SHA-256, checked against {freeze_record}):\n"
                     + "\n".join(f"{h}  {p}" for p, h in data_hashes.items()))  # fmt: skip
     git("commit", "-q", "-m", message)
     if push:

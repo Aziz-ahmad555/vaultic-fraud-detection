@@ -1,0 +1,86 @@
+[
+ {
+  "method": "rung 1",
+  "pr_auc": 0.5480095737292938,
+  "pr_auc_ci_low": 0.5304201441277575,
+  "pr_auc_ci_high": 0.5656191552746532,
+  "recall_at_1pct_fpr": 0.4696545284780579,
+  "recall_at_1pct_fpr_ci_low": 0.4503847946249109,
+  "recall_at_1pct_fpr_ci_high": 0.4876648508699075,
+  "cost": 252420.732,
+  "cost_ci_low": 232546.6991,
+  "cost_ci_high": 275635.0611
+ },
+ {
+  "method": "rung 2",
+  "pr_auc": 0.6145737462008131,
+  "pr_auc_ci_low": 0.5967865234053047,
+  "pr_auc_ci_high": 0.6327204377710313,
+  "recall_at_1pct_fpr": 0.5440398381574852,
+  "recall_at_1pct_fpr_ci_low": 0.5257270593812967,
+  "recall_at_1pct_fpr_ci_high": 0.5627953344158088,
+  "cost": 241867.818,
+  "cost_ci_low": 221892.179075,
+  "cost_ci_high": 263361.793975
+ },
+ {
+  "method": "rung 3",
+  "pr_auc": 0.6181423650200157,
+  "pr_auc_ci_low": 0.6001563057022514,
+  "pr_auc_ci_high": 0.6360810847413265,
+  "recall_at_1pct_fpr": 0.544973544973545,
+  "recall_at_1pct_fpr_ci_low": 0.5273163003144304,
+  "recall_at_1pct_fpr_ci_high": 0.5633896330150686,
+  "cost": 249702.14,
+  "cost_ci_low": 228201.765825,
+  "cost_ci_high": 271831.777225
+ },
+ {
+  "method": "rung 4",
+  "pr_auc": 0.620614844782849,
+  "pr_auc_ci_low": 0.60211945522941,
+  "pr_auc_ci_high": 0.6387068670933541,
+  "recall_at_1pct_fpr": 0.5465297230003112,
+  "recall_at_1pct_fpr_ci_low": 0.529467483236818,
+  "recall_at_1pct_fpr_ci_high": 0.5649706613733531,
+  "cost": 241758.794,
+  "cost_ci_low": 221107.2897,
+  "cost_ci_high": 264106.379075
+ },
+ {
+  "method": "rung 5",
+  "pr_auc": 0.6206419589014122,
+  "pr_auc_ci_low": 0.6025803049620395,
+  "pr_auc_ci_high": 0.638563139760862,
+  "recall_at_1pct_fpr": 0.5490196078431373,
+  "recall_at_1pct_fpr_ci_low": 0.5316876496534342,
+  "recall_at_1pct_fpr_ci_high": 0.5673084247410115,
+  "cost": 234255.753,
+  "cost_ci_low": 213379.1163,
+  "cost_ci_high": 255715.6743
+ },
+ {
+  "method": "MVAF",
+  "pr_auc": 0.621892721953029,
+  "pr_auc_ci_low": 0.6037333419089818,
+  "pr_auc_ci_high": 0.639216134911859,
+  "recall_at_1pct_fpr": 0.5468409586056645,
+  "recall_at_1pct_fpr_ci_low": 0.5274148203146678,
+  "recall_at_1pct_fpr_ci_high": 0.5666169940806279,
+  "cost": 236083.921,
+  "cost_ci_low": 215814.768725,
+  "cost_ci_high": 258102.47022500003
+ },
+ {
+  "method": "B5",
+  "pr_auc": 0.6532306857147558,
+  "pr_auc_ci_low": 0.6367642343555661,
+  "pr_auc_ci_high": 0.6697331147768801,
+  "recall_at_1pct_fpr": 0.5726735138499844,
+  "recall_at_1pct_fpr_ci_low": 0.555028269877667,
+  "recall_at_1pct_fpr_ci_high": 0.5908979593829906,
+  "cost": 268022.76,
+  "cost_ci_low": 243921.33975,
+  "cost_ci_high": 293297.31485
+ }
+]

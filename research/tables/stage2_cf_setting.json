@@ -1,0 +1,87 @@
+{
+ "generated": "2026-10-13",
+ "git_commit": "eb0cb214e7362405f36d14ab991761f14d5e02dc",
+ "note": "D158 (2) grid on 200 MVAF alerts (seed 0) of calibrate_fused, days 147-150, validation only; selection: highest mean validity, ties within 0.01 -> lower proximity, fewer changed inputs, cheaper setting. Validity boundary D159; varied inputs D163; DiCE post-hoc sparsity 'binary' (D164)",
+ "alerts_available": 2691,
+ "alerts": 200,
+ "chosen": {
+  "total_cfs": 3,
+  "sample_size": 1000,
+  "amount_range": "below",
+  "posthoc": "binary"
+ },
+ "grid": [
+  {
+   "total_cfs": 3,
+   "sample_size": 1000,
+   "amount_range": "below",
+   "validity": 0.96,
+   "any_valid": 0.965,
+   "proximity": 6.550419363206449,
+   "sparsity": 1.4905008635578585
+  },
+  {
+   "total_cfs": 3,
+   "sample_size": 1000,
+   "amount_range": "p1-p99",
+   "validity": 0.8716666666666666,
+   "any_valid": 0.885,
+   "proximity": 6.769373599355975,
+   "sparsity": 1.4821092278719397
+  },
+  {
+   "total_cfs": 3,
+   "sample_size": 5000,
+   "amount_range": "below",
+   "validity": 0.97,
+   "any_valid": 0.97,
+   "proximity": 6.648480296794285,
+   "sparsity": 1.5618556701030928
+  },
+  {
+   "total_cfs": 3,
+   "sample_size": 5000,
+   "amount_range": "p1-p99",
+   "validity": 0.9066666666666667,
+   "any_valid": 0.915,
+   "proximity": 6.747770084948477,
+   "sparsity": 1.5428051001821492
+  },
+  {
+   "total_cfs": 5,
+   "sample_size": 1000,
+   "amount_range": "below",
+   "validity": 0.9580000000000001,
+   "any_valid": 0.965,
+   "proximity": 6.573270500907899,
+   "sparsity": 1.5119170984455959
+  },
+  {
+   "total_cfs": 5,
+   "sample_size": 1000,
+   "amount_range": "p1-p99",
+   "validity": 0.856,
+   "any_valid": 0.885,
+   "proximity": 6.733163880488046,
+   "sparsity": 1.4617702448210923
+  },
+  {
+   "total_cfs": 5,
+   "sample_size": 5000,
+   "amount_range": "below",
+   "validity": 0.966,
+   "any_valid": 0.97,
+   "proximity": 6.6395879376590825,
+   "sparsity": 1.5556701030927835
+  },
+  {
+   "total_cfs": 5,
+   "sample_size": 5000,
+   "amount_range": "p1-p99",
+   "validity": 0.902,
+   "any_valid": 0.915,
+   "proximity": 6.687505573209312,
+   "sparsity": 1.5311475409836068
+  }
+ ]
+}
