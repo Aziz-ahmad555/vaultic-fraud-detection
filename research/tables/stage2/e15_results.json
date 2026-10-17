@@ -1,0 +1,552 @@
+{
+ "MVAF": {
+  "alerts_available": 23899,
+  "alerts": 1000,
+  "permutation_importance_top10": [
+   "uid_fraud_rate_known",
+   "C1",
+   "C13",
+   "TransactionAmt",
+   "card1",
+   "id_19",
+   "card6",
+   "D9",
+   "V169",
+   "D13"
+  ],
+  "aopc": {
+   "attribution": {
+    "mean": 0.037314673009478626,
+    "ci_low": 0.02170299208941786,
+    "ci_high": 0.05324044693124106,
+    "n": 1000
+   },
+   "random": {
+    "mean": 0.005029545298928289,
+    "ci_low": 0.003661594633371709,
+    "ci_high": 0.00635874202951268,
+    "n": 1000
+   },
+   "permutation": {
+    "mean": 0.1883392759348218,
+    "ci_low": 0.17453402178805896,
+    "ci_high": 0.20077058632672165,
+    "n": 1000
+   },
+   "attribution_positive_order: SECONDARY (added after a validation check, D166)": {
+    "mean": 0.2787907642328481,
+    "ci_low": 0.2675148603970103,
+    "ci_high": 0.29035286836235674,
+    "n": 1000
+   }
+  },
+  "hypotheses": {
+   "H6a": {
+    "diff": 0.03228512771055034,
+    "ci_low": 0.01681111280738054,
+    "ci_high": 0.047637557521525514,
+    "p_value": 0.0,
+    "n": 1000,
+    "p_holm": 0.0,
+    "supported": true
+   },
+   "H6b": {
+    "diff": -0.1510246029253432,
+    "ci_low": -0.16562204331933164,
+    "ci_high": -0.1361605862229795,
+    "p_value": 0.0,
+    "n": 1000,
+    "p_holm": 0.0,
+    "supported": false
+   }
+  },
+  "secondary_positive_order": {
+   "label": "SECONDARY (added after a validation check, D166)",
+   "tests": {
+    "positive - random": {
+     "diff": 0.27376121893391986,
+     "ci_low": 0.26266794643011365,
+     "ci_high": 0.2847438262408125,
+     "p_value": 0.0,
+     "n": 1000,
+     "p_holm": 0.0,
+     "ci_excludes_0_above": true
+    },
+    "positive - permutation": {
+     "diff": 0.09045148829802634,
+     "ci_low": 0.07939644146253158,
+     "ci_high": 0.10185608681392425,
+     "p_value": 0.0,
+     "n": 1000,
+     "p_holm": 0.0,
+     "ci_excludes_0_above": true
+    }
+   },
+   "deletion_curve": [
+    0.399584675492114,
+    0.33276769139460854,
+    0.2873324315624227,
+    0.2554993838821848,
+    0.23492804599698094,
+    0.2175976589594155,
+    0.20387568482181218,
+    0.19094296309581438,
+    0.18130313688924315,
+    0.17242176222815958
+   ]
+  },
+  "deletion_curve": [
+   0.5237639346792439,
+   0.4995800673885977,
+   0.49774401524005096,
+   0.48754192138564895,
+   0.48254406560473645,
+   0.48457281638392635,
+   0.4813115213402829,
+   0.4817640747398538,
+   0.47840021548969697,
+   0.4737917143044132
+  ],
+  "insertion": {
+   "attribution": {
+    "mean": 0.061958639181563045,
+    "ci_low": 0.052901322602733704,
+    "ci_high": 0.07049135191441629,
+    "n": 1000
+   },
+   "permutation": {
+    "mean": 0.2277654691628284,
+    "ci_low": 0.21812253323424358,
+    "ci_high": 0.23793475665102887,
+    "n": 1000
+   },
+   "random": {
+    "mean": 0.0041220534070538824,
+    "ci_low": 0.0037029713006380477,
+    "ci_high": 0.004562830163333191,
+    "n": 1000
+   }
+  },
+  "insertion_tests": {
+   "attribution - random": {
+    "diff": 0.05783658577450915,
+    "ci_low": 0.04885312701086675,
+    "ci_high": 0.06633539276947555,
+    "p_value": 0.0,
+    "n": 1000
+   },
+   "attribution - permutation": {
+    "diff": -0.16580682998126536,
+    "ci_low": -0.17759952309530774,
+    "ci_high": -0.1549054174712426,
+    "p_value": 0.0,
+    "n": 1000
+   }
+  },
+  "view_deletion": {
+   "top-1 view": {
+    "mean": 0.001958327890935765,
+    "ci_low": -0.01342220226208009,
+    "ci_high": 0.017920261137052546,
+    "n": 1000
+   },
+   "top-2 views": {
+    "mean": -0.05732121972999636,
+    "ci_low": -0.07694304964020404,
+    "ci_high": -0.03783373160506207,
+    "n": 810
+   },
+   "random view": {
+    "mean": 0.00485399319110181,
+    "ci_low": -0.00432401593344951,
+    "ci_high": 0.014816567451027034,
+    "n": 1000
+   },
+   "top-1 view - random view": {
+    "diff": -0.002895665300166047,
+    "ci_low": -0.01702140864081704,
+    "ci_high": 0.011223671640226644,
+    "p_value": 0.67,
+    "n": 1000
+   },
+   "top-2 views - random view": {
+    "diff": -0.05670862028755302,
+    "ci_low": -0.07561060394516733,
+    "ci_high": -0.03801138217485445,
+    "p_value": 0.0,
+    "n": 810
+   }
+  },
+  "stability": {
+   "x0.99": {
+    "top3_jaccard": {
+     "mean": 0.9575,
+     "ci_low": 0.949,
+     "ci_high": 0.966,
+     "n": 1000
+    },
+    "top1_changed": {
+     "mean": 0.023,
+     "ci_low": 0.015,
+     "ci_high": 0.033,
+     "n": 1000
+    }
+   },
+   "x1.01": {
+    "top3_jaccard": {
+     "mean": 0.9795,
+     "ci_low": 0.9735,
+     "ci_high": 0.9855,
+     "n": 1000
+    },
+    "top1_changed": {
+     "mean": 0.012,
+     "ci_low": 0.006,
+     "ci_high": 0.019,
+     "n": 1000
+    }
+   },
+   "x0.95": {
+    "top3_jaccard": {
+     "mean": 0.9325999999999999,
+     "ci_low": 0.92229,
+     "ci_high": 0.9427025000000001,
+     "n": 1000
+    },
+    "top1_changed": {
+     "mean": 0.064,
+     "ci_low": 0.05,
+     "ci_high": 0.08,
+     "n": 1000
+    }
+   },
+   "x1.05": {
+    "top3_jaccard": {
+     "mean": 0.9474,
+     "ci_low": 0.9379974999999999,
+     "ci_high": 0.9565999999999999,
+     "n": 1000
+    },
+    "top1_changed": {
+     "mean": 0.034,
+     "ci_low": 0.024,
+     "ci_high": 0.045,
+     "n": 1000
+    }
+   }
+  },
+  "seed_consistency": {
+   "pairs": 10,
+   "mean": 0.8693690476190477,
+   "ci_low": 0.8579446924603175,
+   "ci_high": 0.8808349603174603,
+   "n": 1000
+  },
+  "counterfactuals": {
+   "validity": {
+    "mean": 0.976,
+    "ci_low": 0.9626666666666667,
+    "ci_high": 0.9873500000000001,
+    "n": 500
+   },
+   "any_valid": {
+    "mean": 0.978,
+    "ci_low": 0.964,
+    "ci_high": 0.99,
+    "n": 500
+   },
+   "loose_validity": {
+    "mean": 0.976,
+    "ci_low": 0.9626666666666667,
+    "ci_high": 0.9873500000000001,
+    "n": 500
+   },
+   "proximity": {
+    "mean": 6.974907774198826,
+    "ci_low": 6.046805776286694,
+    "ci_high": 8.039225308082916,
+    "n": 489
+   },
+   "sparsity": {
+    "mean": 1.52692569870484,
+    "ci_low": 1.4948875255623721,
+    "ci_high": 1.5576175869120652,
+    "n": 489
+   },
+   "actionable_share": {
+    "mean": 1.0,
+    "ci_low": 1.0,
+    "ci_high": 1.0,
+    "n": 489
+   },
+   "setting": {
+    "total_cfs": 3,
+    "sample_size": 1000,
+    "amount_range": "below",
+    "posthoc": "binary"
+   },
+   "exit_criterion_met": true
+  }
+ },
+ "B5": {
+  "alerts_available": 2877,
+  "alerts": 1000,
+  "permutation_importance_top10": [
+   "uid_fraud_rate_known",
+   "C1",
+   "C13",
+   "TransactionAmt",
+   "card6",
+   "D15",
+   "C14",
+   "card2",
+   "card1",
+   "P_emaildomain"
+  ],
+  "aopc": {
+   "attribution": {
+    "mean": 0.5782916822978296,
+    "ci_low": 0.5619201663173385,
+    "ci_high": 0.5949165237163891,
+    "n": 1000
+   },
+   "random": {
+    "mean": 0.03083957499475946,
+    "ci_low": 0.029244238441941343,
+    "ci_high": 0.03236489361380463,
+    "n": 1000
+   },
+   "permutation": {
+    "mean": 0.5651133040189743,
+    "ci_low": 0.5488900797694922,
+    "ci_high": 0.5806702034953981,
+    "n": 1000
+   },
+   "attribution_positive_order: SECONDARY (added after a validation check, D166)": {
+    "mean": 0.5918252067193389,
+    "ci_low": 0.5756257009116933,
+    "ci_high": 0.6073567176286131,
+    "n": 1000
+   }
+  },
+  "hypotheses": {
+   "H6a": {
+    "diff": 0.54745210730307,
+    "ci_low": 0.5312507409301755,
+    "ci_high": 0.5640053668219349,
+    "p_value": 0.0,
+    "n": 1000,
+    "p_holm": 0.0,
+    "supported": true
+   },
+   "H6b": {
+    "diff": 0.013178378278855235,
+    "ci_low": 0.007679615665576421,
+    "ci_high": 0.0182194866448408,
+    "p_value": 0.0,
+    "n": 1000,
+    "p_holm": 0.0,
+    "supported": true
+   }
+  },
+  "secondary_positive_order": {
+   "label": "SECONDARY (added after a validation check, D166)",
+   "tests": {
+    "positive - random": {
+     "diff": 0.5609856317245794,
+     "ci_low": 0.544951348116819,
+     "ci_high": 0.5765900232195128,
+     "p_value": 0.0,
+     "n": 1000,
+     "p_holm": 0.0,
+     "ci_excludes_0_above": true
+    },
+    "positive - permutation": {
+     "diff": 0.02671190270036459,
+     "ci_low": 0.021837230296060443,
+     "ci_high": 0.03140234956946224,
+     "p_value": 0.0,
+     "n": 1000,
+     "p_holm": 0.0,
+     "ci_excludes_0_above": true
+    }
+   },
+   "deletion_curve": [
+    0.2477813959121704,
+    0.16153068840503693,
+    0.11114820837974548,
+    0.0721798986196518,
+    0.049986425787210464,
+    0.035662099719047546,
+    0.027247155085206032,
+    0.02152937278151512,
+    0.017543192952871323,
+    0.014384333044290543
+   ]
+  },
+  "deletion_curve": [
+   0.2526431679725647,
+   0.17228366434574127,
+   0.1234440729022026,
+   0.0858822762966156,
+   0.06466856598854065,
+   0.0500776432454586,
+   0.042563628405332565,
+   0.037333644926548004,
+   0.03412087261676788,
+   0.031310439109802246
+  ],
+  "insertion": {
+   "attribution": {
+    "mean": 0.11652036690398382,
+    "ci_low": 0.1044575052913946,
+    "ci_high": 0.12799656336395746,
+    "n": 1000
+   },
+   "permutation": {
+    "mean": 0.09960134288261178,
+    "ci_low": 0.09103244049297282,
+    "ci_high": 0.10824880314765249,
+    "n": 1000
+   },
+   "random": {
+    "mean": 0.0019149853193744092,
+    "ci_low": 0.001538678120341868,
+    "ci_high": 0.002326135825808052,
+    "n": 1000
+   }
+  },
+  "insertion_tests": {
+   "attribution - random": {
+    "diff": 0.11460538158460941,
+    "ci_low": 0.10284022302757304,
+    "ci_high": 0.1258043741672225,
+    "p_value": 0.0,
+    "n": 1000
+   },
+   "attribution - permutation": {
+    "diff": 0.016919024021372023,
+    "ci_low": 0.010839193237692234,
+    "ci_high": 0.02326658148303104,
+    "p_value": 0.0,
+    "n": 1000
+   }
+  },
+  "stability": {
+   "x0.99": {
+    "top3_jaccard": {
+     "mean": 0.987,
+     "ci_low": 0.9815,
+     "ci_high": 0.992,
+     "n": 1000
+    },
+    "top1_changed": {
+     "mean": 0.003,
+     "ci_low": 0.0,
+     "ci_high": 0.007,
+     "n": 1000
+    }
+   },
+   "x1.01": {
+    "top3_jaccard": {
+     "mean": 0.9925,
+     "ci_low": 0.9885,
+     "ci_high": 0.996,
+     "n": 1000
+    },
+    "top1_changed": {
+     "mean": 0.009,
+     "ci_low": 0.004,
+     "ci_high": 0.015,
+     "n": 1000
+    }
+   },
+   "x0.95": {
+    "top3_jaccard": {
+     "mean": 0.9765,
+     "ci_low": 0.9695,
+     "ci_high": 0.983,
+     "n": 1000
+    },
+    "top1_changed": {
+     "mean": 0.007,
+     "ci_low": 0.002,
+     "ci_high": 0.013,
+     "n": 1000
+    }
+   },
+   "x1.05": {
+    "top3_jaccard": {
+     "mean": 0.9822000000000001,
+     "ci_low": 0.9758,
+     "ci_high": 0.9875,
+     "n": 1000
+    },
+    "top1_changed": {
+     "mean": 0.014,
+     "ci_low": 0.008,
+     "ci_high": 0.022,
+     "n": 1000
+    }
+   }
+  },
+  "seed_consistency": {
+   "pairs": 10,
+   "mean": 0.7914031746031747,
+   "ci_low": 0.7820364781746034,
+   "ci_high": 0.8008345535714285,
+   "n": 1000
+  },
+  "counterfactuals": {
+   "validity": {
+    "mean": 0.25866666666666666,
+    "ci_low": 0.22064999999999999,
+    "ci_high": 0.296,
+    "n": 500
+   },
+   "any_valid": {
+    "mean": 0.262,
+    "ci_low": 0.224,
+    "ci_high": 0.3,
+    "n": 500
+   },
+   "loose_validity": {
+    "mean": NaN,
+    "ci_low": NaN,
+    "ci_high": NaN,
+    "n": 0
+   },
+   "proximity": {
+    "mean": 5.880224271346771,
+    "ci_low": 4.911939811593777,
+    "ci_high": 6.948077003857623,
+    "n": 131
+   },
+   "sparsity": {
+    "mean": 1.5267175572519085,
+    "ci_low": 1.4732188295165394,
+    "ci_high": 1.5776081424936388,
+    "n": 131
+   },
+   "actionable_share": {
+    "mean": 1.0,
+    "ci_low": 1.0,
+    "ci_high": 1.0,
+    "n": 131
+   },
+   "setting": {
+    "total_cfs": 3,
+    "sample_size": 1000,
+    "amount_range": "below",
+    "posthoc": "binary"
+   },
+   "exit_criterion_met": false
+  }
+ },
+ "phase9_gate": {
+  "H6a_MVAF_supported": true,
+  "MVAF_validity": 0.976,
+  "validity_target": 0.9,
+  "passed": true
+ }
+}
