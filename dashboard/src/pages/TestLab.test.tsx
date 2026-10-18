@@ -88,6 +88,7 @@ describe("Test Lab page", () => {
     expect(screen.getByText(/masked counter C13/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Reveal truth" }));
     expect(await screen.findByTestId("truth")).toHaveTextContent("fraud (caught)");
+    expect(screen.getByTestId("scoreboard-note")).toHaveTextContent("Session tally of your picks, not recall.");
     const board = screen.getByRole("table", { name: "Session scoreboard" });
     expect(within(board).getByText("Caught (fraud, alerted)").nextSibling).toHaveTextContent("1");
     expect(screen.getByRole("button", { name: "Reveal truth" })).toBeDisabled();

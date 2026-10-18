@@ -270,7 +270,7 @@ function RealMode({ api, board, setBoard, onScored }: { api: TestLabApi; board: 
               <tr><th scope="row">Matched the frozen run</th><td className="num">{board.matchesFrozen} / {board.seen.length}</td></tr>
             </tbody>
           </table>
-          <p className="muted xs">An alert is an E12 decision of step-up or higher.</p>
+          <p className="muted xs" data-testid="scoreboard-note">Session tally of your picks, not recall. An alert is an E12 decision of step-up or higher.</p>
         </div>
       </section>
       {result && <ResultCard result={result} revealed={truth} />}
