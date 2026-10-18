@@ -101,7 +101,7 @@ function RunPanel({ api, scenario, meanings, replayMs }: { api: AttackApi; scena
   const [intensity, setIntensity] = useState<Intensity>("medium");
   const [seed, setSeed] = useState("0");
   const [model, setModel] = useState(true);
-  const [generator, setGenerator] = useState<Generator>("v2");
+  const [generator, setGenerator] = useState<Generator>("v3");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<RunResult | null>(null);
@@ -132,11 +132,13 @@ function RunPanel({ api, scenario, meanings, replayMs }: { api: AttackApi; scena
               ))}
             </div>
             <div className="segmented" role="group" aria-label="Generator" style={{ marginTop: 8 }}>
-              <button type="button" aria-pressed={generator === "v2"} onClick={() => setGenerator("v2")}>Generator v2 (primary)</button>
+              <button type="button" aria-pressed={generator === "v3"} onClick={() => setGenerator("v3")}>Generator v3 (primary)</button>
+              <button type="button" aria-pressed={generator === "v2"} onClick={() => setGenerator("v2")}>Generator v2 (superseded)</button>
               <button type="button" aria-pressed={generator === "v1"} onClick={() => setGenerator("v1")}>Generator v1 (recorded)</button>
             </div>
             <p className="muted xs m0">
-              v2 copies every masked field of a synthetic row from one real validation-period row (D203); v1 left them missing for new customers, a profile no real row has.
+              v3 copies every masked field of a synthetic row from one real legitimate validation-period row (D203, D205). v2 did the same but its donor pool
+              included fraud rows (superseded, review finding 1); v1 left masked fields missing in combinations no real row has.
             </p>
             <label className="field"><span>Seed</span><input inputMode="numeric" value={seed} onChange={(e) => setSeed(e.target.value)} required pattern="[0-9]{1,4}" /></label>
             <label className="field-inline small">
@@ -158,15 +160,17 @@ function RunResult({ result, replayMs }: { result: RunResult; replayMs: number }
   return (
     <>
       <section className="pane" aria-label="Scorecard">
-        <div className="pane-head"><h2>Scorecard: {result.title}, {result.intensity}, seed {result.seed}, generator {result.generator ?? "v2"}</h2></div>
+        <div className="pane-head"><h2>Scorecard: {result.title}, {result.intensity}, seed {result.seed}, generator {result.generator ?? "v3"}</h2></div>
         <div className="pane-body small">
           <p className="m0"><strong>Synthetic scenario - not the evaluation.</strong> One seed is an example; the 5-seed results are below.</p>
           <p className="m0">
             Replay: {result.n_legit_replay.toLocaleString()} real legitimate rows on day{result.days.length > 1 ? "s" : ""} {result.days[0]}
             {result.days.length > 1 ? `-${result.days[result.days.length - 1]}` : ""} ({result.n_legit_stored.toLocaleString()} stored (parity-verified),{" "}
-            {result.n_legit_live} scored live because they share a customer, card or device with the attack) and {result.n_synthetic} synthetic rows, scored
+            {result.n_legit_live} scored live because they share a customer, card or device with the attack; rows sharing only an email domain or address keep
+            their stored score, so their email and address degree features miss at most the attack's few rows) and {result.n_synthetic} synthetic rows, scored
             in {result.seconds} s. Stored rows reproduce the frozen run's scores (largest difference {result.stored_score_max_diff.toExponential(1)}).
           </p>
+          {result.generator_note && <p className="m0" role="note"><strong>Generator {result.generator}: {result.generator_note}.</strong></p>}
           <p className="m0">Model: {result.model}. {result.step_up_note}</p>
           {result.notes.map((n) => <p key={n} className="m0" role="note"><strong>Note:</strong> {n}</p>)}
           {Object.entries(result.results).map(([name, r]) => <SetTable key={name} name={name} r={r} degraded={degraded} />)}
@@ -297,20 +301,32 @@ const share = (count: string) => {
   return b ? a / b : 0;
 };
 
-export function compareGenerators(v2: SuiteSummary | null | undefined, v1: SuiteSummary | null | undefined, scenario: string) {
-  const rows: { intensity: string; mode: string; v1: string; v2: string; drop: number; hardV1: string; hardV2: string; fprV1: number; fprV2: number }[] = [];
-  const a = v2?.scenarios?.[scenario] as Record<string, Record<string, SuiteSetAgg>> | undefined;
-  const b = v1?.scenarios?.[scenario] as Record<string, Record<string, SuiteSetAgg>> | undefined;
-  if (!a || !b) return rows;
+type Versions = { v1: SuiteSummary | null | undefined; v2: SuiteSummary | null | undefined; v3: SuiteSummary | null | undefined };
+export interface ComparisonRow {
+  intensity: string;
+  mode: string;
+  caught: Record<Generator, string | null>;
+  hard: Record<Generator, string | null>;
+  fpr: Record<Generator, number | null>;
+  drop: number; // model recall v1 minus primary (v3)
+}
+
+export function compareGenerators(versions: Versions, scenario: string): ComparisonRow[] {
+  const rows: ComparisonRow[] = [];
+  const by = (g: Generator) => versions[g]?.scenarios?.[scenario] as Record<string, Record<string, SuiteSetAgg>> | undefined;
+  const primary = by("v3");
+  const v1 = by("v1");
+  if (!primary || !v1) return rows;
   for (const i of ["low", "medium", "high"]) {
-    const x = a[i]?.[PRIMARY];
-    const y = b[i]?.[PRIMARY];
-    if (!x || !y) continue;
+    if (!primary[i]?.[PRIMARY] || !v1[i]?.[PRIMARY]) continue;
     for (const { key, label } of MODES) {
+      const get = (g: Generator) => by(g)?.[i]?.[PRIMARY]?.[key];
+      const caught = { v1: get("v1")?.alert.recall_count ?? null, v2: get("v2")?.alert.recall_count ?? null, v3: get("v3")?.alert.recall_count ?? null };
       rows.push({
-        intensity: i, mode: label, v1: y[key].alert.recall_count, v2: x[key].alert.recall_count,
-        drop: share(y[key].alert.recall_count) - share(x[key].alert.recall_count),
-        hardV1: y[key].hard.recall_count, hardV2: x[key].hard.recall_count, fprV1: y[key].alert.fpr_mean, fprV2: x[key].alert.fpr_mean,
+        intensity: i, mode: label, caught,
+        hard: { v1: get("v1")?.hard.recall_count ?? null, v2: get("v2")?.hard.recall_count ?? null, v3: get("v3")?.hard.recall_count ?? null },
+        fpr: { v1: get("v1")?.alert.fpr_mean ?? null, v2: get("v2")?.alert.fpr_mean ?? null, v3: get("v3")?.alert.fpr_mean ?? null },
+        drop: share(caught.v1 ?? "0/0") - share(caught.v3 ?? "0/0"),
       });
     }
   }
@@ -318,25 +334,33 @@ export function compareGenerators(v2: SuiteSummary | null | undefined, v1: Suite
 }
 
 function GeneratorComparison({ suite, scenario }: { suite: SuiteResponse | null; scenario: string }) {
-  const rows = compareGenerators(suite?.suite, suite?.suite_v1, scenario);
+  const rows = compareGenerators({ v1: suite?.suite_v1, v2: suite?.suite_v2, v3: suite?.suite }, scenario);
   if (!rows.length) return null;
   const big = rows.filter((r) => r.mode === "Model only" && r.drop >= DROP_NOTE);
+  const superseded = suite?.superseded?.v2 ?? "superseded: donor pool included fraud rows (review finding 1)";
   return (
     <div className="table-wrap" style={{ marginTop: 6 }}>
-      <h3 className="small m0">Generator v1 vs v2 (D196 primary)</h3>
+      <h3 className="small m0">Generator v1 / v2 / v3 (D196 primary)</h3>
+      <p className="muted xs m0">
+        v3 is the primary (D205). v2: {superseded}. v1: masked fields missing in combinations no real row has (D203).
+      </p>
       {big.length > 0 && (
         <p className="small m0" role="note" data-testid="recall-drop">
-          <strong>With realistic masked fields (generator v2) the model catches fewer:</strong>{" "}
-          {big.map((r) => `${r.intensity} ${r.v1} (v1) to ${r.v2} (v2)`).join("; ")}. The v1 recall was inflated by synthetic rows whose masked fields no real row has.
+          <strong>Post hoc: with realistic masked fields (generator v3) the model catches fewer:</strong>{" "}
+          {big.map((r) => `${r.intensity} ${r.caught.v1} (v1) to ${r.caught.v3} (v3)`).join("; ")}. The model's recall fell with realistic masked fields.
         </p>
       )}
       <table className="small" aria-label="Generator comparison">
-        <thead><tr><th>Intensity</th><th>Mode</th><th>Caught v1</th><th>Caught v2</th><th>Caught hold/block v1</th><th>Hold/block v2</th><th>FPR v1</th><th>FPR v2</th></tr></thead>
+        <thead>
+          <tr>
+            <th>Intensity</th><th>Mode</th><th>Caught v1</th><th>Caught v2 (superseded)</th><th>Caught v3</th><th>Hold/block v1 / v2 / v3</th><th>FPR v1 / v3</th>
+          </tr>
+        </thead>
         <tbody>
           {rows.map((r) => (
             <tr key={`${r.intensity}-${r.mode}`}>
-              <td>{r.intensity}</td><td>{r.mode}</td><td className="num">{r.v1}</td><td className="num">{r.v2}</td>
-              <td className="num">{r.hardV1}</td><td className="num">{r.hardV2}</td><td className="num">{pct(r.fprV1, 2)}</td><td className="num">{pct(r.fprV2, 2)}</td>
+              <td>{r.intensity}</td><td>{r.mode}</td><td className="num">{r.caught.v1 ?? "–"}</td><td className="num muted">{r.caught.v2 ?? "–"}</td><td className="num">{r.caught.v3 ?? "–"}</td>
+              <td className="num">{r.hard.v1 ?? "–"} / {r.hard.v2 ?? "–"} / {r.hard.v3 ?? "–"}</td><td className="num">{pct(r.fpr.v1, 2)} / {pct(r.fpr.v3, 2)}</td>
             </tr>
           ))}
         </tbody>
@@ -350,7 +374,7 @@ function SuitePanel({ suite, scenario }: { suite: SuiteResponse | null; scenario
   if (!by) return null;
   return (
     <section className="pane" aria-label="Five-seed results">
-      <div className="pane-head"><h2>Results over 5 seeds × 3 intensities (generator {suite?.suite?.generator ?? "v2"}, primary)</h2></div>
+      <div className="pane-head"><h2>Results over 5 seeds × 3 intensities (generator {suite?.suite?.generator ?? "v3"}, primary)</h2></div>
       <div className="pane-body small">
         <GeneratorComparison suite={suite} scenario={scenario} />
         <p className="m0"><strong>Synthetic scenario - not the evaluation.</strong> Caught = alerted synthetic fraud rows over seeds 0-4 (per-seed min - max). FPR = real legitimate replay rows, mean (min - max).</p>
@@ -393,13 +417,16 @@ export function PosthocPanel({ suite }: { suite: SuiteResponse | null }) {
   if (!p) return null;
   const acc = p.new_accounts as Record<string, RateGroup>;
   const groups: [string, string][] = [
-    ["bust_out_build_up", "Bust-out build-up rows, generator v2 (synthetic, labelled legitimate)"],
+    ["bust_out_build_up", "Bust-out build-up rows, generator v3 (primary; synthetic, labelled legitimate)"],
+    ["bust_out_build_up_v2", "Bust-out build-up rows, generator v2 (superseded: donor pool included fraud rows)"],
     ["bust_out_build_up_v1", "Bust-out build-up rows, generator v1 (every masked field missing)"],
     ["all_legit_on_days", "All real legitimate rows, same days"],
     ["young_accounts_d1_0_13", "Real legitimate young accounts (masked time-delta D1 0-13)"],
     ["young_accounts_card_not_present_W", "  of which card-not-present (product W)"],
     ["young_accounts_all_M_V_missing", "  of which every M and V field missing"],
+    ["young_accounts_W_amount_500_2000", "  of which card-not-present with amount 500-2,000 (post-hoc reviewer check)"],
   ];
+  const large = acc.young_accounts_W_amount_500_2000;
   return (
     <section className="pane" aria-label="Post-hoc diagnostics">
       <div className="pane-head"><h2>Post-hoc diagnostics</h2></div>
@@ -417,6 +444,13 @@ export function PosthocPanel({ suite }: { suite: SuiteResponse | null }) {
             </tbody>
           </table>
         </div>
+        {large?.alert_rate != null && (
+          <p className="small m0" role="note" data-testid="cash-out-note">
+            <strong>Post-hoc reviewer check (test-period rows):</strong> E12 steps up on expected loss (calibrated probability × amount), and real legitimate young
+            card-not-present accounts with amounts of 500-2,000 are stepped up {pct(large.alert_rate)} of the time, so bust-out cash-outs being stepped up is not
+            bust-out detection.
+          </p>
+        )}
       </div>
     </section>
   );

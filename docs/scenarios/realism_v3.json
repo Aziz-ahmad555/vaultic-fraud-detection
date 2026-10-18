@@ -1,0 +1,178 @@
+{
+ "label": "synthetic scenario - not the evaluation",
+ "real": {
+  "new": {
+   "rows": 324650,
+   "M": {
+    "all_missing": 0.2314369320807023,
+    "mean_missing": 0.5631993428820782
+   },
+   "V": {
+    "all_missing": 0.0,
+    "mean_missing": 0.39747666536278914
+   },
+   "id": {
+    "all_missing": 0.6219621130448175,
+    "mean_missing": 0.7653858811513614
+   },
+   "C": {
+    "all_missing": 0.0,
+    "mean_missing": 0.0
+   },
+   "D2-D15": {
+    "all_missing": 0.08653010934852919,
+    "mean_missing": 0.6835229147873534
+   }
+  },
+  "existing": {
+   "rows": 223483,
+   "M": {
+    "all_missing": 0.07491845017294381,
+    "mean_missing": 0.45524665808535275
+   },
+   "V": {
+    "all_missing": 0.0,
+    "mean_missing": 0.4373320840318647
+   },
+   "id": {
+    "all_missing": 0.7999355655687457,
+    "mean_missing": 0.880474483282256
+   },
+   "C": {
+    "all_missing": 0.0,
+    "mean_missing": 0.0
+   },
+   "D2-D15": {
+    "all_missing": 0.012734749399283167,
+    "mean_missing": 0.5472966623859533
+   }
+  }
+ },
+ "scenarios": {
+  "card_testing": {
+   "rows": 210,
+   "M": {
+    "all_missing": 0.0,
+    "mean_missing": 0.173015873015873
+   },
+   "V": {
+    "all_missing": 0.0,
+    "mean_missing": 0.49700800674252
+   },
+   "id": {
+    "all_missing": 1.0,
+    "mean_missing": 1.0
+   },
+   "C": {
+    "all_missing": 0.0,
+    "mean_missing": 0.0
+   },
+   "D2-D15": {
+    "all_missing": 0.0,
+    "mean_missing": 0.5860544217687075
+   },
+   "customer_type": "existing",
+   "joint_M_V_id_profile_unseen_in_real": 0.0
+  },
+  "account_takeover": {
+   "rows": 30,
+   "M": {
+    "all_missing": 0.2,
+    "mean_missing": 0.9111111111111111
+   },
+   "V": {
+    "all_missing": 0.0,
+    "mean_missing": 0.28839724680432643
+   },
+   "id": {
+    "all_missing": 0.0,
+    "mean_missing": 0.4263157894736842
+   },
+   "C": {
+    "all_missing": 0.0,
+    "mean_missing": 0.0
+   },
+   "D2-D15": {
+    "all_missing": 0.1,
+    "mean_missing": 0.48333333333333334
+   },
+   "customer_type": "existing",
+   "joint_M_V_id_profile_unseen_in_real": 0.0
+  },
+  "mule_ring": {
+   "rows": 175,
+   "M": {
+    "all_missing": 0.4,
+    "mean_missing": 0.9333333333333333
+   },
+   "V": {
+    "all_missing": 0.0,
+    "mean_missing": 0.28589970501474926
+   },
+   "id": {
+    "all_missing": 0.0,
+    "mean_missing": 0.37894736842105264
+   },
+   "C": {
+    "all_missing": 0.0,
+    "mean_missing": 0.0
+   },
+   "D2-D15": {
+    "all_missing": 0.19428571428571428,
+    "mean_missing": 0.6604081632653062
+   },
+   "customer_type": "new",
+   "joint_M_V_id_profile_unseen_in_real": 0.06285714285714286
+  },
+  "bust_out": {
+   "rows": 265,
+   "M": {
+    "all_missing": 0.0,
+    "mean_missing": 0.1870020964360587
+   },
+   "V": {
+    "all_missing": 0.0,
+    "mean_missing": 0.5085990983469695
+   },
+   "id": {
+    "all_missing": 1.0,
+    "mean_missing": 1.0
+   },
+   "C": {
+    "all_missing": 0.0,
+    "mean_missing": 0.0
+   },
+   "D2-D15": {
+    "all_missing": 0.0,
+    "mean_missing": 0.7115902964959568
+   },
+   "customer_type": "new",
+   "joint_M_V_id_profile_unseen_in_real": 0.0
+  },
+  "mimicry": {
+   "rows": 50,
+   "M": {
+    "all_missing": 0.0,
+    "mean_missing": 0.13777777777777778
+   },
+   "V": {
+    "all_missing": 0.0,
+    "mean_missing": 0.4877286135693215
+   },
+   "id": {
+    "all_missing": 1.0,
+    "mean_missing": 1.0
+   },
+   "C": {
+    "all_missing": 0.0,
+    "mean_missing": 0.0
+   },
+   "D2-D15": {
+    "all_missing": 0.0,
+    "mean_missing": 0.5671428571428572
+   },
+   "customer_type": "existing",
+   "joint_M_V_id_profile_unseen_in_real": 0.0
+  }
+ }
+}

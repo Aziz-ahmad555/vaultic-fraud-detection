@@ -7,7 +7,7 @@ import { LabError } from "./testlab";
 
 export type Action = "allow" | "monitor" | "step_up" | "hold" | "block";
 export type Intensity = "low" | "medium" | "high";
-export type Generator = "v1" | "v2";
+export type Generator = "v1" | "v2" | "v3";
 
 export interface ScenarioInfo {
   name: string;
@@ -86,6 +86,7 @@ export interface RunResult {
   seed: number;
   intensity: Intensity;
   generator?: Generator;
+  generator_note?: string | null;
   model: string;
   days: number[];
   info: Record<string, unknown>;
@@ -147,7 +148,9 @@ export interface SuiteSummary {
 export interface SuiteResponse {
   label: string;
   suite: SuiteSummary | null;
+  suite_v2?: SuiteSummary | null;
   suite_v1?: SuiteSummary | null;
+  superseded?: Partial<Record<Generator, string>>;
   posthoc: { label: string; per_day: PosthocDay[]; new_accounts: Record<string, RateGroup | number[]> } | null;
 }
 

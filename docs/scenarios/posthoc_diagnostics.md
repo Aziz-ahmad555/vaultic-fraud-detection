@@ -47,12 +47,15 @@ R3 threshold (D196): 778. Per-rule columns use the D196 thresholds.
 
 | group | rows | alert rate (step-up or higher) | hold/block rate |
 |---|---|---|---|
-| bust-out build-up rows, generator v2 (synthetic, labelled legitimate) | 185 | 0.476 | 0.0000 |
+| bust-out build-up rows, generator v3 (primary; synthetic, labelled legitimate) | 185 | 0.503 | 0.0000 |
+| bust-out build-up rows, generator v2 (superseded: donor pool included fraud rows) | 185 | 0.476 | 0.0000 |
 | bust-out build-up rows, generator v1 (every masked field missing) | 185 | 0.838 | 0.0000 |
 | all real legitimate rows, same replay days | 59605 | 0.242 | 0.0002 |
 | real legitimate young accounts (masked time-delta D1 0-13) | 29809 | 0.419 | 0.0004 |
 |   of which card-not-present (ProductCD W) | 20229 | 0.385 | 0.0005 |
 |   of which every M and V field missing | 0 | - | - |
+|   of which card-not-present with amount 500-2,000 (post-hoc reviewer check) | 1463 | 0.999 | 0.0055 |
 
+The last row is a post-hoc reviewer check on test-period rows (review finding 2): E12 decides on expected loss (calibrated probability x amount), so large amounts are stepped up whatever the account; bust-out cash-outs of 500-2,000 being stepped up is therefore not bust-out detection.
 Replay days: 159-180. D1 is a masked time-delta field; the uid reconstruction treats day - D1 as the account's start, as the synthetic build-up rows do.
 

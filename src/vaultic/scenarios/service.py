@@ -40,24 +40,27 @@ INTENSITY_MEANING = {
     "mimicry": {"low": "1 transaction", "medium": "3 transactions", "high": "6 transactions"},
 }  # fmt: skip
 STEP_UP_NOTE = "A step-up is an extra customer check (friction), not a block."
-NOTES: dict[str, list[str]] = {  # findings shown with each scenario (D198, D200, D202)
+NOTES: dict[str, list[str]] = {  # findings shown with each scenario (D198, D200, D202, D204, D207)
     "card_testing": [
         "The model's step-ups on 1-10 charges come only from its uncertainty set: the expected loss (probability x amount) of a "
         "small charge is a few cents, and late in a long burst the 1-hour count lowers the model's score (D198). Rule R1 covers that region.",
-        "With realistic masked fields (generator v2, D203) the model alone catches far fewer charges than with v1: 14/125 instead of "
-        "37/125 at high intensity (D204)."],
+        "Post hoc: the model's recall fell with realistic masked fields (generator v3, D205): the model alone catches 20/125 "
+        "charges at high intensity, 37/125 with generator v1 (D207)."],
     "account_takeover": [
         "Rule R6 (new device + high amount) fires only on the first transaction on the new device: after it, the device is no "
         "longer new to the customer."],
     "mule_ring": [
         "Rule R3 (shared device, threshold 778 customers in 7 days) never fires on a ring of 5-20 cards. Rules-only catches come "
         "from R4 (blocklist) and depend on whether the seed's device already carried known fraud: 0 or all.",
-        "With realistic masked fields (generator v2, D203) the model's recall on the ring falls from 100% (v1) to 79-84%: "
-        "v1's new cards with every masked field missing looked riskier than real new cards do (D204)."],
+        "Post hoc: the model's recall fell with realistic masked fields (generator v3, D205): 68-74% of ring transactions "
+        "(17/25, 37/50, 73/100), against 100% with generator v1, whose new cards had every masked field missing (D207)."],
     "bust_out": [
-        "Pre-cash-out alerts likely reflect new-account risk, not bust-out detection: with generator v2 the model alerts on 47.6% "
-        "of the build-up rows, close to its 41.9% on real legitimate young accounts (38.5% card-not-present; 24.2% of all "
-        "legitimate rows, same days). Generator v1's build-up rows, with every masked field missing, were alerted at 83.8% (D202, D204)."],
+        "Post hoc: pre-cash-out alerts likely reflect new-account risk, not bust-out detection: with generator v3 the model alerts "
+        "on 50.3% of the build-up rows, close to its 41.9% on real legitimate young accounts (38.5% card-not-present; 24.2% of all "
+        "legitimate rows, same days). Generator v1's build-up rows, with every masked field missing, were alerted at 83.8% (D202, D207).",
+        "Post-hoc reviewer check on test-period rows: the cash-outs are stepped up by E12's expected-loss policy on large amounts - "
+        "real legitimate young card-not-present accounts with amounts of 500-2,000 are stepped up 99.9% of the time (1,463 rows) - "
+        "so this is not bust-out detection (D207)."],
     "mimicry": ["Undetected by design: the fraud copies the customer's own amounts, times of day and device."],
 }  # fmt: skip
 

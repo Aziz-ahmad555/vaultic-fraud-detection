@@ -61,7 +61,7 @@ describe("Attack Lab", () => {
     const { api, lab } = fakes();
     render(<AttackLab api={api} lab={lab} pollMs={60000} replayMs={0} />);
     await userEvent.click(await screen.findByRole("button", { name: "Run scenario" }));
-    await waitFor(() => expect(api.run).toHaveBeenCalledWith({ scenario: "card_testing", intensity: "medium", seed: 0, model: true, generator: "v2" }));
+    await waitFor(() => expect(api.run).toHaveBeenCalledWith({ scenario: "card_testing", intensity: "medium", seed: 0, model: true, generator: "v3" }));
     expect(await screen.findByRole("table", { name: "Scorecard D196 (primary)" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "Scorecard D196 without R3 (post hoc)" })).toBeInTheDocument();
     expect(screen.getAllByText(/post-hoc sensitivity \(chosen after seeing results\)/).length).toBeGreaterThan(0);
@@ -101,27 +101,30 @@ const agg = (model: string, rules = "0/25"): SuiteSetAgg => {
   return { n_seeds: 5, synthetic_fraud_rows: 25, rules_only: m(rules), model_only: m(model), rules_plus_model: m(model),
     added_fpr_max: 0.01, budget_added_fpr_ok_seeds: "3/5", budget_rules_only_ok_seeds: "3/5" };
 };
-const summary = (generator: "v1" | "v2", model: string): SuiteSummary => ({
+const summary = (generator: "v1" | "v2" | "v3", model: string): SuiteSummary => ({
   label: "x", generator, seeds: [0, 1, 2, 3, 4],
   scenarios: { card_testing: { low: { "D196 (primary)": agg(model) }, medium: { "D196 (primary)": agg(model) }, high: { "D196 (primary)": agg(model) } } },
 });
 
 describe("generator v1 vs v2", () => {
   it("compares recall per intensity and mode", () => {
-    const rows = compareGenerators(summary("v2", "5/25"), summary("v1", "25/25"), "card_testing");
+    const rows = compareGenerators({ v1: summary("v1", "25/25"), v2: summary("v2", "10/25"), v3: summary("v3", "5/25") }, "card_testing");
     expect(rows).toHaveLength(9);
     const low = rows.find((r) => r.intensity === "low" && r.mode === "Model only")!;
-    expect(low).toMatchObject({ v1: "25/25", v2: "5/25" });
+    expect(low.caught).toEqual({ v1: "25/25", v2: "10/25", v3: "5/25" });
     expect(low.drop).toBeCloseTo(0.8);
-    expect(compareGenerators(summary("v2", "5/25"), null, "card_testing")).toEqual([]);
+    expect(compareGenerators({ v1: null, v2: null, v3: summary("v3", "5/25") }, "card_testing")).toEqual([]);
   });
 
   it("says plainly when the model's recall drops with generator v2, and sends the chosen generator", async () => {
-    const suite: SuiteResponse = { label: "x", suite: summary("v2", "5/25"), suite_v1: summary("v1", "25/25"), posthoc: null };
+    const suite: SuiteResponse = { label: "x", suite: summary("v3", "5/25"), suite_v2: summary("v2", "10/25"), suite_v1: summary("v1", "25/25"), posthoc: null,
+      superseded: { v2: "superseded: donor pool included fraud rows (review finding 1)" } };
     const { api, lab } = fakes({ suite: vi.fn(async () => suite) });
     render(<AttackLab api={api} lab={lab} pollMs={60000} replayMs={0} />);
-    expect(await screen.findByTestId("recall-drop")).toHaveTextContent("the model catches fewer");
-    expect(screen.getByTestId("recall-drop")).toHaveTextContent("low 25/25 (v1) to 5/25 (v2)");
+    expect(await screen.findByTestId("recall-drop")).toHaveTextContent("Post hoc: with realistic masked fields (generator v3) the model catches fewer");
+    expect(screen.getByTestId("recall-drop")).toHaveTextContent("low 25/25 (v1) to 5/25 (v3)");
+    expect(screen.getByTestId("recall-drop")).not.toHaveTextContent("inflated");
+    expect(screen.getByText(/v2: superseded: donor pool included fraud rows/)).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "Generator comparison" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Generator v1 (recorded)" }));
     await userEvent.click(screen.getByRole("button", { name: "Run scenario" }));
@@ -129,7 +132,7 @@ describe("generator v1 vs v2", () => {
   });
 
   it("shows no drop warning when recall holds", async () => {
-    const suite: SuiteResponse = { label: "x", suite: summary("v2", "23/25"), suite_v1: summary("v1", "25/25"), posthoc: null };
+    const suite: SuiteResponse = { label: "x", suite: summary("v3", "23/25"), suite_v1: summary("v1", "25/25"), posthoc: null };
     const { api, lab } = fakes({ suite: vi.fn(async () => suite) });
     render(<AttackLab api={api} lab={lab} pollMs={60000} replayMs={0} />);
     expect(await screen.findByRole("table", { name: "Generator comparison" })).toBeInTheDocument();

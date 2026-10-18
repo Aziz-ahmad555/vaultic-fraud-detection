@@ -1455,7 +1455,18 @@
    "alert_rate": null,
    "hold_block_rate": null
   },
+  "young_accounts_W_amount_500_2000": {
+   "rows": 1463,
+   "alert_rate": 0.9993164730006835,
+   "hold_block_rate": 0.005468215994531784
+  },
   "bust_out_build_up": {
+   "rows": 185,
+   "alert_rate": 0.5027027027027027,
+   "hold_block_rate": 0.0,
+   "alerts": 93
+  },
+  "bust_out_build_up_v2": {
    "rows": 185,
    "alert_rate": 0.4756756756756757,
    "hold_block_rate": 0.0,
