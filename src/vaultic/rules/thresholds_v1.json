@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "decision": "D192, D195",
+  "max_rule_fpr": 0.005,
+  "validation_days": [
+    128,
+    150
+  ],
+  "n_rows": 60602,
+  "n_fraud": 2114,
+  "code_commit": "e3cd51dc6461a1e51eb2b54e400ed86e13284876",
+  "note": "validation numbers (real rows), not the evaluation; chosen before any scenario",
+  "rules": {
+    "R1": {
+      "name": "customer velocity, 1 hour",
+      "inputs": [
+        "uid_n_1h"
+      ],
+      "condition": "customer's transactions in the previous hour",
+      "action": "step_up",
+      "threshold": 5.0,
+      "validation": {
+        "hits": 146,
+        "true_positives": 3,
+        "false_positives": 143,
+        "precision": 0.02054794520547945,
+        "recall": 0.0014191106906338694,
+        "fpr": 0.00244494597182328
+      }
+    },
+    "R2": {
+      "name": "customer velocity, 24 hours",
+      "inputs": [
+        "uid_n_24h"
+      ],
+      "condition": "customer's transactions in the previous 24 hours",
+      "action": "step_up",
+      "threshold": 14.0,
+      "validation": {
+        "hits": 300,
+        "true_positives": 16,
+        "false_positives": 284,
+        "precision": 0.05333333333333334,
+        "recall": 0.007568590350047304,
+        "fpr": 0.004855696895089591
+      }
+    },
+    "R3": {
+      "name": "shared device",
+      "inputs": [
+        "ent_uids_7d_device"
+      ],
+      "condition": "distinct customers on this device in the previous 7 days",
+      "action": "hold",
+      "threshold": 754.0,
+      "validation": {
+        "hits": 316,
+        "true_positives": 25,
+        "false_positives": 291,
+        "precision": 0.07911392405063292,
+        "recall": 0.011825922421948912,
+        "fpr": 0.004975379565038982
+      }
+    },
+    "R4": {
+      "name": "blocklist (card or device with known fraud)",
+      "inputs": [
+        "g_fraud_rate_card",
+        "g_fraud_rate_device"
+      ],
+      "condition": "known-fraud share of the card's or device's earlier transactions (labels known by t - 30 days)",
+      "action": "hold",
+      "threshold": 0.3389830508474576,
+      "validation": {
+        "hits": 401,
+        "true_positives": 118,
+        "false_positives": 283,
+        "precision": 0.2942643391521197,
+        "recall": 0.05581835383159887,
+        "fpr": 0.0048385993708111065
+      }
+    },
+    "R5": {
+      "name": "new-customer amount cap",
+      "inputs": [
+        "hist_n_past",
+        "TransactionAmt"
+      ],
+      "condition": "amount, for a customer with no earlier transaction",
+      "action": "step_up",
+      "threshold": 1193.43,
+      "validation": {
+        "hits": 298,
+        "true_positives": 6,
+        "false_positives": 292,
+        "precision": 0.020134228187919462,
+        "recall": 0.002838221381267739,
+        "fpr": 0.004992477089317467
+      }
+    },
+    "R6": {
+      "name": "new device + high amount",
+      "inputs": [
+        "new_device",
+        "amt_ratio_median"
+      ],
+      "condition": "amount / customer's median amount, on a device new to the customer",
+      "action": "hold",
+      "threshold": 2.0547945499420166,
+      "validation": {
+        "hits": 333,
+        "true_positives": 41,
+        "false_positives": 292,
+        "precision": 0.12312312312312312,
+        "recall": 0.019394512771996216,
+        "fpr": 0.004992477089317467
+      }
+    }
+  },
+  "rules_only": {
+    "hits": 1691,
+    "true_positives": 202,
+    "false_positives": 1489,
+    "precision": 0.11945594322885866,
+    "recall": 0.09555345316934721,
+    "fpr": 0.025458213650663385
+  },
+  "actions_on_validation": {
+    "allow": 58911,
+    "monitor": 0,
+    "step_up": 665,
+    "hold": 1026,
+    "block": 0
+  }
+}
