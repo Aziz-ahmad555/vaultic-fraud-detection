@@ -113,7 +113,8 @@ system (MVAF over the five views, E12 decisions): every feature is computed from
 history strictly before the transaction, with the research pipeline's own feature code. It needs
 the real-data setup above (bundle and data files on drive E) and the frozen stage-2 system cache
 (`E:\dev-cache\stage2\system_dev.joblib` or `E:\dev-cache\testlab\system.joblib`; built
-automatically on first start if neither exists, about 25 minutes).
+automatically on first start if neither exists, about 25 minutes). The caches live under `VAULTIC_CACHE_DIR` (default `E:/dev-cache`):
+`testlab/` for the system and the parity results.
 
 **1. Start the backend with the Test Lab** (window 1, repository root):
 

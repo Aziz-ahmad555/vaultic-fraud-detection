@@ -72,12 +72,15 @@ def test_too_many_rows_are_refused():
 
 
 def _real_available() -> bool:
+    from vaultic.live.engine import STAGE2_DEV_SYSTEM, SYSTEM_CACHE
     from vaultic.paths import MERGED_PATH, REPO_ROOT
 
     run = REPO_ROOT / "experiments/runs/EXP-200-final/20261011-002400-202994/predictions.parquet"
-    system = Path("E:/dev-cache/stage2/system_dev.joblib")
-    return MERGED_PATH.exists() and run.exists() and (system.exists() or
-                                                      Path("E:/dev-cache/testlab/system.joblib").exists())  # fmt: skip
+    return (
+        MERGED_PATH.exists()
+        and run.exists()
+        and (SYSTEM_CACHE.exists() or STAGE2_DEV_SYSTEM.exists())
+    )
 
 
 real = pytest.mark.skipif(not _real_available(), reason="needs the data files, the final run and "
@@ -174,3 +177,12 @@ def test_parity_fails_without_the_stored_scores():
 
     out = run_parity(SimpleNamespace(stored=None, store=None, system=None), log=None)
     assert out["passed"] is False and "not available" in out["reason"]
+
+
+def test_cache_root_follows_the_environment(monkeypatch, tmp_path):
+    from vaultic.live.store import DEFAULT_CACHE_ROOT, cache_root
+
+    monkeypatch.delenv("VAULTIC_CACHE_DIR", raising=False)
+    assert cache_root() == Path(DEFAULT_CACHE_ROOT)
+    monkeypatch.setenv("VAULTIC_CACHE_DIR", str(tmp_path))
+    assert cache_root() == tmp_path

@@ -21,16 +21,15 @@ from __future__ import annotations
 import json
 import threading
 import time
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from vaultic.live.parity import SCORE_TOLERANCE
-from vaultic.live.store import CACHE_DIR
+from vaultic.live.store import CACHE_DIR, cache_root
 
 SYSTEM_CACHE = CACHE_DIR / "system.joblib"
-STAGE2_DEV_SYSTEM = Path("E:/dev-cache/stage2/system_dev.joblib")
+STAGE2_DEV_SYSTEM = cache_root() / "stage2" / "system_dev.joblib"  # stage-2 refit (D179)
 ACTIONS = ("allow", "monitor", "step_up", "hold", "block")
 VIEWS = ("tabular", "behavioral", "temporal", "graph", "anomaly")
 

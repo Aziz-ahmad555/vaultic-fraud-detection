@@ -21,6 +21,7 @@ record, D144), as the demo backend does (D154).
 
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,7 +29,15 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-CACHE_DIR = Path("E:/dev-cache/testlab")  # never in the repository
+DEFAULT_CACHE_ROOT = "E:/dev-cache"  # drive E, never in the repository
+
+
+def cache_root() -> Path:
+    """Root of the Test Lab's caches: VAULTIC_CACHE_DIR if set, else E:/dev-cache."""
+    return Path(os.environ.get("VAULTIC_CACHE_DIR") or DEFAULT_CACHE_ROOT)
+
+
+CACHE_DIR = cache_root() / "testlab"  # system, parity results
 SEED = 0
 WINDOW_DAYS = 30
 
