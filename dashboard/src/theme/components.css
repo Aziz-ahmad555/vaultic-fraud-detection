@@ -30,7 +30,9 @@
   min-height: 44px;
   background: var(--sheet);
   border-bottom: 1px solid var(--graphite);
-  flex-wrap: nowrap;
+  /* wraps to a second row instead of overlapping when the controls do not fit */
+  flex-wrap: wrap;
+  row-gap: var(--s-2);
   white-space: nowrap;
 }
 .rail-brand {
@@ -131,7 +133,9 @@
   flex: 1;
 }
 .rail a {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: var(--s-2) var(--s-4);
   text-decoration: none;
   color: var(--ink);
@@ -145,8 +149,8 @@
   background: var(--sheet);
   font-weight: 600;
 }
-.rail-short {
-  display: none;
+.rail-icon {
+  flex: none;
 }
 .rail-foot {
   padding: var(--s-3) var(--s-4);
@@ -171,10 +175,18 @@
   .shell {
     grid-template-columns: 64px minmax(0, 1fr);
   }
-  .rail-label,
   .rail-foot,
   .rail-brand .xs {
     display: none;
+  }
+  /* icons only; the label stays as the link's accessible name, the title is the tooltip */
+  .rail-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
   .rail-brand {
     padding: var(--s-3) 0;
@@ -186,15 +198,16 @@
   .topbar .btn kbd {
     display: none;
   }
-  .rail-short {
-    display: inline;
-    font-weight: 600;
-  }
   .rail a {
-    text-align: center;
-    padding: var(--s-2) 0;
+    justify-content: center;
+    padding: 10px 0;
+  }
+  .rail-icon {
+    width: 18px;
+    height: 18px;
   }
 }
+
 
 /* ---- toasts, dialogs, palette ------------------------------------------------------------- */
 

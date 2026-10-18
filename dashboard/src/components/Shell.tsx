@@ -89,6 +89,29 @@ export const SHORTCUTS: [string, string][] = [
   ["Esc", "Close a dialog"],
 ];
 
+/** One 16px stroke icon per page; the collapsed rail (< 1280px) shows only these, with tooltips. */
+const ICON_PATHS: Record<string, string[]> = {
+  "/": ["M2 2h5v5H2z", "M9 2h5v5H9z", "M2 9h5v5H2z", "M9 9h5v5H9z"],
+  "/live": ["M1 8h3l2-5 3 10 2-5h4"],
+  "/queue": ["M5 3.5h9", "M5 8h9", "M5 12.5h9", "M1.8 3.5h.4", "M1.8 8h.4", "M1.8 12.5h.4"],
+  "/cases": ["M2 4.5h4l1.5 1.5H14v7.5H2z"],
+  "/network": ["M4 4 12 4", "M4 4 8 12", "M12 4 8 12", "M2.5 4a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0", "M10.5 4a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0", "M6.5 12a1.5 1.5 0 1 0 3 0 1.5 1.5 0 1 0-3 0"],
+  "/drift": ["M1.5 13 6 8.5l3 3 5.5-6.5", "M10.5 5H14.5v4"],
+  "/lab": ["M6 1.5h4", "M6.8 1.5v4.5L2.5 13.2a.9.9 0 0 0 .8 1.3h9.4a.9.9 0 0 0 .8-1.3L9.2 6V1.5", "M4.5 10h7"],
+  "/simulate": ["M2 4h12", "M2 8h12", "M2 12h12", "M5 2.5v3", "M10.5 6.5v3", "M7 10.5v3"],
+  "/settings": ["M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 1 0 0-5", "M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.4 1.4M11.6 11.6 13 13M3 13l1.4-1.4M11.6 4.4 13 3"],
+};
+
+function PageIcon({ path }: { path: string }) {
+  return (
+    <svg className="rail-icon" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      {(ICON_PATHS[path] ?? []).map((d) => (
+        <path key={d} d={d} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      ))}
+    </svg>
+  );
+}
+
 function Help() {
   const { helpOpen, setHelpOpen } = useApp();
   const ref = useRef<HTMLDialogElement>(null);
@@ -207,10 +230,9 @@ export function Shell({ children }: { children: ReactNode }) {
           {PAGES.map((p) => (
             <li key={p.path}>
               <NavLink to={p.path} end={p.path === "/"} title={`${p.label} (G then ${p.key.toUpperCase()})`}>
+                <PageIcon path={p.path} />
+                {/* visually hidden in the collapsed rail, still the link's accessible name */}
                 <span className="rail-label">{p.label}</span>
-                <span className="rail-short" aria-hidden="true">
-                  {p.label.slice(0, 2)}
-                </span>
               </NavLink>
             </li>
           ))}
