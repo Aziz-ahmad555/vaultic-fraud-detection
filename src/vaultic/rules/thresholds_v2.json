@@ -590,5 +590,6 @@
       "recall": 0.8947078280044102,
       "fpr": 0.21576104881266492
     }
-  }
+  },
+  "code_commit_note": "code_commit is the HEAD when this file was computed; the --d196 calibration code was not yet committed then and was committed in b320ceb (D206)"
 }

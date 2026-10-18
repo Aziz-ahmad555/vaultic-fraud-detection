@@ -8,7 +8,9 @@ SYNTHETIC_ID_START = 1_000_000_000  # every synthetic TransactionID is >= this; 
 
 
 def require_no_synthetic(transaction_ids) -> None:
-    """Refuse any synthetic TransactionID (a guard for research inputs)."""
+    """Refuse any synthetic TransactionID. Used only inside the scenarios (on the replay's real
+    rows); the research pipeline does not call it. Synthetic rows stay out of research data by
+    construction: they exist only in memory and in outputs under the dev cache."""
     import numpy as np
 
     ids = np.asarray(transaction_ids)

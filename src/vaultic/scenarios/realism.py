@@ -34,6 +34,7 @@ GROUPS = {
     "D2-D15": r"^D(?:[2-9]|1[0-5])$",
 }
 NEW = ("mule_ring", "bust_out")
+SCOPE = "Scope: this check shows only that the synthetic rows' missingness patterns are realistic (they occur in real rows of the customer type); it does not show that their values, or the joint distribution of values, are realistic."
 
 
 def columns(df: pd.DataFrame) -> dict[str, list[str]]:
@@ -92,7 +93,7 @@ def markdown(res: dict, version: str) -> str:
              "customer with >= 3 earlier rows). Cells: share of rows with the whole group missing / "
              "mean share of the group's fields missing. 'Unseen profile': share of synthetic rows whose "
              "exact missingness pattern over all M, V and id fields occurs in no real row of the type.",
-             "", "| rows | n | " + " | ".join(groups) + " | unseen profile |",
+             "", SCOPE, "", "| rows | n | " + " | ".join(groups) + " | unseen profile |",
              "|---|---|" + "---|" * len(groups) + "---|"]  # fmt: skip
 
     def cells(st):

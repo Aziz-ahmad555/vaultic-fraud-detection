@@ -169,12 +169,13 @@ it: the generator injects seeded synthetic attack rows (TransactionID >= 1,000,0
 replay of the real legitimate transactions of the attack's day(s), the history store is overlaid
 with the synthetic rows so later rows see earlier ones, and every row is scored three ways: rules
 only, model only (the frozen E12 decision) and rules + model (the more severe action). Legitimate
-rows unaffected by the attack keep their stored, parity-verified scores; the others are scored
-live. "Model off" is degraded mode: the rules alone decide. The scorecard shows the D196
+rows unaffected by the attack (no shared customer, card or device) keep their stored,
+parity-verified scores; the others are scored live. A row sharing only an email domain or address
+keeps its stored score, so its email and address degree features miss at most the attack's few rows. "Model off" is degraded mode: the rules alone decide. The scorecard shows the D196
 thresholds (primary), D195 (sensitivity) and D196 without R3 (post hoc, chosen after seeing the
 results), recall as counts, and the false-positive rate split into step-up only and hold/block
 (a step-up is an extra customer check, friction, not a block). Below: the 5-seed x 3-intensity
-results (`python -m vaultic.scenarios.suite --generator v2|v1`, read from `E:\dev-cache\scenarios\suite_gen_v2` and `suite_gen_v1`; generator v2 is the primary, D203: every masked field of a synthetic row comes from one real validation-period row) with a v1 vs v2 comparison, and the
+results (`python -m vaultic.scenarios.suite --generator v2|v1`, read from `E:\dev-cache\scenarios\suite_gen_v2` and `suite_gen_v1` (and `suite_gen_v3`, `--generator v3`); generator v3 is the primary, D205: every masked field of a synthetic row comes from one real legitimate validation-period row; v2 is superseded because its donor pool included fraud rows) with a v1 / v2 / v3 comparison, and the
 post-hoc diagnostics (`python -m vaultic.scenarios.posthoc`, `docs/scenarios/`). Every number on
 the page is labelled "synthetic scenario - not the evaluation".
 

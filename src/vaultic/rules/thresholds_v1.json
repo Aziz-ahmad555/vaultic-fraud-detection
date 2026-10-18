@@ -131,5 +131,6 @@
     "step_up": 665,
     "hold": 1026,
     "block": 0
-  }
+  },
+  "code_commit_note": "code_commit is the HEAD when this file was computed; the calibration code (src/vaultic/rules/) was not yet committed then and was committed in b320ceb with the same threshold logic (D206)"
 }

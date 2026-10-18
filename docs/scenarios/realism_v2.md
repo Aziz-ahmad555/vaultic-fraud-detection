@@ -2,6 +2,8 @@
 
 Masked-field missingness of synthetic rows (seeds 0-4 x low / medium / high) vs real rows of the same customer type (new: young accounts, masked time-delta D1 0-13; existing: customer with >= 3 earlier rows). Cells: share of rows with the whole group missing / mean share of the group's fields missing. 'Unseen profile': share of synthetic rows whose exact missingness pattern over all M, V and id fields occurs in no real row of the type.
 
+Scope: this check shows only that the synthetic rows' missingness patterns are realistic (they occur in real rows of the customer type); it does not show that their values, or the joint distribution of values, are realistic.
+
 | rows | n | M | V | id | C | D2-D15 | unseen profile |
 |---|---|---|---|---|---|---|---|
 | real new | 324,650 | 0.23 / 0.56 | 0.00 / 0.40 | 0.62 / 0.77 | 0.00 / 0.00 | 0.09 / 0.68 | - |
