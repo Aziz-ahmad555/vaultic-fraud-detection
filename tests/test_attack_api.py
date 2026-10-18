@@ -53,9 +53,9 @@ def lab(monkeypatch, tmp_path):
 
     monkeypatch.setattr(run, "run_scenario", _fake_run)
     monkeypatch.setitem(
-        gen.GENERATORS, "card_testing", lambda store, seed, intensity: SimpleNamespace()
+        gen.BY_VERSION["v2"], "card_testing", lambda store, seed, intensity: SimpleNamespace()
     )
-    return AttackLab(FakeTestLab(), suite_dir=tmp_path, docs_dir=tmp_path)
+    return AttackLab(FakeTestLab(), suite_dirs={"v1": tmp_path, "v2": tmp_path}, docs_dir=tmp_path)
 
 
 def test_run_returns_labelled_replay_without_stored_rows(lab):
@@ -83,6 +83,7 @@ def test_degraded_mode_lets_the_rules_alone_decide(lab):
     ({"scenario": "card_testing", "intensity": "extreme"}, "intensity must be"),
     ({"scenario": "card_testing", "seed": -1}, "seed must be between"),
     ({"scenario": "card_testing", "seed": "x"}, "whole number"),
+    ({"scenario": "card_testing", "generator": "v9"}, "generator must be"),
 ])  # fmt: skip
 def test_bad_requests_are_refused(lab, spec, msg):
     with pytest.raises(AttackInputError, match=msg):
@@ -117,7 +118,8 @@ def test_endpoints(lab):
     assert c.get("/api/attack/scenarios").status_code == 200
     assert c.post("/api/attack/run", json={"scenario": "nope"}).status_code == 400
     assert c.post("/api/attack/run", json={"scenario": "card_testing"}).json()["label"] == LABEL
-    assert c.get("/api/attack/suite").json() == {"label": LABEL, "suite": None, "posthoc": None}
+    assert c.get("/api/attack/suite").json() == {"label": LABEL, "suite": None, "suite_v1": None,
+                                                 "posthoc": None}  # fmt: skip
     lab.testlab.ready = False
     r = c.post("/api/attack/run", json={"scenario": "card_testing"})
     assert r.status_code == 503 and "not ready" in r.json()["detail"]

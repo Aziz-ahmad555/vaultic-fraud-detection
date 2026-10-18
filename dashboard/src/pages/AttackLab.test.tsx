@@ -1,9 +1,9 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { AttackApi, ModeResult, RunResult, ScenarioList, SuiteResponse } from "../api/attack";
+import type { AttackApi, ModeResult, RunResult, ScenarioList, SuiteResponse, SuiteSetAgg, SuiteSummary } from "../api/attack";
 import type { LabStatus, TestLabApi } from "../api/testlab";
-import { AttackLab } from "./AttackLab";
+import { AttackLab, compareGenerators } from "./AttackLab";
 
 const PARITY = { n: 2000, passed: true, feature_tolerance: 1e-6, score_tolerance: 1e-12, max_feature_diff: 0, max_score_diff: { MVAF: 0, B5: 0 }, n_failing_features: 0, failing_features: {} };
 const READY: LabStatus = { state: "ready", message: "ok", parity: PARITY, latency: { n: 0, p50_ms: null, p95_ms: null } };
@@ -61,7 +61,7 @@ describe("Attack Lab", () => {
     const { api, lab } = fakes();
     render(<AttackLab api={api} lab={lab} pollMs={60000} replayMs={0} />);
     await userEvent.click(await screen.findByRole("button", { name: "Run scenario" }));
-    await waitFor(() => expect(api.run).toHaveBeenCalledWith({ scenario: "card_testing", intensity: "medium", seed: 0, model: true }));
+    await waitFor(() => expect(api.run).toHaveBeenCalledWith({ scenario: "card_testing", intensity: "medium", seed: 0, model: true, generator: "v2" }));
     expect(await screen.findByRole("table", { name: "Scorecard D196 (primary)" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "Scorecard D196 without R3 (post hoc)" })).toBeInTheDocument();
     expect(screen.getAllByText(/post-hoc sensitivity \(chosen after seeing results\)/).length).toBeGreaterThan(0);
@@ -89,5 +89,50 @@ describe("Attack Lab", () => {
     render(<AttackLab api={api} lab={lab} pollMs={60000} replayMs={0} />);
     await userEvent.click(await screen.findByRole("button", { name: "Run scenario" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("seed must be between 0 and 9999");
+  });
+});
+
+const agg = (model: string, rules = "0/25"): SuiteSetAgg => {
+  const m = (c: string) => ({
+    alert: { recall_count: c, recall_per_seed_min_max: ["0/5", "5/5"], fpr_mean: 0.2, fpr_min_max: [0.1, 0.3] as [number, number] },
+    hard: { recall_count: "0/25", recall_per_seed_min_max: ["0/5", "0/5"], fpr_mean: 0.0002, fpr_min_max: [0, 0.001] as [number, number] },
+    stepup_only_fpr_mean: 0.19,
+  });
+  return { n_seeds: 5, synthetic_fraud_rows: 25, rules_only: m(rules), model_only: m(model), rules_plus_model: m(model),
+    added_fpr_max: 0.01, budget_added_fpr_ok_seeds: "3/5", budget_rules_only_ok_seeds: "3/5" };
+};
+const summary = (generator: "v1" | "v2", model: string): SuiteSummary => ({
+  label: "x", generator, seeds: [0, 1, 2, 3, 4],
+  scenarios: { card_testing: { low: { "D196 (primary)": agg(model) }, medium: { "D196 (primary)": agg(model) }, high: { "D196 (primary)": agg(model) } } },
+});
+
+describe("generator v1 vs v2", () => {
+  it("compares recall per intensity and mode", () => {
+    const rows = compareGenerators(summary("v2", "5/25"), summary("v1", "25/25"), "card_testing");
+    expect(rows).toHaveLength(9);
+    const low = rows.find((r) => r.intensity === "low" && r.mode === "Model only")!;
+    expect(low).toMatchObject({ v1: "25/25", v2: "5/25" });
+    expect(low.drop).toBeCloseTo(0.8);
+    expect(compareGenerators(summary("v2", "5/25"), null, "card_testing")).toEqual([]);
+  });
+
+  it("says plainly when the model's recall drops with generator v2, and sends the chosen generator", async () => {
+    const suite: SuiteResponse = { label: "x", suite: summary("v2", "5/25"), suite_v1: summary("v1", "25/25"), posthoc: null };
+    const { api, lab } = fakes({ suite: vi.fn(async () => suite) });
+    render(<AttackLab api={api} lab={lab} pollMs={60000} replayMs={0} />);
+    expect(await screen.findByTestId("recall-drop")).toHaveTextContent("the model catches fewer");
+    expect(screen.getByTestId("recall-drop")).toHaveTextContent("low 25/25 (v1) to 5/25 (v2)");
+    expect(screen.getByRole("table", { name: "Generator comparison" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Generator v1 (recorded)" }));
+    await userEvent.click(screen.getByRole("button", { name: "Run scenario" }));
+    await waitFor(() => expect(api.run).toHaveBeenCalledWith(expect.objectContaining({ generator: "v1" })));
+  });
+
+  it("shows no drop warning when recall holds", async () => {
+    const suite: SuiteResponse = { label: "x", suite: summary("v2", "23/25"), suite_v1: summary("v1", "25/25"), posthoc: null };
+    const { api, lab } = fakes({ suite: vi.fn(async () => suite) });
+    render(<AttackLab api={api} lab={lab} pollMs={60000} replayMs={0} />);
+    expect(await screen.findByRole("table", { name: "Generator comparison" })).toBeInTheDocument();
+    expect(screen.queryByTestId("recall-drop")).toBeNull();
   });
 });

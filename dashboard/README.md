@@ -174,7 +174,7 @@ live. "Model off" is degraded mode: the rules alone decide. The scorecard shows 
 thresholds (primary), D195 (sensitivity) and D196 without R3 (post hoc, chosen after seeing the
 results), recall as counts, and the false-positive rate split into step-up only and hold/block
 (a step-up is an extra customer check, friction, not a block). Below: the 5-seed x 3-intensity
-results (`python -m vaultic.scenarios.suite`, read from `E:\dev-cache\scenarios\suite`) and the
+results (`python -m vaultic.scenarios.suite --generator v2|v1`, read from `E:\dev-cache\scenarios\suite_gen_v2` and `suite_gen_v1`; generator v2 is the primary, D203: every masked field of a synthetic row comes from one real validation-period row) with a v1 vs v2 comparison, and the
 post-hoc diagnostics (`python -m vaultic.scenarios.posthoc`, `docs/scenarios/`). Every number on
 the page is labelled "synthetic scenario - not the evaluation".
 

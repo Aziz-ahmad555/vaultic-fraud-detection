@@ -43,17 +43,21 @@ STEP_UP_NOTE = "A step-up is an extra customer check (friction), not a block."
 NOTES: dict[str, list[str]] = {  # findings shown with each scenario (D198, D200, D202)
     "card_testing": [
         "The model's step-ups on 1-10 charges come only from its uncertainty set: the expected loss (probability x amount) of a "
-        "small charge is a few cents, and late in a long burst the 1-hour count lowers the model's score (D198). Rule R1 covers that region."],
+        "small charge is a few cents, and late in a long burst the 1-hour count lowers the model's score (D198). Rule R1 covers that region.",
+        "With realistic masked fields (generator v2, D203) the model alone catches far fewer charges than with v1: 14/125 instead of "
+        "37/125 at high intensity (D204)."],
     "account_takeover": [
         "Rule R6 (new device + high amount) fires only on the first transaction on the new device: after it, the device is no "
         "longer new to the customer."],
     "mule_ring": [
         "Rule R3 (shared device, threshold 778 customers in 7 days) never fires on a ring of 5-20 cards. Rules-only catches come "
-        "from R4 (blocklist) and depend on whether the seed's device already carried known fraud: 0 or all."],
+        "from R4 (blocklist) and depend on whether the seed's device already carried known fraud: 0 or all.",
+        "With realistic masked fields (generator v2, D203) the model's recall on the ring falls from 100% (v1) to 79-84%: "
+        "v1's new cards with every masked field missing looked riskier than real new cards do (D204)."],
     "bust_out": [
-        "Pre-cash-out alerts are not evidence of bust-out detection: the model alerts on 41.9% of real legitimate young accounts "
-        "(24.2% of all legitimate rows, same days) and on 83.8% of the synthetic build-up rows, whose every masked M and V field "
-        "is missing - a profile no real row has (D202)."],
+        "Pre-cash-out alerts likely reflect new-account risk, not bust-out detection: with generator v2 the model alerts on 47.6% "
+        "of the build-up rows, close to its 41.9% on real legitimate young accounts (38.5% card-not-present; 24.2% of all "
+        "legitimate rows, same days). Generator v1's build-up rows, with every masked field missing, were alerted at 83.8% (D202, D204)."],
     "mimicry": ["Undetected by design: the fraud copies the customer's own amounts, times of day and device."],
 }  # fmt: skip
 
@@ -70,12 +74,12 @@ def _notes(name: str) -> list[str]:
 
 
 class AttackLab:
-    def __init__(self, testlab, suite_dir: Path | None = None, docs_dir: Path | None = None):
-        from vaultic.live.store import cache_root
+    def __init__(self, testlab, suite_dirs: dict | None = None, docs_dir: Path | None = None):
         from vaultic.paths import REPO_ROOT
+        from vaultic.scenarios.suite import suite_dir
 
         self.testlab = testlab
-        self.suite_dir = suite_dir or cache_root() / "scenarios" / "suite"
+        self.suite_dirs = suite_dirs or {"v2": suite_dir("v2"), "v1": suite_dir("v1")}
         self.docs_dir = docs_dir or REPO_ROOT / "docs" / "scenarios"
         self.lock = threading.Lock()
 
@@ -91,12 +95,15 @@ class AttackLab:
 
     def run(self, spec: dict) -> dict:
         from vaultic.rules.engine import combine
-        from vaultic.scenarios.generators import GENERATORS, INTENSITIES
+        from vaultic.scenarios.generators import BY_VERSION, INTENSITIES
         from vaultic.scenarios.run import run_scenario
 
         name = spec.get("scenario")
-        if name not in GENERATORS:
-            raise AttackInputError(f"scenario must be one of {sorted(GENERATORS)}")
+        generator = spec.get("generator", "v2")
+        if generator not in BY_VERSION:
+            raise AttackInputError(f"generator must be one of {sorted(BY_VERSION)}")
+        if name not in BY_VERSION[generator]:
+            raise AttackInputError(f"scenario must be one of {sorted(BY_VERSION[generator])}")
         intensity = spec.get("intensity", "medium")
         if intensity not in INTENSITIES:
             raise AttackInputError(f"intensity must be one of {list(INTENSITIES)}")
@@ -109,7 +116,7 @@ class AttackLab:
         model_on = bool(spec.get("model", True))
         engine = self.testlab._ready()
         with self.lock, engine.lock:
-            sc = GENERATORS[name](engine.store, seed=seed, intensity=intensity)
+            sc = BY_VERSION[generator][name](engine.store, seed=seed, intensity=intensity)
             res = run_scenario(engine.store, engine.system, engine.stored, sc, log=lambda m: None)
         rows = res["rows"]
         shown = rows[rows["synthetic"] | (rows["source"] == "scored live")].copy()
@@ -121,7 +128,7 @@ class AttackLab:
         for r in replay:
             r["trace"] = traces.get(int(r["TransactionID"]))
         return {"label": LABEL, "scenario": name, "title": TITLES[name], "seed": seed,
-                "intensity": intensity, "model": "on" if model_on else "off (degraded mode: rules alone decide)",
+                "intensity": intensity, "generator": generator, "model": "on" if model_on else "off (degraded mode: rules alone decide)",
                 "days": res["days"], "info": _jsonable(res["info"]), "notes": _notes(name),
                 "step_up_note": STEP_UP_NOTE, "n_synthetic": res["n_synthetic"],
                 "n_legit_replay": res["n_legit_replay"], "n_legit_stored": res["n_legit_stored"],
@@ -129,10 +136,11 @@ class AttackLab:
                 "seconds": res["seconds"], "results": res["results"], "replay": replay}  # fmt: skip
 
     def suite(self) -> dict:
-        out = {"label": LABEL, "suite": None, "posthoc": None}
-        s = self.suite_dir / "summary.json"
-        if s.exists():
-            out["suite"] = json.loads(s.read_text("utf-8"))
+        out = {"label": LABEL, "suite": None, "suite_v1": None, "posthoc": None}
+        for key, version in (("suite", "v2"), ("suite_v1", "v1")):  # v2 primary (D203)
+            s = self.suite_dirs[version] / "summary.json"
+            if s.exists():
+                out[key] = json.loads(s.read_text("utf-8"))
         p = self.docs_dir / "posthoc_diagnostics.json"
         if p.exists():
             out["posthoc"] = json.loads(p.read_text("utf-8"))

@@ -7,6 +7,7 @@ import { LabError } from "./testlab";
 
 export type Action = "allow" | "monitor" | "step_up" | "hold" | "block";
 export type Intensity = "low" | "medium" | "high";
+export type Generator = "v1" | "v2";
 
 export interface ScenarioInfo {
   name: string;
@@ -84,6 +85,7 @@ export interface RunResult {
   title: string;
   seed: number;
   intensity: Intensity;
+  generator?: Generator;
   model: string;
   days: number[];
   info: Record<string, unknown>;
@@ -135,9 +137,17 @@ export interface RateGroup {
   hold_block_rate: number | null;
 }
 
+export interface SuiteSummary {
+  label: string;
+  generator?: Generator;
+  seeds: number[];
+  scenarios: Record<string, Record<string, SuiteSetAgg | string | Record<string, SuiteSetAgg>>>;
+}
+
 export interface SuiteResponse {
   label: string;
-  suite: { label: string; seeds: number[]; scenarios: Record<string, Record<string, SuiteSetAgg | string | Record<string, SuiteSetAgg>>> } | null;
+  suite: SuiteSummary | null;
+  suite_v1?: SuiteSummary | null;
   posthoc: { label: string; per_day: PosthocDay[]; new_accounts: Record<string, RateGroup | number[]> } | null;
 }
 
@@ -146,6 +156,7 @@ export interface RunSpec {
   intensity: Intensity;
   seed: number;
   model: boolean;
+  generator: Generator;
 }
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;

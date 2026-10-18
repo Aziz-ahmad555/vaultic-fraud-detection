@@ -47,7 +47,8 @@ R3 threshold (D196): 778. Per-rule columns use the D196 thresholds.
 
 | group | rows | alert rate (step-up or higher) | hold/block rate |
 |---|---|---|---|
-| bust-out build-up rows (synthetic, labelled legitimate) | 185 | 0.838 | 0.0000 |
+| bust-out build-up rows, generator v2 (synthetic, labelled legitimate) | 185 | 0.476 | 0.0000 |
+| bust-out build-up rows, generator v1 (every masked field missing) | 185 | 0.838 | 0.0000 |
 | all real legitimate rows, same replay days | 59605 | 0.242 | 0.0002 |
 | real legitimate young accounts (masked time-delta D1 0-13) | 29809 | 0.419 | 0.0004 |
 |   of which card-not-present (ProductCD W) | 20229 | 0.385 | 0.0005 |

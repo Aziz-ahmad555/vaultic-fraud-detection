@@ -1457,6 +1457,12 @@
   },
   "bust_out_build_up": {
    "rows": 185,
+   "alert_rate": 0.4756756756756757,
+   "hold_block_rate": 0.0,
+   "alerts": 88
+  },
+  "bust_out_build_up_v1": {
+   "rows": 185,
    "alert_rate": 0.8378378378378378,
    "hold_block_rate": 0.0,
    "alerts": 155

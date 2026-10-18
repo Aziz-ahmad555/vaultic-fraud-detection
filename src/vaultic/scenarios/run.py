@@ -258,19 +258,21 @@ def main() -> None:
     import argparse
 
     from vaultic.live.store import cache_root
-    from vaultic.scenarios.generators import GENERATORS, INTENSITIES
+    from vaultic.scenarios.generators import BY_VERSION, INTENSITIES
 
     p = argparse.ArgumentParser(description=f"run one attack scenario ({LABEL})")
-    p.add_argument("--scenario", default="card_testing", choices=sorted(GENERATORS))
+    p.add_argument("--scenario", default="card_testing", choices=sorted(BY_VERSION["v2"]))
+    p.add_argument("--generator", default="v2", choices=sorted(BY_VERSION))
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--intensity", default="medium", choices=INTENSITIES)
     a = p.parse_args()
     t0 = time.perf_counter()
     system, store, stored = load_all()
     print(f"loaded in {time.perf_counter() - t0:.0f} s", flush=True)
-    sc = GENERATORS[a.scenario](store, seed=a.seed, intensity=a.intensity)
+    sc = BY_VERSION[a.generator][a.scenario](store, seed=a.seed, intensity=a.intensity)
     res = run_scenario(store, system, stored, sc)
-    out = cache_root() / "scenarios" / "results" / f"{a.scenario}_s{a.seed}_{a.intensity}"
+    out = (cache_root() / "scenarios" / "results"
+           / f"{a.scenario}_s{a.seed}_{a.intensity}_gen{a.generator}")  # fmt: skip
     save(res, out)
     print(json.dumps({k: v for k, v in res.items() if k not in ("rows", "traces")}, indent=1))
     print(res["rows"][res["rows"]["source"] == LIVE].to_string(max_rows=80))

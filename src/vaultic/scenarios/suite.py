@@ -28,6 +28,13 @@ SEEDS = (0, 1, 2, 3, 4)
 MODES = ("rules_only", "model_only", "rules_plus_model")
 
 
+def suite_dir(generator: str):
+    """Where the suite of a generator version is written (dev cache, never the repository)."""
+    from vaultic.live.store import cache_root
+
+    return cache_root() / "scenarios" / f"suite_gen_{generator}"
+
+
 def aggregate(runs: list[dict]) -> dict:
     """runs: summaries of one scenario x intensity (one per seed)."""
     out = {}
@@ -71,7 +78,7 @@ def aggregate(runs: list[dict]) -> dict:
 
 
 def markdown(summary: dict) -> str:
-    lines = [f"# Attack scenario suite - {LABEL}", "",
+    lines = [f"# Attack scenario suite (generator {summary.get('generator', 'v1')}) - {LABEL}", "",
              "Seeds 0-4 per cell. Recall: alerted synthetic fraud rows, total over seeds "
              "(per-seed min - max). FPR: real legitimate replay rows, mean (min - max). Alert = "
              "step-up or higher (D196); hard = hold or block (extra reporting). A step-up is an "
@@ -115,18 +122,20 @@ def markdown(summary: dict) -> str:
 def main() -> None:
     import argparse
 
-    from vaultic.live.store import cache_root
-    from vaultic.scenarios.generators import GENERATORS, INTENSITIES, MULE_DEVICE_NOTE
+    from vaultic.scenarios.generators import BY_VERSION, INTENSITIES, MULE_DEVICE_NOTE
     from vaultic.scenarios.run import load_all, run_scenario, save
 
     p = argparse.ArgumentParser(description=f"scenario suite ({LABEL})")
-    p.add_argument("--scenarios", nargs="*", default=list(GENERATORS))
+    p.add_argument("--generator", default="v2", choices=sorted(BY_VERSION))
+    p.add_argument("--scenarios", nargs="*", default=list(BY_VERSION["v2"]))
     a = p.parse_args()
-    root = cache_root() / "scenarios" / "suite"
+    generators = BY_VERSION[a.generator]
+    root = suite_dir(a.generator)
     started = time.perf_counter()
     system, store, stored = load_all()
     print(f"loaded in {time.perf_counter() - started:.0f} s", flush=True)
-    summary = {"label": LABEL, "seeds": list(SEEDS), "scenarios": {}}
+    root.mkdir(parents=True, exist_ok=True)
+    summary = {"label": LABEL, "generator": a.generator, "seeds": list(SEEDS), "scenarios": {}}
     for name in a.scenarios:
         by_int = {}
         if name == "mule_ring":
@@ -134,7 +143,7 @@ def main() -> None:
         for inten in INTENSITIES:
             runs = []
             for seed in SEEDS:
-                sc = GENERATORS[name](store, seed=seed, intensity=inten)
+                sc = generators[name](store, seed=seed, intensity=inten)
                 res = run_scenario(store, system, stored, sc, log=lambda m: None)
                 save(res, root / f"{name}_s{seed}_{inten}")
                 runs.append({k: v for k, v in res.items() if k not in ("rows", "traces")})

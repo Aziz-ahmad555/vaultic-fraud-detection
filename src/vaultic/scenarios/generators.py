@@ -1,4 +1,4 @@
-"""Seeded scenario generators (Phase B, D197, D199). Each returns the synthetic rows (stored columns
+"""Seeded scenario generators (Phase B, D197, D199, D203; v2 = the primary since D203, see apply_v2). Each returns the synthetic rows (stored columns
 and dtypes), their customer codes, labels and a description; every row is marked synthetic by its
 TransactionID (>= SYNTHETIC_ID_START). Same seed + intensity -> same rows.
 
@@ -37,6 +37,7 @@ DeviceInfo, so the device fingerprint is a real one.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -348,5 +349,79 @@ def mimicry(store, seed=0, intensity="medium", day=None, scenario_index=4) -> Sc
     )
 
 
-GENERATORS = {"card_testing": card_testing, "account_takeover": account_takeover,
-              "mule_ring": mule_ring, "bust_out": bust_out, "mimicry": mimicry}  # fmt: skip
+GENERATORS_V1 = {"card_testing": card_testing, "account_takeover": account_takeover,
+                 "mule_ring": mule_ring, "bust_out": bust_out, "mimicry": mimicry}  # fmt: skip
+
+
+# ---- generator v2 (D203): masked fields from real validation-period rows ----------------------
+MASKED_V2 = re.compile(r"^(C\d+|D(?:[2-9]|1[0-5])|M\d+|V\d+|dist1|dist2)$")
+IDENTITY_COLS = re.compile(r"^(DeviceType|DeviceInfo|id_\d+)$")
+KEEPS_DEVICE = ("account_takeover", "mule_ring")  # the scenario's own device stays (D203)
+NEW_CUSTOMER = ("mule_ring", "bust_out")
+
+
+def _pools(store) -> dict:
+    df = store.df
+    day = df["day"].to_numpy()
+    val = (day >= store.splits.validation.first) & (day <= store.splits.validation.last)
+    d1 = df["D1"].to_numpy(float)
+    n_past = np.nan_to_num(store.features["hist_n_past"].to_numpy(float))
+    return {"val": val, "young": val & (d1 >= 0) & (d1 <= 13), "existing": val & (n_past >= 3),
+            "product": df["ProductCD"].astype(object).to_numpy()}  # fmt: skip
+
+
+def apply_v2(store, sc: Scenario) -> Scenario:
+    """Generator v2 (D203): each synthetic row's masked block (C, D2-D15, M, V, dist1/dist2 and,
+    unless the scenario sets the device, DeviceType / DeviceInfo / id_*) copied from ONE real
+    validation-period row: the hijacked customer's own rows with the row's product (else existing
+    customers' rows with that product) for existing customers; young accounts' rows with the row's
+    product for new customers. Own random stream (seed, 2): the attack structure equals v1's."""
+    rng = np.random.default_rng([sc.seed, 2])
+    df, pools = store.df, _pools(store)
+    rows = sc.rows.copy()
+    cols = [c for c in rows.columns if MASKED_V2.match(c)]
+    if sc.name not in KEEPS_DEVICE:
+        cols += [c for c in rows.columns if IDENTITY_COLS.match(c)]
+    picks, tiers = [], {"own": 0, "pool": 0}
+    for i in range(len(rows)):
+        product = str(rows["ProductCD"].iat[i])
+        if sc.name in NEW_CUSTOMER:
+            cand = np.flatnonzero(pools["young"] & (pools["product"] == product))
+            tiers["pool"] += 1
+        else:
+            own = store.uid_rows.get(int(sc.uids[i]), np.array([], dtype=np.int64))
+            own = own[pools["val"][own]]
+            if sc.name != "mimicry":
+                own = own[pools["product"][own] == product]
+            if len(own):
+                cand = own
+                tiers["own"] += 1
+            else:
+                cand = np.flatnonzero(pools["existing"] & (pools["product"] == product))
+                tiers["pool"] += 1
+        picks.append(int(rng.choice(cand)))
+    src = df.iloc[picks].reset_index(drop=True)
+    for c in cols:
+        rows[c] = src[c].to_numpy()
+    if sc.name == "mimicry":  # the customer's own product and device come with the sampled row
+        rows["ProductCD"] = src["ProductCD"].to_numpy()
+    ident = [c for c in rows.columns if IDENTITY_COLS.match(c)]
+    rows["has_identity"] = rows[ident].notna().any(axis=1).astype(np.int8)
+    rows = rows.astype(store.df.dtypes.to_dict())
+    _resolve(store, rows, sc.uids)
+    info = dict(sc.info, generator="v2", masked_source=tiers,
+                masked_source_transactions=[int(t) for t in src["TransactionID"]])  # fmt: skip
+    return Scenario(sc.name, sc.seed, sc.intensity, sc.day, rows, sc.uids, sc.labels, info)
+
+
+def _v2(gen):
+    def run(store, seed=0, intensity="medium", day=None):
+        return apply_v2(store, gen(store, seed=seed, intensity=intensity, day=day))
+
+    run.__name__ = f"{gen.__name__}_v2"
+    return run
+
+
+GENERATORS_V2 = {name: _v2(gen) for name, gen in GENERATORS_V1.items()}
+GENERATORS = GENERATORS_V2  # the primary generator since D203; v1 stays available and recorded
+BY_VERSION = {"v1": GENERATORS_V1, "v2": GENERATORS_V2}

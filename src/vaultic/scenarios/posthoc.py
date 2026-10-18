@@ -65,7 +65,9 @@ def per_day(store, sets: dict[str, dict[str, float]]) -> list[dict]:
     return out
 
 
-def new_accounts(store, system, days: list[int], build_up: dict) -> dict:
+def new_accounts(
+    store, system, days: list[int], build_up: dict, build_up_v1: dict | None = None
+) -> dict:
     from vaultic.scenarios.run import model_actions
 
     df, f = store.df, store.features
@@ -93,7 +95,7 @@ def new_accounts(store, system, days: list[int], build_up: dict) -> dict:
             "young_accounts_d1_0_13": rates(young),
             "young_accounts_card_not_present_W": rates(cnp),
             "young_accounts_all_M_V_missing": rates(young & all_mv_missing),
-            "bust_out_build_up": build_up}  # fmt: skip
+            "bust_out_build_up": build_up, "bust_out_build_up_v1": build_up_v1}  # fmt: skip
 
 
 def build_up_rates(suite_dir) -> tuple[list[int], dict]:
@@ -140,13 +142,16 @@ def markdown(daily: list[dict], acc: dict, set_names) -> str:
               "D196 thresholds.", "", "## Model alerts on real new accounts vs bust-out build-up",
               "", "| group | rows | alert rate (step-up or higher) | hold/block rate |",
               "|---|---|---|---|"]  # fmt: skip
-    names = {"bust_out_build_up": "bust-out build-up rows (synthetic, labelled legitimate)",
+    names = {"bust_out_build_up": "bust-out build-up rows, generator v2 (synthetic, labelled legitimate)",
+             "bust_out_build_up_v1": "bust-out build-up rows, generator v1 (every masked field missing)",
              "all_legit_on_days": "all real legitimate rows, same replay days",
              "young_accounts_d1_0_13": "real legitimate young accounts (masked time-delta D1 0-13)",
              "young_accounts_card_not_present_W": "  of which card-not-present (ProductCD W)",
              "young_accounts_all_M_V_missing": "  of which every M and V field missing"}  # fmt: skip
     for k, label in names.items():
-        x = acc[k]
+        x = acc.get(k)
+        if x is None:
+            continue
         ar = "-" if x["alert_rate"] is None else f"{x['alert_rate']:.3f}"
         hr = "-" if x["hold_block_rate"] is None else f"{x['hold_block_rate']:.4f}"
         lines.append(f"| {label} | {x['rows']} | {ar} | {hr} |")
@@ -157,15 +162,18 @@ def markdown(daily: list[dict], acc: dict, set_names) -> str:
 
 
 def main() -> None:
-    from vaultic.live.store import cache_root
     from vaultic.paths import REPO_ROOT
     from vaultic.scenarios.run import POST_HOC_NO_R3, load_all, threshold_sets
+    from vaultic.scenarios.suite import suite_dir
 
     system, store, _ = load_all(log=lambda m: None)
     sets = threshold_sets()
     daily = per_day(store, sets)
-    days, build = build_up_rates(cache_root() / "scenarios" / "suite")
-    acc = new_accounts(store, system, days, build)
+    days, build = build_up_rates(suite_dir("v2"))  # primary generator (D203)
+    days_v1, build_v1 = build_up_rates(suite_dir("v1"))
+    if days_v1 != days:
+        raise RuntimeError("v1 and v2 bust-out runs should share their replay days (D203)")
+    acc = new_accounts(store, system, days, build, build_v1)
     out = REPO_ROOT / "docs" / "scenarios"
     out.mkdir(parents=True, exist_ok=True)
     data = {"label": LABEL, "per_day": daily, "new_accounts": acc}

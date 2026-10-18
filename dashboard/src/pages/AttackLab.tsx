@@ -9,6 +9,7 @@ import {
   attackApi,
   type Action,
   type AttackApi,
+  type Generator,
   type Intensity,
   type ModeResult,
   type PosthocDay,
@@ -19,6 +20,7 @@ import {
   type SetResult,
   type SuiteResponse,
   type SuiteSetAgg,
+  type SuiteSummary,
 } from "../api/attack";
 import { testLabApi, type LabStatus, type TestLabApi } from "../api/testlab";
 import { StatusBanner } from "./TestLab";
@@ -99,6 +101,7 @@ function RunPanel({ api, scenario, meanings, replayMs }: { api: AttackApi; scena
   const [intensity, setIntensity] = useState<Intensity>("medium");
   const [seed, setSeed] = useState("0");
   const [model, setModel] = useState(true);
+  const [generator, setGenerator] = useState<Generator>("v2");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<RunResult | null>(null);
@@ -108,7 +111,7 @@ function RunPanel({ api, scenario, meanings, replayMs }: { api: AttackApi; scena
     setBusy(true);
     setError(null);
     try {
-      setResult(await api.run({ scenario, intensity, seed: Number(seed), model }));
+      setResult(await api.run({ scenario, intensity, seed: Number(seed), model, generator }));
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -128,6 +131,13 @@ function RunPanel({ api, scenario, meanings, replayMs }: { api: AttackApi; scena
                 </button>
               ))}
             </div>
+            <div className="segmented" role="group" aria-label="Generator" style={{ marginTop: 8 }}>
+              <button type="button" aria-pressed={generator === "v2"} onClick={() => setGenerator("v2")}>Generator v2 (primary)</button>
+              <button type="button" aria-pressed={generator === "v1"} onClick={() => setGenerator("v1")}>Generator v1 (recorded)</button>
+            </div>
+            <p className="muted xs m0">
+              v2 copies every masked field of a synthetic row from one real validation-period row (D203); v1 left them missing for new customers, a profile no real row has.
+            </p>
             <label className="field"><span>Seed</span><input inputMode="numeric" value={seed} onChange={(e) => setSeed(e.target.value)} required pattern="[0-9]{1,4}" /></label>
             <label className="field-inline small">
               <input type="checkbox" checked={!model} onChange={(e) => setModel(!e.target.checked)} /> Model off (degraded mode: the rules alone decide)
@@ -148,7 +158,7 @@ function RunResult({ result, replayMs }: { result: RunResult; replayMs: number }
   return (
     <>
       <section className="pane" aria-label="Scorecard">
-        <div className="pane-head"><h2>Scorecard: {result.title}, {result.intensity}, seed {result.seed}</h2></div>
+        <div className="pane-head"><h2>Scorecard: {result.title}, {result.intensity}, seed {result.seed}, generator {result.generator ?? "v2"}</h2></div>
         <div className="pane-body small">
           <p className="m0"><strong>Synthetic scenario - not the evaluation.</strong> One seed is an example; the 5-seed results are below.</p>
           <p className="m0">
@@ -280,13 +290,69 @@ function ReplayLine({ r }: { r: ReplayRow }) {
   );
 }
 
+const PRIMARY = "D196 (primary)";
+const DROP_NOTE = 0.1; // say so on the page when the model's recall falls by 10 points or more (D204)
+const share = (count: string) => {
+  const [a, b] = count.split("/").map(Number);
+  return b ? a / b : 0;
+};
+
+export function compareGenerators(v2: SuiteSummary | null | undefined, v1: SuiteSummary | null | undefined, scenario: string) {
+  const rows: { intensity: string; mode: string; v1: string; v2: string; drop: number; hardV1: string; hardV2: string; fprV1: number; fprV2: number }[] = [];
+  const a = v2?.scenarios?.[scenario] as Record<string, Record<string, SuiteSetAgg>> | undefined;
+  const b = v1?.scenarios?.[scenario] as Record<string, Record<string, SuiteSetAgg>> | undefined;
+  if (!a || !b) return rows;
+  for (const i of ["low", "medium", "high"]) {
+    const x = a[i]?.[PRIMARY];
+    const y = b[i]?.[PRIMARY];
+    if (!x || !y) continue;
+    for (const { key, label } of MODES) {
+      rows.push({
+        intensity: i, mode: label, v1: y[key].alert.recall_count, v2: x[key].alert.recall_count,
+        drop: share(y[key].alert.recall_count) - share(x[key].alert.recall_count),
+        hardV1: y[key].hard.recall_count, hardV2: x[key].hard.recall_count, fprV1: y[key].alert.fpr_mean, fprV2: x[key].alert.fpr_mean,
+      });
+    }
+  }
+  return rows;
+}
+
+function GeneratorComparison({ suite, scenario }: { suite: SuiteResponse | null; scenario: string }) {
+  const rows = compareGenerators(suite?.suite, suite?.suite_v1, scenario);
+  if (!rows.length) return null;
+  const big = rows.filter((r) => r.mode === "Model only" && r.drop >= DROP_NOTE);
+  return (
+    <div className="table-wrap" style={{ marginTop: 6 }}>
+      <h3 className="small m0">Generator v1 vs v2 (D196 primary)</h3>
+      {big.length > 0 && (
+        <p className="small m0" role="note" data-testid="recall-drop">
+          <strong>With realistic masked fields (generator v2) the model catches fewer:</strong>{" "}
+          {big.map((r) => `${r.intensity} ${r.v1} (v1) to ${r.v2} (v2)`).join("; ")}. The v1 recall was inflated by synthetic rows whose masked fields no real row has.
+        </p>
+      )}
+      <table className="small" aria-label="Generator comparison">
+        <thead><tr><th>Intensity</th><th>Mode</th><th>Caught v1</th><th>Caught v2</th><th>Caught hold/block v1</th><th>Hold/block v2</th><th>FPR v1</th><th>FPR v2</th></tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={`${r.intensity}-${r.mode}`}>
+              <td>{r.intensity}</td><td>{r.mode}</td><td className="num">{r.v1}</td><td className="num">{r.v2}</td>
+              <td className="num">{r.hardV1}</td><td className="num">{r.hardV2}</td><td className="num">{pct(r.fprV1, 2)}</td><td className="num">{pct(r.fprV2, 2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function SuitePanel({ suite, scenario }: { suite: SuiteResponse | null; scenario: string }) {
   const by = suite?.suite?.scenarios?.[scenario] as Record<string, unknown> | undefined;
   if (!by) return null;
   return (
     <section className="pane" aria-label="Five-seed results">
-      <div className="pane-head"><h2>Results over 5 seeds × 3 intensities</h2></div>
+      <div className="pane-head"><h2>Results over 5 seeds × 3 intensities (generator {suite?.suite?.generator ?? "v2"}, primary)</h2></div>
       <div className="pane-body small">
+        <GeneratorComparison suite={suite} scenario={scenario} />
         <p className="m0"><strong>Synthetic scenario - not the evaluation.</strong> Caught = alerted synthetic fraud rows over seeds 0-4 (per-seed min - max). FPR = real legitimate replay rows, mean (min - max).</p>
         {(["low", "medium", "high"] as const).map((i) => {
           const sets = by[i] as Record<string, SuiteSetAgg> | undefined;
@@ -327,7 +393,8 @@ export function PosthocPanel({ suite }: { suite: SuiteResponse | null }) {
   if (!p) return null;
   const acc = p.new_accounts as Record<string, RateGroup>;
   const groups: [string, string][] = [
-    ["bust_out_build_up", "Bust-out build-up rows (synthetic, labelled legitimate)"],
+    ["bust_out_build_up", "Bust-out build-up rows, generator v2 (synthetic, labelled legitimate)"],
+    ["bust_out_build_up_v1", "Bust-out build-up rows, generator v1 (every masked field missing)"],
     ["all_legit_on_days", "All real legitimate rows, same days"],
     ["young_accounts_d1_0_13", "Real legitimate young accounts (masked time-delta D1 0-13)"],
     ["young_accounts_card_not_present_W", "  of which card-not-present (product W)"],
