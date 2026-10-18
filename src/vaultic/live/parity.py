@@ -7,9 +7,9 @@ EXP-200-final scores within SCORE_TOLERANCE (1e-12; the observed difference is 3
 would not mean anything for float64 scores). If not, the Test Lab refuses to score and reports
 which columns failed.
 
-The result is cached on drive E under a key made of the data-file hashes of the stage-2 freeze
-record, the SHA-256 of the live and feature code, and the system cache, so it is recomputed only
-when one of them changes.
+The result is cached under a key made of the SHA-256 of the live and feature code, the stage-2
+freeze record (data hashes), the stored final-run predictions, final_results.json and the system
+cache, so it is recomputed only when one of them changes.
 """
 
 from __future__ import annotations
@@ -32,14 +32,27 @@ CODE = ("live/features.py", "live/store.py", "live/engine.py", "features/pipelin
         "features/sets.py", "views/temporal_diag.py", "stage2/system.py")  # fmt: skip
 
 
-def cache_key(system_path: Path | None) -> str:
+def key_files() -> list[Path]:
+    """Files whose content keys the cached parity result besides the code: the stage-2 freeze
+    record (data hashes), the stored final-run predictions the scores are compared with, and
+    final_results.json (the thresholds the engine reads)."""
     from vaultic.paths import REPO_ROOT, RESEARCH_DIR
+    from vaultic.stage2.final import E10_RUN
+
+    return [RESEARCH_DIR / "frozen_stage2.md", REPO_ROOT / E10_RUN / "predictions.parquet",
+            RESEARCH_DIR / "tables" / "final_results.json"]  # fmt: skip
+
+
+def cache_key(system_path: Path | None, files: list[Path] | None = None) -> str:
+    from vaultic.paths import REPO_ROOT
 
     h = hashlib.sha256()
     src = REPO_ROOT / "src" / "vaultic"
     for rel in CODE:
         h.update((src / rel).read_bytes())
-    h.update((RESEARCH_DIR / "frozen_stage2.md").read_bytes())  # data hashes of the freeze
+    for f in key_files() if files is None else files:
+        h.update(f.name.encode())
+        h.update(hashlib.sha256(f.read_bytes()).digest() if f.exists() else b"missing")
     if system_path is not None and system_path.exists():
         st = system_path.stat()
         h.update(f"{system_path}:{st.st_size}:{st.st_mtime_ns}".encode())

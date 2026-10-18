@@ -186,3 +186,17 @@ def test_cache_root_follows_the_environment(monkeypatch, tmp_path):
     assert cache_root() == Path(DEFAULT_CACHE_ROOT)
     monkeypatch.setenv("VAULTIC_CACHE_DIR", str(tmp_path))
     assert cache_root() == tmp_path
+
+
+def test_parity_key_changes_with_the_stored_predictions_and_final_results(tmp_path):
+    from vaultic.live.parity import cache_key
+
+    pred, final = tmp_path / "predictions.parquet", tmp_path / "final_results.json"
+    pred.write_bytes(b"scores v1")
+    final.write_text("{}")
+    k1 = cache_key(None, [pred, final])
+    pred.write_bytes(b"scores v2")
+    k2 = cache_key(None, [pred, final])
+    final.write_text('{"meta": 1}')
+    k3 = cache_key(None, [pred, final])
+    assert len({k1, k2, k3}) == 3
