@@ -19,6 +19,7 @@ export const PAGES = [
   { path: "/simulate", label: "Scenario simulator", key: "s" },
   { path: "/settings", label: "Reports and settings", key: "r" },
   { path: "/testlab", label: "Test Lab", key: "t" },
+  { path: "/attack", label: "Attack Lab", key: "a" },
 ] as const;
 
 function AsOfControl() {

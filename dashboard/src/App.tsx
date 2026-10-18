@@ -27,6 +27,7 @@ const Lab = page("Lab");
 const Simulator = page("Simulator");
 const Settings = page("Settings");
 const TestLab = page("TestLab");
+const AttackLab = page("AttackLab");
 
 export function App() {
   return (
@@ -46,6 +47,7 @@ export function App() {
               <Route path="/simulate" element={<Simulator />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/testlab" element={<TestLab />} />
+              <Route path="/attack" element={<AttackLab />} />
               <Route
                 path="*"
                 element={
