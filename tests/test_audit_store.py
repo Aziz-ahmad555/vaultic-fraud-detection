@@ -1,10 +1,13 @@
-"""Audit store (D208): append-only, hash chain, tamper detection, filters, persistence, threads."""
+"""Audit store (D208, D209): append-only, hash chain + anchor (tamper-EVIDENT, not tamper-proof),
+filters, persistence, threads, and the documented limitation."""
 
 import csv
 import io
 import os
+import shutil
 import sqlite3
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -126,6 +129,93 @@ def test_csv_export_has_every_field(store):
     assert rows[0]["analyst"] == "Aziz" and rows[0]["target"] == "tx:1" and rows[0]["hash"]
 
 
-def test_tests_never_use_the_real_log():
-    assert "pytest" in str(default_path()).lower() or os.environ["VAULTIC_AUDIT_DB"]
-    assert not str(default_path()).replace("\\", "/").startswith("E:/dev-cache")
+def test_tests_never_use_the_real_log(tmp_path_factory):
+    """conftest.py points VAULTIC_AUDIT_DB at pytest's own temporary directory for the session."""
+    path = default_path()
+    assert path == Path(os.environ["VAULTIC_AUDIT_DB"])
+    assert path.resolve().is_relative_to(tmp_path_factory.getbasetemp().resolve())
+
+
+def test_verify_finds_reordered_entries(store):
+    for i in range(4):
+        store.append("Aziz", "analyst", f"action {i}")
+    # swap the contents of entries 2 and 3 (ids stay contiguous): the chain breaks at 2
+    _tamper(
+        store,
+        "UPDATE audit_log SET action = CASE id WHEN 2 THEN 'action 2' WHEN 3 THEN 'action 1' "
+        "END WHERE id IN (2, 3)",
+    )
+    out = store.verify()
+    assert out["ok"] is False and out["first_bad"] == 2
+
+
+def test_anchor_detects_a_cut_off_tail(store):
+    for i in range(5):
+        store.append("Aziz", "analyst", f"action {i}")
+    assert store.read_anchor()["entries"] == 5
+    _tamper(store, "DELETE FROM audit_log WHERE id >= 4")  # the chain of 1-3 is still valid
+    out = store.verify()
+    assert out["ok"] is False and "removed from the end" in out["reason"] and out["entries"] == 3
+
+
+def test_anchor_detects_a_rewritten_last_entry(store):
+    for i in range(3):
+        store.append("Aziz", "analyst", f"action {i}")
+    _tamper(store, "DELETE FROM audit_log WHERE id = 3")
+    # a forged third entry written straight into the database with a valid chain hash; the
+    # anchor (a separate file) is not touched, so it still holds the true third entry's hash
+    prev = store.query(limit=1)[0]["hash"]
+    forged = {"id": 3, "time": "2026-10-18T12:00:00+00:00", "analyst": "Mallory", "role": "analyst",
+              "action": "a different third entry", "target": None, "before": None, "after": None,
+              "detail": "", "prev_hash": prev}  # fmt: skip
+    forged["hash"] = entry_hash(prev, forged)
+    con = sqlite3.connect(store.path)
+    con.execute(f"INSERT INTO audit_log ({', '.join(forged)}) VALUES ({', '.join('?' * len(forged))})",
+                list(forged.values()))  # fmt: skip
+    con.commit()
+    con.close()
+    out = store.verify()
+    assert out["ok"] is False and out["first_bad"] == 3 and "anchor" in out["reason"]
+
+
+def test_a_missing_anchor_is_reported(store):
+    store.append("Aziz", "analyst", "label")
+    store.anchor_path.unlink()
+    assert store.verify()["reason"] == "the anchor file is missing"
+
+
+def test_an_interrupted_anchor_write_is_not_called_tampering(store):
+    store.append("Aziz", "analyst", "one")
+    old = store.anchor_path.read_text("utf-8")
+    store.append("Aziz", "analyst", "two")
+    store.anchor_path.write_text(old, "utf-8")  # as if the process died between commit and anchor
+    out = store.verify()
+    assert out["ok"] is True and "interrupted" in out["reason"]
+
+
+def test_documented_limitation_a_full_rewrite_of_both_files_is_not_detected(tmp_path):
+    """D209: tamper-evident, not tamper-proof. Someone with file access who rewrites the whole
+    chain AND the anchor is not detected. This test pins that limitation so it stays documented."""
+    real = SQLiteAuditStore(tmp_path / "real" / "audit.sqlite")
+    for i in range(3):
+        real.append("Aziz", "analyst", f"true action {i}")
+    forged = SQLiteAuditStore(tmp_path / "forged" / "audit.sqlite")
+    forged.append("Aziz", "analyst", "invented history")
+    for suffix in ("", "-wal", "-shm"):
+        for f in real.path.parent.glob(real.path.name + suffix):
+            f.unlink()
+    shutil.copy(forged.path, real.path)
+    shutil.copy(forged.anchor_path, real.anchor_path)
+    for suffix in ("-wal", "-shm"):
+        src = forged.path.with_name(forged.path.name + suffix)
+        if src.exists():
+            shutil.copy(src, real.path.with_name(real.path.name + suffix))
+    out = SQLiteAuditStore(real.path).verify()
+    assert out["ok"] is True and out["entries"] == 1  # NOT detected: the documented limitation
+
+
+def test_export_records_itself_with_the_exact_count(store):
+    for i in range(3):
+        store.append("Aziz", "analyst", f"action {i}")
+    entry, rows = store.export("Aziz", "admin")
+    assert entry["detail"] == "4 entries (CSV)" and len(rows) == 4 and rows[0]["id"] == entry["id"]
