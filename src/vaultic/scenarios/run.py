@@ -88,6 +88,7 @@ def run_scenario(store, system, stored_scores: pd.DataFrame, scenario, log=print
 
     started = time.perf_counter()
     days = np.unique(scenario.rows["day"].to_numpy())
+    ensure_snapshots(store, days, log)
     df = store.df
     y = df["isFraud"].to_numpy()
     pos = np.flatnonzero(np.isin(df["day"].to_numpy(), days) & (y == 0))
@@ -107,7 +108,7 @@ def run_scenario(store, system, stored_scores: pd.DataFrame, scenario, log=print
         raise RuntimeError(f"stored rows do not reproduce the stored scores (max diff {diff})")
 
     # live rows: synthetic rows and affected legitimate rows, with the overlay
-    overlay = with_synthetic(store, scenario.rows, scenario.uids, log=log)
+    overlay = with_synthetic(store, scenario.rows, scenario.uids, log=log, days=days)
     live_rows = pd.concat([scenario.rows, df.iloc[live_pos]], ignore_index=True)
     live_uid = np.concatenate([scenario.uids, store.uid[live_pos]])
     live_syn = np.r_[np.ones(len(scenario.rows), bool), np.zeros(len(live_pos), bool)]
@@ -138,7 +139,7 @@ def run_scenario(store, system, stored_scores: pd.DataFrame, scenario, log=print
     for set_name, th in threshold_sets().items():
         r_act, fired = rule_actions(frame, th)
         both = np.maximum(r_act, table["model_action"].to_numpy())
-        results[set_name] = summarise(table, r_act, both)
+        results[set_name] = summarise(table, r_act, both, scenario.info.get("first_cash_out_time"))
         if set_name.startswith("D196"):
             table["rule_action"] = r_act
             table["rules_fired"] = [",".join(f) for f in fired]
@@ -172,23 +173,41 @@ def overlay_check(store, scenario, live_rows, live_syn, frame) -> None:
                                f"{n_stored} stored + {n_syn} synthetic")  # fmt: skip
 
 
-def summarise(table: pd.DataFrame, rule_act: np.ndarray, both: np.ndarray) -> dict:
-    step = SEVERITY["step_up"]
-    syn = table["synthetic"].to_numpy() & (table["label"].to_numpy() == 1)
-    legit = ~table["synthetic"].to_numpy()
-    model = table["model_action"].to_numpy() >= step
-    rules, comb = rule_act >= step, both >= step
+def summarise(table: pd.DataFrame, rule_act: np.ndarray, both: np.ndarray,
+              first_fraud_time: int | None = None) -> dict:  # fmt: skip
+    """Scorecard for one threshold set. Alert (D196 / D159) = step-up or higher; also reported:
+    hard actions only (hold or block), extra reporting that does not change D196. Synthetic
+    legitimate rows (bust-out build-up, D190) are counted apart from the real legitimate replay
+    rows; with first_fraud_time, whether any synthetic row before it was alerted (D190)."""
+    step, hard = SEVERITY["step_up"], SEVERITY["hold"]
+    synthetic = table["synthetic"].to_numpy()
+    syn = synthetic & (table["label"].to_numpy() == 1)
+    build = synthetic & (table["label"].to_numpy() == 0)
+    legit = ~synthetic
 
     def rate(mask, alert):
         return float(alert[mask].mean()) if mask.any() else None
 
-    out = {}
-    for name, alert in (("rules_only", rules), ("model_only", model), ("rules_plus_model", comb)):
+    out = {"n_synthetic_fraud": int(syn.sum()), "n_legit": int(legit.sum())}
+    model_act = table["model_action"].to_numpy()
+    for name, codes in (("rules_only", rule_act), ("model_only", model_act),
+                        ("rules_plus_model", both)):  # fmt: skip
+        alert, hard_alert = codes >= step, codes >= hard
         first = np.flatnonzero(alert[syn])
         out[name] = {"recall_synthetic": rate(syn, alert), "fpr_legit": rate(legit, alert),
                      "alerts_synthetic": int(alert[syn].sum()),
                      "alerts_legit": int(alert[legit].sum()),
-                     "first_alerted_synthetic_row": int(first[0]) + 1 if len(first) else None}  # fmt: skip
+                     "first_alerted_synthetic_row": int(first[0]) + 1 if len(first) else None,
+                     "hard_recall_synthetic": rate(syn, hard_alert),
+                     "hard_fpr_legit": rate(legit, hard_alert),
+                     "hard_alerts_synthetic": int(hard_alert[syn].sum()),
+                     "hard_alerts_legit": int(hard_alert[legit].sum())}  # fmt: skip
+        if build.any():
+            out[name]["build_up_alerts"] = int(alert[build].sum())
+            out[name]["build_up_rows"] = int(build.sum())
+        if first_fraud_time is not None:
+            before = synthetic & (table["TransactionDT"].to_numpy() < first_fraud_time)
+            out[name]["alerted_before_first_cash_out"] = bool(alert[before].any())
     added = out["rules_plus_model"]["fpr_legit"] - out["model_only"]["fpr_legit"]
     out["added_fpr"] = added
     out["budget_added_fpr_ok"] = bool(added <= FPR_ADDED_BUDGET)
@@ -196,43 +215,57 @@ def summarise(table: pd.DataFrame, rule_act: np.ndarray, both: np.ndarray) -> di
     return out
 
 
-def default_day(seed: int) -> int:
-    """The day card_testing draws for this seed (its generator's first draw)."""
-    from vaultic.data.splits import load_splits
+def ensure_snapshots(store, days, log=print) -> None:
+    """The stored window-graph snapshots (live/store.py) for these days, built on first use."""
+    from vaultic.live.store import _structure_snapshot
 
-    s = load_splits()
-    return int(np.random.default_rng(seed).integers(int(s.test.first), int(s.test.last) + 1))
+    for d in sorted(int(x) for x in days):
+        if d not in store.structure:
+            log(f"structure snapshot day {d}")
+            store.structure[d] = _structure_snapshot(store.graph["struct_edges"], d,
+                                                     store.splits.label_delay_days)  # fmt: skip
+
+
+def load_all(log=print):
+    """Frozen system, history store (snapshots built on demand) and the stored final-run scores."""
+    from vaultic.live.engine import load_system
+    from vaultic.live.store import build_store
+    from vaultic.paths import REPO_ROOT
+    from vaultic.stage2.final import E10_RUN
+
+    system = load_system(log)
+    store = build_store(log, days=[])
+    stored = pd.read_parquet(REPO_ROOT / E10_RUN / "predictions.parquet").set_index("TransactionID")
+    return system, store, stored
 
 
 def main() -> None:
     import argparse
 
-    from vaultic.live.engine import load_system
-    from vaultic.live.store import build_store, cache_root
-    from vaultic.paths import REPO_ROOT
-    from vaultic.scenarios.generators import GENERATORS, INTENSITY
-    from vaultic.stage2.final import E10_RUN
+    from vaultic.live.store import cache_root
+    from vaultic.scenarios.generators import GENERATORS, INTENSITIES
 
     p = argparse.ArgumentParser(description=f"run one attack scenario ({LABEL})")
     p.add_argument("--scenario", default="card_testing", choices=sorted(GENERATORS))
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--intensity", default="medium", choices=sorted(INTENSITY))
+    p.add_argument("--intensity", default="medium", choices=INTENSITIES)
     a = p.parse_args()
-    day = default_day(a.seed)
     t0 = time.perf_counter()
-    system = load_system()
-    store = build_store(days=[day])
-    stored = pd.read_parquet(REPO_ROOT / E10_RUN / "predictions.parquet").set_index("TransactionID")
+    system, store, stored = load_all()
     print(f"loaded in {time.perf_counter() - t0:.0f} s", flush=True)
     sc = GENERATORS[a.scenario](store, seed=a.seed, intensity=a.intensity)
     res = run_scenario(store, system, stored, sc)
     out = cache_root() / "scenarios" / "results" / f"{a.scenario}_s{a.seed}_{a.intensity}"
+    save(res, out)
+    print(json.dumps({k: v for k, v in res.items() if k != "rows"}, indent=1))
+    print(res["rows"][res["rows"]["source"] == LIVE].to_string(max_rows=80))
+
+
+def save(res: dict, out) -> None:
     out.mkdir(parents=True, exist_ok=True)
     res["rows"].to_parquet(out / "rows.parquet", index=False)
     summary = {k: v for k, v in res.items() if k != "rows"}
     (out / "summary.json").write_text(json.dumps(summary, indent=1), "utf-8")
-    print(json.dumps(summary, indent=1))
-    print(res["rows"][res["rows"]["source"] == LIVE].to_string(max_rows=80))
 
 
 if __name__ == "__main__":

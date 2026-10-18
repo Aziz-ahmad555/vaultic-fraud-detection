@@ -104,8 +104,9 @@ def _merge_positions(index: dict, keys, positions, times_all) -> dict:
     return out
 
 
-def with_synthetic(store, rows: pd.DataFrame, uids: np.ndarray, log=print):
-    """A store whose history includes the synthetic rows (rows: stored columns and dtypes)."""
+def with_synthetic(store, rows: pd.DataFrame, uids: np.ndarray, log=print, days=None):
+    """A store whose history includes the synthetic rows (rows: stored columns and dtypes).
+    days: the days that will be scored (snapshots are recomputed only for those; default all)."""
     from vaultic.features.behavioral import ENTITIES, _entity_key
     from vaultic.features.graph import build_edges
     from vaultic.live.store import _structure_snapshot
@@ -153,7 +154,9 @@ def with_synthetic(store, rows: pd.DataFrame, uids: np.ndarray, log=print):
     out.structure = dict(store.structure)
     first_day = int(t_syn.min() // SECONDS_PER_DAY)
     for d in sorted(store.structure):
-        if d > first_day:  # D194: days after a synthetic row see it in their window
+        if d > first_day and (
+            days is None or d in set(int(x) for x in days)
+        ):  # D194: days after a synthetic row see it in their window
             log(f"recomputing window-graph snapshot for day {d} with synthetic rows")
             out.structure[d] = _structure_snapshot(g["struct_edges"], d,
                                                    store.splits.label_delay_days)  # fmt: skip

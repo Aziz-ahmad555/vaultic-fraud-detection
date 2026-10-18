@@ -116,19 +116,18 @@ def diagnose(store, system, scenario) -> dict:
 def main() -> None:
     import argparse
 
-    from vaultic.live.engine import load_system
-    from vaultic.live.store import build_store, cache_root
-    from vaultic.scenarios.generators import GENERATORS, INTENSITY
-    from vaultic.scenarios.run import default_day
+    from vaultic.live.store import cache_root
+    from vaultic.scenarios.generators import GENERATORS, INTENSITIES
+    from vaultic.scenarios.run import ensure_snapshots, load_all
 
     p = argparse.ArgumentParser(description=f"diagnose a scenario's synthetic rows ({LABEL})")
     p.add_argument("--scenario", default="card_testing", choices=sorted(GENERATORS))
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--intensity", default="medium", choices=sorted(INTENSITY))
+    p.add_argument("--intensity", default="medium", choices=INTENSITIES)
     a = p.parse_args()
-    system = load_system(log=lambda m: None)
-    store = build_store(log=lambda m: None, days=[default_day(a.seed)])
+    system, store, _ = load_all(log=lambda m: None)
     sc = GENERATORS[a.scenario](store, seed=a.seed, intensity=a.intensity)
+    ensure_snapshots(store, np.unique(sc.rows["day"].to_numpy()), log=lambda m: None)
     out = diagnose(store, system, sc)
     path = cache_root() / "scenarios" / "results" / f"{a.scenario}_s{a.seed}_{a.intensity}"
     path.mkdir(parents=True, exist_ok=True)
