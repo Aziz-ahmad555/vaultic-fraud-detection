@@ -1,0 +1,16 @@
+"""Phase B attack scenarios (product layer, D190-D196): synthetic attacks injected into a replay of
+real legitimate test-period traffic. Synthetic rows live only in memory and in scenario outputs
+under the dev cache; they never enter research data or any research number. Every scenario metric
+is labelled 'synthetic scenario - not the evaluation'."""
+
+LABEL = "synthetic scenario - not the evaluation"
+SYNTHETIC_ID_START = 1_000_000_000  # every synthetic TransactionID is >= this; real ones are below
+
+
+def require_no_synthetic(transaction_ids) -> None:
+    """Refuse any synthetic TransactionID (a guard for research inputs)."""
+    import numpy as np
+
+    ids = np.asarray(transaction_ids)
+    if len(ids) and (ids >= SYNTHETIC_ID_START).any():
+        raise RuntimeError("a synthetic scenario row reached research data")
