@@ -126,6 +126,8 @@ def test_ready_sample_hides_the_label_then_reveal_and_latency():
         assert call(base, "/api/live/sample?filter=bogus")[0] == 400
         assert call(base, "/api/live/reveal/1000")[0] == 404  # day 140: not a test transaction
         assert call(base, "/api/score-live", {"nothing": 1})[0] == 400
+        a = call(base, "/api/live/sample?filter=any&seed=7")[1]["transaction_id"]
+        assert a == call(base, "/api/live/sample?filter=any&seed=7")[1]["transaction_id"]
         cold = call(base, "/api/live/sample?filter=cold_start")[1]
         assert cold["history"] == 0
 
@@ -172,3 +174,16 @@ def test_sequence_inputs_get_honest_reason_sentences():
     assert "window step 20 of 20" in describe("seq19_log_gap_next", 1.0, -3.0)
     assert describe("seq_cur_log_amount", 4.0, 2.0).endswith("raises the risk score")
     assert "earlier transactions" in describe("seq_n_steps", 3, -1.0)
+
+
+def test_benchmark_percentiles_match_numpy():
+    import numpy as np
+
+    spec = importlib.util.spec_from_file_location(
+        "bench", ROOT / "scripts/bench_testlab_latency.py"
+    )
+    bench = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bench)
+    v = [float(x) for x in np.random.default_rng(0).gamma(2.0, 200.0, 200)]
+    for q in (50, 95):
+        assert bench.percentile(v, q) == pytest.approx(float(np.percentile(v, q)))

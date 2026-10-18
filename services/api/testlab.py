@@ -5,7 +5,7 @@ engine loads in the background at startup (status endpoint), and every scoring e
 503 with the reason until the parity gate has passed (refused if it failed).
 
   GET  /api/live/status              state, message, parity result, latency p50 / p95
-  GET  /api/live/sample?filter=      a random held-out test transaction, label hidden
+  GET  /api/live/sample?filter=&seed=  a random held-out test transaction, label hidden
   POST /api/score-live               {"transaction_id": id} or {"custom": {...}}: one live score
   GET  /api/live/reveal/{id}         the label of a test transaction (after scoring)
   GET  /api/live/latency             p50 / p95 / max over the session
@@ -44,10 +44,10 @@ def make_router(service) -> APIRouter:
         return service.status()
 
     @router.get("/api/live/sample")
-    def sample(filter: str = "any"):  # noqa: A002
+    def sample(filter: str = "any", seed: int | None = None):  # noqa: A002
         if filter not in FILTERS:
             raise HTTPException(400, f"filter must be one of {FILTERS}")
-        return guard(service.sample, filter)
+        return guard(service.sample, filter, seed)  # seed: reproducible draws (benchmark)
 
     @router.post("/api/score-live")
     def score_live(body: dict = Body(...)):  # noqa: B008

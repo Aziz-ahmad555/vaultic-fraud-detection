@@ -153,6 +153,11 @@ only when the data, the feature code or the system cache change.
   With an `isFraud` column: PR-AUC, recall at the E12 alert and at MVAF's E10 cost threshold
   (0.881), and the confusion matrix. Bad files are refused with the reason.
 
+**Latency.** With the backend ready and the machine otherwise idle,
+`python scripts/bench_testlab_latency.py` scores the same 200 test transactions (seeds 0-199) and
+prints p50 / p95 of the scoring latency, the explanation and the HTTP request, and how many scores
+matched the frozen run.
+
 **Stop:** `Ctrl+C` in both windows (or the `Get-NetTCPConnection` command above).
 
 ## Real data: the final-run demo backend
