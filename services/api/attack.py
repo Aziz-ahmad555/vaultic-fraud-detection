@@ -14,7 +14,7 @@ from fastapi import APIRouter, Body, HTTPException, Request
 
 def make_router(lab, audit=None) -> APIRouter:
     """audit: the persistent audit store (D208); every run is recorded."""
-    from vaultic.audit.http import actor_of
+    from vaultic.audit.http import AUDIT_FAILED, record_open
     from vaultic.live.service import NotReady
     from vaultic.scenarios.service import AttackInputError
 
@@ -28,11 +28,12 @@ def make_router(lab, audit=None) -> APIRouter:
     def run(request: Request, body: dict = Body(...)):  # noqa: B008
         try:
             out = lab.run(body)
-            if audit is not None:
-                analyst, role = actor_of(request)
-                audit.append(analyst, role, "Attack Lab: ran a scenario", target=out.get("scenario"),
-                             detail=f"intensity {out.get('intensity')}, seed {out.get('seed')}, generator "
-                                    f"{out.get('generator')}, model {out.get('model')}")  # fmt: skip
+            detail = (f"intensity {out.get('intensity')}, seed {out.get('seed')}, generator "
+                      f"{out.get('generator')}, model {out.get('model')}")  # fmt: skip
+            # fail-open (D209): the run is returned either way; a failed audit write is flagged
+            if not record_open(audit, request, "Attack Lab: ran a scenario",
+                               target=out.get("scenario"), detail=detail):  # fmt: skip
+                out["audit"] = AUDIT_FAILED
             return out
         except NotReady as e:
             raise HTTPException(503, f"Test Lab not ready: {e}") from e

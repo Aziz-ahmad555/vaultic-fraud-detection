@@ -72,6 +72,8 @@ export interface LiveResult {
   b5_score: number;
   views: ViewScore[];
   latency_ms: number;
+  /** "failed" when the audit entry could not be written (fail-open, D209) */
+  audit?: "failed";
   explain_ms?: number;
   uid: number;
   view_reasons?: { view: View; points: number }[];
@@ -123,6 +125,7 @@ export interface BatchResult {
   rows: Record<string, string | number | boolean>[];
   csv: string;
   note: string;
+  audit?: "failed";
 }
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;

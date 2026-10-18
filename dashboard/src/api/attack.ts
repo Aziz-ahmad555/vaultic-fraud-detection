@@ -81,6 +81,8 @@ export interface ReplayRow {
 }
 
 export interface RunResult {
+  /** "failed" when the audit entry could not be written (fail-open, D209) */
+  audit?: "failed";
   label: string;
   scenario: string;
   title: string;

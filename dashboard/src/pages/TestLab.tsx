@@ -19,6 +19,7 @@ import {
   type SampleFilter,
   type TestLabApi,
 } from "../api/testlab";
+import { AuditFailed } from "../components/AuditFailed";
 import { Braid } from "../components/Braid";
 import { emptyScoreboard, outcome, record, type Scoreboard } from "../lib/scoreboard";
 
@@ -155,6 +156,7 @@ export function ResultCard({ result, revealed }: { result: LiveResult; revealed?
           E12 decides on the expected loss (calibrated probability × amount) and the conformal set, not on the risk alone: a high risk on a small
           amount can be allowed.
         </p>
+        {result.audit === "failed" && <AuditFailed />}
         {result.matches_frozen_run !== undefined && (
           <p className="small" data-testid="frozen-match">
             {result.matches_frozen_run ? "Matches frozen run ✓" : "Does NOT match the frozen run ✗"}
@@ -415,6 +417,7 @@ function BatchMode({ api, onScored }: { api: TestLabApi; onScored: () => void })
               ({result.kind})
             </p>
             <p className="small">{m.rows.toLocaleString()} rows scored. {result.note}.</p>
+            {result.audit === "failed" && <AuditFailed />}
             {(m.edited_rows ?? 0) > 0 && (
               <p className="small" role="alert" data-testid="batch-edited">
                 {m.edited_rows} row{m.edited_rows === 1 ? "" : "s"} reuse a stored TransactionID with different field values: marked

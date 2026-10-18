@@ -573,3 +573,64 @@ def test_backend_refuses_an_unmarked_bundle_or_an_unfinished_run(tmp_path):
     side.write_text(json.dumps({"final_run": FINAL_RUN}))  # not written by the export
     with pytest.raises(RuntimeError, match="not a test-data marker"):
         mod.create_app(bundle, runs_dir=runs)
+
+
+class _BrokenStore:
+    """An audit store whose writes fail (disk full, locked file...): D209 failure policy."""
+
+    def __init__(self, inner):
+        self.inner, self.broken = inner, True
+
+    def append(self, *a, **k):
+        if self.broken:
+            raise OSError("disk full")
+        return self.inner.append(*a, **k)
+
+    def export(self, *a, **k):
+        if self.broken:
+            raise OSError("disk full")
+        return self.inner.export(*a, **k)
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+
+def test_audit_failure_policy_labels_fail_closed_exports_and_events_fail_open(tmp_path):
+    """D209: a label whose audit entry cannot be written is NOT saved (503, clear error); an export,
+    a client event and a refused threshold change still answer, flagged audit = failed."""
+    from vaultic.audit.store import SQLiteAuditStore
+
+    mod = _load_module()
+    bundle = _bundle(tmp_path)
+    runs = bundle.parent / "runs"
+    _mark(bundle, runs)
+    store = _BrokenStore(SQLiteAuditStore(tmp_path / "audit.sqlite"))
+    app = mod.create_app(bundle, runs_dir=runs, audit_store=store)
+    with _serve(app) as base:
+        code, body = _send(
+            base, "/api/feedback/1000", {"label": "fraud", "role": "analyst"}, "POST"
+        )
+        assert code == 503 and "not saved" in body["detail"] and "audit log" in body["detail"]
+        assert app.state.audit.inner.count() == 0
+        code, body = _send(base, "/api/audit/event", {"action": "report_printed"}, "POST")
+        assert code == 200 and body == {"ok": False, "audit": "failed"}
+        with urllib.request.urlopen(base + "/api/audit/export.csv") as r:
+            assert r.headers["X-Vaultic-Audit"] == "failed" and r.read().decode().startswith("id,")
+        code, _ = _send(base, "/api/thresholds", {"thresholds": {}, "role": "admin"}, "PUT")
+        assert code == 405  # still refused, though the refusal could not be recorded
+        store.broken = False  # the disk recovers: the failed label was never saved
+        assert (
+            _send(base, "/api/feedback/1000", {"label": "legit", "role": "analyst"}, "POST")[0]
+            == 200
+        )
+        e = _get(base, "/api/audit")[0]
+        assert e["before"] is None and e["detail"] == "first label" and e["after"] == "legit"
+
+
+def test_a_percent_encoded_analyst_name_is_decoded(tmp_path):
+    """The dashboard percent-encodes non-ASCII names for the header; the log stores the name."""
+    mod = _load_module()
+    with _serve(_app(mod, _bundle(tmp_path))) as base:
+        who = {"X-Vaultic-Analyst": "Zo%C3%AB", "X-Vaultic-Role": "analyst"}
+        assert _send(base, "/api/feedback/1000", {"label": "fraud"}, "POST", who)[0] == 200
+        assert _get(base, "/api/audit")[0]["analyst"] == "Zoë"

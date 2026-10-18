@@ -219,3 +219,22 @@ def test_scores_and_reveals_are_recorded_in_the_audit_log(tmp_path):
     ]
     assert all(e["analyst"] == "Aziz" and e["target"] == "tx:1015" for e in log)
     assert service.audit.verify()["ok"]
+
+
+def test_scoring_is_fail_open_when_the_audit_write_fails():
+    """D209: the score is returned, flagged audit = failed, when the audit log cannot be written."""
+    from vaultic.live.service import TestLabService
+
+    class Broken:
+        def append(self, *a, **k):
+            raise OSError("disk full")
+
+    service = TestLabService()
+    service.start(build=lambda log: FakeEngine(), parity=lambda e, p, log: {"passed": True},
+                  log=lambda m: None)  # fmt: skip
+    service.audit = Broken()
+    with serve(service) as base:
+        code, r = call(base, "/api/score-live", {"transaction_id": 1015})
+        assert code == 200 and r["audit"] == "failed" and "risk" in r
+        code, r = call(base, "/api/live/reveal/1015")
+        assert code == 200 and r["audit"] == "failed"

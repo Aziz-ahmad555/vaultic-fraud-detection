@@ -138,4 +138,11 @@ describe("generator v1 vs v2", () => {
     expect(await screen.findByRole("table", { name: "Generator comparison" })).toBeInTheDocument();
     expect(screen.queryByTestId("recall-drop")).toBeNull();
   });
+
+  it("shows a small warning when the run could not be recorded in the audit log (D209)", async () => {
+    const { api, lab } = fakes({ run: vi.fn(async () => ({ ...RUN, audit: "failed" as const })) });
+    render(<AttackLab api={api} lab={lab} pollMs={60000} replayMs={0} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Run scenario" }));
+    expect(await screen.findByTestId("audit-failed")).toHaveTextContent("Not recorded in the audit log");
+  });
 });

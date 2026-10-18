@@ -159,3 +159,23 @@ def test_runs_are_recorded_in_the_audit_log(lab, tmp_path):
         "card_testing",
     )
     assert "seed 4" in log[0]["detail"]
+
+
+def test_runs_are_fail_open_when_the_audit_write_fails(lab):
+    """D209: the run is returned, flagged audit = failed."""
+    pytest.importorskip("httpx")
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    class Broken:
+        def append(self, *a, **k):
+            raise OSError("disk full")
+
+    spec = importlib.util.spec_from_file_location("attack_api", ROOT / "services/api/attack.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    app = FastAPI()
+    app.include_router(mod.make_router(lab, audit=Broken()))
+    r = TestClient(app).post("/api/attack/run", json={"scenario": "card_testing"})
+    assert r.status_code == 200 and r.json()["audit"] == "failed" and r.json()["label"] == LABEL

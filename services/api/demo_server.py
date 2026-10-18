@@ -13,8 +13,10 @@ its_time + L days <= as-of (label-delay curtain). All data is labelled
 IEEE-CIS competition, not bank data. The decision thresholds are the frozen E12 ones and are
 read-only (D129); feedback labels are kept in memory for the demo session only and nothing is
 written back to the data. Every analyst action is recorded in the persistent audit log (D208,
-vaultic.audit: SQLite on drive E, append-only, hash-chained); GET /api/audit reads it,
-/api/audit/verify checks the chain, /api/audit/export.csv exports it (the export is recorded too).
+D209; vaultic.audit: SQLite on drive E, append-only, hash-chained with a truncation anchor:
+tamper-evident, not tamper-proof). GET /api/audit reads it, /api/audit/verify checks the chain,
+/api/audit/export.csv exports it (the export is recorded too). Labels are fail-closed (no audit
+entry, no label); everything else is fail-open (audit = "failed" in the response).
 
 POST /api/score is not available: the final-run models score recorded transactions only, so the
 dashboard's what-if simulator keeps its illustrative model (labelled "illustrative model, not the
@@ -264,7 +266,7 @@ def create_app(
     thresholds = {k: _none(float(v)) if v is not None else None
                   for k, v in meta["thresholds"].items()}  # fmt: skip
     # the frozen E12 thresholds of the final run: read-only (D129); others only via what-if
-    from vaultic.audit.http import CLIENT_EVENTS, actor_of, public
+    from vaultic.audit.http import AUDIT_FAILED, CLIENT_EVENTS, actor_of, public, record_open
     from vaultic.audit.store import default_store, to_csv
 
     audit_log_store = audit_store if audit_store is not None else default_store()  # D208
@@ -651,8 +653,13 @@ def create_app(
 
     @app.put("/api/thresholds")
     def save_thresholds(request: Request):
-        audit(request, "Refused: change the frozen decision thresholds", target="thresholds",
-              detail="read-only (D129)")  # fmt: skip
+        record_open(
+            audit_log_store,
+            request,
+            "Refused: change the frozen decision thresholds",
+            target="thresholds",
+            detail="read-only (D129)",
+        )  # fmt: skip  (fail-open, D209)
         raise HTTPException(
             405,
             "The decision thresholds are the frozen ones of the final run and are read-only. "
@@ -661,13 +668,17 @@ def create_app(
 
     @app.post("/api/feedback/{tid}")
     def feedback(tid: int, body: FeedbackIn, request: Request):
-        with state_lock:  # the read, the write and the audit entry as one step
+        with state_lock:  # the read, the audit entry and the write as one step
             before = state["feedback"].get(tid)
+            try:  # fail-closed (D209): the audit entry first, the label only after it succeeded
+                audit(request, f"Marked transaction {tid} as {body.label}", target=f"tx:{tid}",
+                      before=before, after=body.label,
+                      detail=f"was {before}" if before else "first label",
+                      fallback_role=body.role)  # fmt: skip
+            except Exception as e:
+                raise HTTPException(503, "The label was not saved: the audit log could not be "
+                                         f"written ({type(e).__name__}). Try again.") from e  # fmt: skip
             state["feedback"][tid] = body.label
-            audit(request, f"Marked transaction {tid} as {body.label}", target=f"tx:{tid}",
-                  before=before, after=body.label,
-                  detail=f"was {before}" if before else "first label",
-                  fallback_role=body.role)  # fmt: skip
         return {"ok": True}
 
     @app.get("/api/whatif")
@@ -693,21 +704,32 @@ def create_app(
 
     @app.get("/api/audit/export.csv", response_class=PlainTextResponse)
     def audit_export(request: Request):
-        n = audit_log_store.count()
-        audit(
-            request, "Exported the audit log", target="audit_log", detail=f"{n + 1} entries (CSV)"
-        )
-        body = to_csv(audit_log_store.query(limit=10**9))
-        return PlainTextResponse(body, media_type="text/csv",
-                                 headers={"Content-Disposition": "attachment; filename=vaultic_audit_log.csv"})  # fmt: skip
+        """The whole log as CSV. The export is recorded in the same locked step as the snapshot
+        (the count in its entry is exact); fail-open (D209): if recording fails the CSV is still
+        returned, with the header X-Vaultic-Audit: failed."""
+        headers = {"Content-Disposition": "attachment; filename=vaultic_audit_log.csv"}
+        try:
+            _, rows = audit_log_store.export(*actor_of(request))
+        except Exception:
+            import logging
+
+            logging.getLogger("vaultic.audit").exception("audit write failed for the export")
+            rows, headers["X-Vaultic-Audit"] = audit_log_store.query(limit=10**9), AUDIT_FAILED
+        return PlainTextResponse(to_csv(rows), media_type="text/csv", headers=headers)
 
     @app.post("/api/audit/event")
     def audit_event(body: AuditEventIn, request: Request):
         """Client-side actions the server cannot see (D208): only the listed ones are accepted."""
         if body.action not in CLIENT_EVENTS:
             raise HTTPException(422, f"action must be one of {sorted(CLIENT_EVENTS)}")
-        e = audit(request, CLIENT_EVENTS[body.action], target=body.action, detail=body.detail[:500])
-        return {"ok": True, "id": e["id"]}
+        ok = record_open(
+            audit_log_store,
+            request,
+            CLIENT_EVENTS[body.action],
+            target=body.action,
+            detail=body.detail[:500],
+        )  # fmt: skip  (fail-open, D209)
+        return {"ok": ok} if ok else {"ok": False, "audit": AUDIT_FAILED}
 
     app.state.audit = audit_log_store
 

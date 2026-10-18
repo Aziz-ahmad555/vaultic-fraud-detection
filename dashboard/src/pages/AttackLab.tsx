@@ -23,6 +23,7 @@ import {
   type SuiteSummary,
 } from "../api/attack";
 import { testLabApi, type LabStatus, type TestLabApi } from "../api/testlab";
+import { AuditFailed } from "../components/AuditFailed";
 import { StatusBanner } from "./TestLab";
 
 export const LABEL = "synthetic scenario - not the evaluation";
@@ -171,6 +172,7 @@ function RunResult({ result, replayMs }: { result: RunResult; replayMs: number }
             in {result.seconds} s. Stored rows reproduce the frozen run's scores (largest difference {result.stored_score_max_diff.toExponential(1)}).
           </p>
           {result.generator_note && <p className="m0" role="note"><strong>Generator {result.generator}: {result.generator_note}.</strong></p>}
+          {result.audit === "failed" && <AuditFailed />}
           <p className="m0">Model: {result.model}. {result.step_up_note}</p>
           {result.notes.map((n) => <p key={n} className="m0" role="note"><strong>Note:</strong> {n}</p>)}
           {Object.entries(result.results).map(([name, r]) => <SetTable key={name} name={name} r={r} degraded={degraded} />)}
