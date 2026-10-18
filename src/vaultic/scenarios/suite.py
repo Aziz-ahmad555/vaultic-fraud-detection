@@ -48,6 +48,9 @@ def aggregate(runs: list[dict]) -> dict:
                                                               int(np.argmax(np.array(hits) / n)))],
                              "fpr_mean": float(np.mean(fpr)),
                              "fpr_min_max": [float(min(fpr)), float(max(fpr))]}  # fmt: skip
+            su = [x["stepup_only_fpr_legit"] for x in m]
+            row["stepup_only_fpr_mean"] = float(np.mean(su))
+            row["stepup_only_fpr_min_max"] = [float(min(su)), float(max(su))]
             if "alerted_before_first_cash_out" in m[0]:
                 row["campaigns_alerted_before_cash_out"] = (
                     f"{sum(x['alerted_before_first_cash_out'] for x in m)}/{len(m)}"
@@ -71,7 +74,10 @@ def markdown(summary: dict) -> str:
     lines = [f"# Attack scenario suite - {LABEL}", "",
              "Seeds 0-4 per cell. Recall: alerted synthetic fraud rows, total over seeds "
              "(per-seed min - max). FPR: real legitimate replay rows, mean (min - max). Alert = "
-             "step-up or higher (D196); hard = hold or block (extra reporting).", ""]  # fmt: skip
+             "step-up or higher (D196); hard = hold or block (extra reporting). A step-up is an "
+             "extra customer check (friction), not a block; the FPR is split into step-up only and "
+             "hold/block. 'D196 without R3 (post hoc)' was chosen after seeing the results (D201) "
+             "and is a sensitivity row only.", ""]  # fmt: skip
     for sc, by_int in summary["scenarios"].items():
         lines.append(f"## {sc}")
         note = by_int.get("note")
@@ -84,9 +90,9 @@ def markdown(summary: dict) -> str:
                 lines.append(f"\n**{inten}, {set_name}** - budgets: added FPR ok "
                              f"{e['budget_added_fpr_ok_seeds']} seeds (max {e['added_fpr_max']:+.4f}), "
                              f"rules only <= 2% {e['budget_rules_only_ok_seeds']}\n")  # fmt: skip
-                lines.append("| mode | recall (alert) | FPR (alert) | recall (hard) | FPR (hard) |"
-                             " extra |")  # fmt: skip
-                lines.append("|---|---|---|---|---|---|")
+                lines.append("| mode | recall (alert) | FPR (alert) | FPR step-up only |"
+                             " recall (hard) | FPR hold/block | extra |")  # fmt: skip
+                lines.append("|---|---|---|---|---|---|---|")
                 for mode in MODES:
                     r = e[mode]
                     a, h = r["alert"], r["hard"]
@@ -97,6 +103,8 @@ def markdown(summary: dict) -> str:
                     lines.append(
                         f"| {mode} | {a['recall_count']} ({' - '.join(a['recall_per_seed_min_max'])})"
                         f" | {a['fpr_mean']:.4f} ({a['fpr_min_max'][0]:.4f} - {a['fpr_min_max'][1]:.4f})"
+                        f" | {r['stepup_only_fpr_mean']:.4f} ({r['stepup_only_fpr_min_max'][0]:.4f} -"
+                        f" {r['stepup_only_fpr_min_max'][1]:.4f})"
                         f" | {h['recall_count']} ({' - '.join(h['recall_per_seed_min_max'])})"
                         f" | {h['fpr_mean']:.4f} ({h['fpr_min_max'][0]:.4f} - {h['fpr_min_max'][1]:.4f})"
                         f" | {extra} |")  # fmt: skip

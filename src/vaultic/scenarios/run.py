@@ -43,9 +43,16 @@ STORED, LIVE = "stored (parity-verified)", "scored live"
 FPR_ADDED_BUDGET, RULES_ONLY_BUDGET = 0.005, 0.02  # D191
 
 
+POST_HOC_NO_R3 = "D196 without R3 (post hoc)"
+
+
 def threshold_sets() -> dict[str, dict[str, float]]:
-    return {"D196 (primary)": load_thresholds(THRESHOLDS_FILE),
-            "D195 (sensitivity)": load_thresholds(SENSITIVITY_FILE)}  # fmt: skip
+    """D196 primary, D195 sensitivity, and D201's post-hoc sensitivity row: D196 with R3 switched
+    off (chosen AFTER seeing the scenario results, D200; never the primary)."""
+    primary = load_thresholds(THRESHOLDS_FILE)
+    return {"D196 (primary)": primary,
+            "D195 (sensitivity)": load_thresholds(SENSITIVITY_FILE),
+            POST_HOC_NO_R3: {**primary, "R3": float("inf")}}  # fmt: skip
 
 
 def model_actions(system, rows: pd.DataFrame, frame: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
@@ -201,7 +208,9 @@ def summarise(table: pd.DataFrame, rule_act: np.ndarray, both: np.ndarray,
                      "hard_recall_synthetic": rate(syn, hard_alert),
                      "hard_fpr_legit": rate(legit, hard_alert),
                      "hard_alerts_synthetic": int(hard_alert[syn].sum()),
-                     "hard_alerts_legit": int(hard_alert[legit].sum())}  # fmt: skip
+                     "hard_alerts_legit": int(hard_alert[legit].sum()),
+                     "stepup_only_fpr_legit": rate(legit, codes == step),
+                     "stepup_only_alerts_legit": int((codes == step)[legit].sum())}  # fmt: skip
         if build.any():
             out[name]["build_up_alerts"] = int(alert[build].sum())
             out[name]["build_up_rows"] = int(build.sum())
