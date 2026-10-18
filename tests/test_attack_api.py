@@ -53,9 +53,13 @@ def lab(monkeypatch, tmp_path):
 
     monkeypatch.setattr(run, "run_scenario", _fake_run)
     monkeypatch.setitem(
-        gen.BY_VERSION["v2"], "card_testing", lambda store, seed, intensity: SimpleNamespace()
+        gen.BY_VERSION["v3"], "card_testing", lambda store, seed, intensity: SimpleNamespace()
     )
-    return AttackLab(FakeTestLab(), suite_dirs={"v1": tmp_path, "v2": tmp_path}, docs_dir=tmp_path)
+    return AttackLab(
+        FakeTestLab(),
+        suite_dirs={"v1": tmp_path, "v2": tmp_path, "v3": tmp_path},
+        docs_dir=tmp_path,
+    )
 
 
 def test_run_returns_labelled_replay_without_stored_rows(lab):
@@ -118,8 +122,10 @@ def test_endpoints(lab):
     assert c.get("/api/attack/scenarios").status_code == 200
     assert c.post("/api/attack/run", json={"scenario": "nope"}).status_code == 400
     assert c.post("/api/attack/run", json={"scenario": "card_testing"}).json()["label"] == LABEL
-    assert c.get("/api/attack/suite").json() == {"label": LABEL, "suite": None, "suite_v1": None,
-                                                 "posthoc": None}  # fmt: skip
+    suite = c.get("/api/attack/suite").json()
+    assert {k: suite[k] for k in ("label", "suite", "suite_v2", "suite_v1", "posthoc")} == {
+        "label": LABEL, "suite": None, "suite_v2": None, "suite_v1": None, "posthoc": None}  # fmt: skip
+    assert "review finding 1" in suite["superseded"]["v2"]
     lab.testlab.ready = False
     r = c.post("/api/attack/run", json={"scenario": "card_testing"})
     assert r.status_code == 503 and "not ready" in r.json()["detail"]
