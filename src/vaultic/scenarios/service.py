@@ -79,7 +79,7 @@ class AttackLab:
         from vaultic.scenarios.suite import suite_dir
 
         self.testlab = testlab
-        self.suite_dirs = suite_dirs or {"v2": suite_dir("v2"), "v1": suite_dir("v1")}
+        self.suite_dirs = suite_dirs or {v: suite_dir(v) for v in ("v3", "v2", "v1")}
         self.docs_dir = docs_dir or REPO_ROOT / "docs" / "scenarios"
         self.lock = threading.Lock()
 
@@ -95,11 +95,11 @@ class AttackLab:
 
     def run(self, spec: dict) -> dict:
         from vaultic.rules.engine import combine
-        from vaultic.scenarios.generators import BY_VERSION, INTENSITIES
+        from vaultic.scenarios.generators import BY_VERSION, INTENSITIES, SUPERSEDED
         from vaultic.scenarios.run import run_scenario
 
         name = spec.get("scenario")
-        generator = spec.get("generator", "v2")
+        generator = spec.get("generator", "v3")
         if generator not in BY_VERSION:
             raise AttackInputError(f"generator must be one of {sorted(BY_VERSION)}")
         if name not in BY_VERSION[generator]:
@@ -128,7 +128,8 @@ class AttackLab:
         for r in replay:
             r["trace"] = traces.get(int(r["TransactionID"]))
         return {"label": LABEL, "scenario": name, "title": TITLES[name], "seed": seed,
-                "intensity": intensity, "generator": generator, "model": "on" if model_on else "off (degraded mode: rules alone decide)",
+                "intensity": intensity, "generator": generator,
+                "generator_note": SUPERSEDED.get(generator), "model": "on" if model_on else "off (degraded mode: rules alone decide)",
                 "days": res["days"], "info": _jsonable(res["info"]), "notes": _notes(name),
                 "step_up_note": STEP_UP_NOTE, "n_synthetic": res["n_synthetic"],
                 "n_legit_replay": res["n_legit_replay"], "n_legit_stored": res["n_legit_stored"],
@@ -136,10 +137,18 @@ class AttackLab:
                 "seconds": res["seconds"], "results": res["results"], "replay": replay}  # fmt: skip
 
     def suite(self) -> dict:
-        out = {"label": LABEL, "suite": None, "suite_v1": None, "posthoc": None}
-        for key, version in (("suite", "v2"), ("suite_v1", "v1")):  # v2 primary (D203)
-            s = self.suite_dirs[version] / "summary.json"
-            if s.exists():
+        from vaultic.scenarios.generators import SUPERSEDED
+
+        out = {"label": LABEL, "suite": None, "suite_v2": None, "suite_v1": None, "posthoc": None,
+               "superseded": SUPERSEDED}  # fmt: skip
+        for key, version in (
+            ("suite", "v3"),
+            ("suite_v2", "v2"),
+            ("suite_v1", "v1"),
+        ):  # v3 primary (D205)
+            d = self.suite_dirs.get(version)
+            s = d / "summary.json" if d is not None else None
+            if s is not None and s.exists():
                 out[key] = json.loads(s.read_text("utf-8"))
         p = self.docs_dir / "posthoc_diagnostics.json"
         if p.exists():

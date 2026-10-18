@@ -261,8 +261,8 @@ def main() -> None:
     from vaultic.scenarios.generators import BY_VERSION, INTENSITIES
 
     p = argparse.ArgumentParser(description=f"run one attack scenario ({LABEL})")
-    p.add_argument("--scenario", default="card_testing", choices=sorted(BY_VERSION["v2"]))
-    p.add_argument("--generator", default="v2", choices=sorted(BY_VERSION))
+    p.add_argument("--scenario", default="card_testing", choices=sorted(BY_VERSION["v3"]))
+    p.add_argument("--generator", default="v3", choices=sorted(BY_VERSION))
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--intensity", default="medium", choices=INTENSITIES)
     a = p.parse_args()

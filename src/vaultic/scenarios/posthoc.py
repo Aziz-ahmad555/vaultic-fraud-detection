@@ -66,7 +66,7 @@ def per_day(store, sets: dict[str, dict[str, float]]) -> list[dict]:
 
 
 def new_accounts(
-    store, system, days: list[int], build_up: dict, build_up_v1: dict | None = None
+    store, system, days: list[int], build_up: dict, others: dict | None = None
 ) -> dict:
     from vaultic.scenarios.run import model_actions
 
@@ -77,6 +77,8 @@ def new_accounts(
     on_days = np.isin(day, days) & legit
     young = on_days & (d1 >= 0) & (d1 <= 13)
     cnp = young & (df["ProductCD"].astype(object) == "W").to_numpy()
+    amt = df["TransactionAmt"].to_numpy(float)
+    cnp_large = cnp & (amt >= 500) & (amt <= 2000)  # review finding 2: cash-out-sized amounts
     mv = [c for c in df.columns if re.match(r"^(M|V)\d+$", c)]
     all_mv_missing = df[mv].isna().all(axis=1).to_numpy()
     pos = np.flatnonzero(on_days)
@@ -95,7 +97,8 @@ def new_accounts(
             "young_accounts_d1_0_13": rates(young),
             "young_accounts_card_not_present_W": rates(cnp),
             "young_accounts_all_M_V_missing": rates(young & all_mv_missing),
-            "bust_out_build_up": build_up, "bust_out_build_up_v1": build_up_v1}  # fmt: skip
+            "young_accounts_W_amount_500_2000": rates(cnp_large),
+            "bust_out_build_up": build_up, **(others or {})}  # fmt: skip
 
 
 def build_up_rates(suite_dir) -> tuple[list[int], dict]:
@@ -142,12 +145,14 @@ def markdown(daily: list[dict], acc: dict, set_names) -> str:
               "D196 thresholds.", "", "## Model alerts on real new accounts vs bust-out build-up",
               "", "| group | rows | alert rate (step-up or higher) | hold/block rate |",
               "|---|---|---|---|"]  # fmt: skip
-    names = {"bust_out_build_up": "bust-out build-up rows, generator v2 (synthetic, labelled legitimate)",
+    names = {"bust_out_build_up": "bust-out build-up rows, generator v3 (primary; synthetic, labelled legitimate)",
+             "bust_out_build_up_v2": "bust-out build-up rows, generator v2 (superseded: donor pool included fraud rows)",
              "bust_out_build_up_v1": "bust-out build-up rows, generator v1 (every masked field missing)",
              "all_legit_on_days": "all real legitimate rows, same replay days",
              "young_accounts_d1_0_13": "real legitimate young accounts (masked time-delta D1 0-13)",
              "young_accounts_card_not_present_W": "  of which card-not-present (ProductCD W)",
-             "young_accounts_all_M_V_missing": "  of which every M and V field missing"}  # fmt: skip
+             "young_accounts_all_M_V_missing": "  of which every M and V field missing",
+             "young_accounts_W_amount_500_2000": "  of which card-not-present with amount 500-2,000 (post-hoc reviewer check)"}  # fmt: skip
     for k, label in names.items():
         x = acc.get(k)
         if x is None:
@@ -155,7 +160,10 @@ def markdown(daily: list[dict], acc: dict, set_names) -> str:
         ar = "-" if x["alert_rate"] is None else f"{x['alert_rate']:.3f}"
         hr = "-" if x["hold_block_rate"] is None else f"{x['hold_block_rate']:.4f}"
         lines.append(f"| {label} | {x['rows']} | {ar} | {hr} |")
-    lines += ["", f"Replay days: {acc['days'][0]}-{acc['days'][-1]}. D1 is a masked time-delta "
+    lines += ["", "The last row is a post-hoc reviewer check on test-period rows (review finding 2): "
+              "E12 decides on expected loss (calibrated probability x amount), so large amounts are "
+              "stepped up whatever the account; bust-out cash-outs of 500-2,000 being stepped up is "
+              "therefore not bust-out detection.", f"Replay days: {acc['days'][0]}-{acc['days'][-1]}. D1 is a masked time-delta "
               "field; the uid reconstruction treats day - D1 as the account's start, as the "
               "synthetic build-up rows do.", ""]  # fmt: skip
     return "\n".join(lines) + "\n"
@@ -169,11 +177,14 @@ def main() -> None:
     system, store, _ = load_all(log=lambda m: None)
     sets = threshold_sets()
     daily = per_day(store, sets)
-    days, build = build_up_rates(suite_dir("v2"))  # primary generator (D203)
-    days_v1, build_v1 = build_up_rates(suite_dir("v1"))
-    if days_v1 != days:
-        raise RuntimeError("v1 and v2 bust-out runs should share their replay days (D203)")
-    acc = new_accounts(store, system, days, build, build_v1)
+    days, build = build_up_rates(suite_dir("v3"))  # primary generator (D205)
+    others = {}
+    for v in ("v2", "v1"):
+        d, b = build_up_rates(suite_dir(v))
+        if d != days:
+            raise RuntimeError("all generator versions share the bust-out replay days (D203)")
+        others[f"bust_out_build_up_{v}"] = b
+    acc = new_accounts(store, system, days, build, others)
     out = REPO_ROOT / "docs" / "scenarios"
     out.mkdir(parents=True, exist_ok=True)
     data = {"label": LABEL, "per_day": daily, "new_accounts": acc}

@@ -1,4 +1,5 @@
-"""Seeded scenario generators (Phase B, D197, D199, D203; v2 = the primary since D203, see apply_v2). Each returns the synthetic rows (stored columns
+"""Seeded scenario generators (Phase B, D197, D199, D203, D205; v3 = the primary since D205: v2's
+masked-field sampling from legitimate validation rows only, see apply_v2; v2 is superseded). Each returns the synthetic rows (stored columns
 and dtypes), their customer codes, labels and a description; every row is marked synthetic by its
 TransactionID (>= SYNTHETIC_ID_START). Same seed + intensity -> same rows.
 
@@ -360,24 +361,28 @@ KEEPS_DEVICE = ("account_takeover", "mule_ring")  # the scenario's own device st
 NEW_CUSTOMER = ("mule_ring", "bust_out")
 
 
-def _pools(store) -> dict:
+def _pools(store, legit_only: bool = False) -> dict:
+    """Donor pools of validation-period rows (D203); legit_only (generator v3, D205): legitimate
+    rows only (isFraud == 0). Generator v2 (superseded) used every label."""
     df = store.df
     day = df["day"].to_numpy()
     val = (day >= store.splits.validation.first) & (day <= store.splits.validation.last)
+    if legit_only:
+        val = val & (df["isFraud"].to_numpy() == 0)
     d1 = df["D1"].to_numpy(float)
     n_past = np.nan_to_num(store.features["hist_n_past"].to_numpy(float))
     return {"val": val, "young": val & (d1 >= 0) & (d1 <= 13), "existing": val & (n_past >= 3),
             "product": df["ProductCD"].astype(object).to_numpy()}  # fmt: skip
 
 
-def apply_v2(store, sc: Scenario) -> Scenario:
+def apply_v2(store, sc: Scenario, legit_only: bool = False) -> Scenario:
     """Generator v2 (D203): each synthetic row's masked block (C, D2-D15, M, V, dist1/dist2 and,
     unless the scenario sets the device, DeviceType / DeviceInfo / id_*) copied from ONE real
     validation-period row: the hijacked customer's own rows with the row's product (else existing
     customers' rows with that product) for existing customers; young accounts' rows with the row's
     product for new customers. Own random stream (seed, 2): the attack structure equals v1's."""
     rng = np.random.default_rng([sc.seed, 2])
-    df, pools = store.df, _pools(store)
+    df, pools = store.df, _pools(store, legit_only)
     rows = sc.rows.copy()
     cols = [c for c in rows.columns if MASKED_V2.match(c)]
     if sc.name not in KEEPS_DEVICE:
@@ -409,19 +414,23 @@ def apply_v2(store, sc: Scenario) -> Scenario:
     rows["has_identity"] = rows[ident].notna().any(axis=1).astype(np.int8)
     rows = rows.astype(store.df.dtypes.to_dict())
     _resolve(store, rows, sc.uids)
-    info = dict(sc.info, generator="v2", masked_source=tiers,
+    info = dict(sc.info, generator="v3" if legit_only else "v2", masked_source=tiers,
                 masked_source_transactions=[int(t) for t in src["TransactionID"]])  # fmt: skip
     return Scenario(sc.name, sc.seed, sc.intensity, sc.day, rows, sc.uids, sc.labels, info)
 
 
-def _v2(gen):
+def _v2(gen, legit_only: bool = False):
     def run(store, seed=0, intensity="medium", day=None):
-        return apply_v2(store, gen(store, seed=seed, intensity=intensity, day=day))
+        return apply_v2(store, gen(store, seed=seed, intensity=intensity, day=day), legit_only)
 
-    run.__name__ = f"{gen.__name__}_v2"
+    run.__name__ = f"{gen.__name__}_{'v3' if legit_only else 'v2'}"
     return run
 
 
-GENERATORS_V2 = {name: _v2(gen) for name, gen in GENERATORS_V1.items()}
-GENERATORS = GENERATORS_V2  # the primary generator since D203; v1 stays available and recorded
-BY_VERSION = {"v1": GENERATORS_V1, "v2": GENERATORS_V2}
+GENERATORS_V2 = {name: _v2(gen) for name, gen in GENERATORS_V1.items()}  # superseded (D205)
+GENERATORS_V3 = {name: _v2(gen, legit_only=True) for name, gen in GENERATORS_V1.items()}
+GENERATORS = (
+    GENERATORS_V3  # the primary generator since D205; v1 and v2 stay available and recorded
+)
+BY_VERSION = {"v1": GENERATORS_V1, "v2": GENERATORS_V2, "v3": GENERATORS_V3}
+SUPERSEDED = {"v2": "superseded: donor pool included fraud rows (review finding 1)"}

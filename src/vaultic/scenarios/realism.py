@@ -117,7 +117,7 @@ def main() -> None:
     from vaultic.scenarios.run import load_all
 
     p = argparse.ArgumentParser(description="generator realism check")
-    p.add_argument("--version", default="v1", choices=("v1", "v2"))
+    p.add_argument("--version", default="v1", choices=("v1", "v2", "v3"))
     a = p.parse_args()
     _, store, _ = load_all(log=lambda m: None)
     from vaultic.scenarios.generators import BY_VERSION

@@ -126,8 +126,8 @@ def main() -> None:
     from vaultic.scenarios.run import load_all, run_scenario, save
 
     p = argparse.ArgumentParser(description=f"scenario suite ({LABEL})")
-    p.add_argument("--generator", default="v2", choices=sorted(BY_VERSION))
-    p.add_argument("--scenarios", nargs="*", default=list(BY_VERSION["v2"]))
+    p.add_argument("--generator", default="v3", choices=sorted(BY_VERSION))
+    p.add_argument("--scenarios", nargs="*", default=list(BY_VERSION["v3"]))
     a = p.parse_args()
     generators = BY_VERSION[a.generator]
     root = suite_dir(a.generator)
