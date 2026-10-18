@@ -39,6 +39,8 @@ export function WhatIfPanel() {
     try {
       if (cost) await api.whatIf!(cost); // validated by the backend before the pages use it
       setWhatIf(cost);
+      // a client-side setting the server cannot see: recorded explicitly (D208); never blocks the change
+      api.auditEvent?.(cost ? "whatif_applied" : "whatif_cleared", cost ? JSON.stringify(cost) : "").catch(() => undefined);
       toast(cost ? "What-if cost mode on (illustrative)" : "Back to the evaluated system");
     } catch (e) {
       toast(`Couldn't use these what-if costs. ${(e as Error).message}`, "error");

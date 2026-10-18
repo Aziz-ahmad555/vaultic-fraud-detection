@@ -7,6 +7,7 @@
  *  - known-fraud counts in the network use matured labels only.
  */
 
+import { getIdentity } from "../identity";
 import type {
   Action,
   Api,
@@ -131,9 +132,10 @@ export function createMockApi(seed = 7): Api {
       .filter((t) => t.row.day === day && scored(t))
       .map((t) => withLabel(t, asOf));
 
-  const audit = (actor: Role, action: string, detail: string) => {
-    stored.audit.unshift({ time: new Date().toISOString(), actor, action, detail });
-    stored.audit = stored.audit.slice(0, 500);
+  const audit = (role: Role, action: string, detail: string, extra: Partial<AuditEntry> = {}) => {
+    const analyst = getIdentity().analyst || "unknown";
+    stored.audit.unshift({ time: new Date().toISOString(), analyst, role, action, detail, ...extra });
+    stored.audit = stored.audit.slice(0, 500); // the mock keeps the last 500; the real log keeps all (D208)
     save(stored);
   };
 
@@ -297,12 +299,31 @@ export function createMockApi(seed = 7): Api {
     async feedback(id, label, role) {
       const before = stored.feedback[id];
       stored.feedback[id] = label;
-      audit(role, `Marked transaction ${id} as ${label}`, before ? `was ${before}` : "first label");
+      audit(role, `Marked transaction ${id} as ${label}`, before ? `was ${before}` : "first label", { target: `tx:${id}`, before: before ?? null, after: label });
       save(stored);
     },
 
-    async auditLog() {
-      return [...stored.audit];
+    async auditLog(filter) {
+      return stored.audit
+        .filter((e) => !filter?.analyst || e.analyst === filter.analyst)
+        .filter((e) => !filter?.action || e.action.toLowerCase().includes(filter.action.toLowerCase()))
+        .slice(0, filter?.limit ?? 500);
+    },
+
+    async auditVerify() {
+      return { ok: true, entries: stored.audit.length, first_bad: null, reason: null };
+    },
+
+    async auditExport() {
+      audit(getIdentity().role, "Exported the audit log", `${stored.audit.length + 1} entries (CSV)`);
+      const cell = (x: unknown) => `"${String(x ?? "").replace(/"/g, '""')}"`;
+      const head = ["time", "analyst", "role", "action", "target", "detail"];
+      return [head.join(","), ...stored.audit.map((e) => [e.time, e.analyst, e.role, e.action, e.target, e.detail].map(cell).join(","))].join("\n") + "\n";
+    },
+
+    async auditEvent(event, detail = "") {
+      const text = { report_printed: "Printed or saved the daily report", whatif_applied: "Applied a what-if cost setting", whatif_cleared: "Cleared the what-if cost setting" }[event];
+      audit(getIdentity().role, text, detail);
     },
   };
 }

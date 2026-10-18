@@ -11,8 +11,10 @@ rules as the mock: nothing after the as-of time is returned, and a label only on
 its_time + L days <= as-of (label-delay curtain). All data is labelled
 "IEEE-CIS test period, final run": anonymized e-commerce transactions released by Vesta for the
 IEEE-CIS competition, not bank data. The decision thresholds are the frozen E12 ones and are
-read-only (D129); feedback and the audit log are kept in memory for the demo session only; nothing
-is written back.
+read-only (D129); feedback labels are kept in memory for the demo session only and nothing is
+written back to the data. Every analyst action is recorded in the persistent audit log (D208,
+vaultic.audit: SQLite on drive E, append-only, hash-chained); GET /api/audit reads it,
+/api/audit/verify checks the chain, /api/audit/export.csv exports it (the export is recorded too).
 
 POST /api/score is not available: the final-run models score recorded transactions only, so the
 dashboard's what-if simulator keeps its illustrative model (labelled "illustrative model, not the
@@ -41,8 +43,9 @@ from typing import Annotated
 
 import numpy as np
 import pandas as pd
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 DAY = 86400
@@ -59,6 +62,9 @@ NO_BLOCK_NOTE = (
     "are held or stepped up instead."
 )
 WHATIF_NOTE = "What-if cost mode: illustrative, not the evaluated system"
+SRC = Path(__file__).resolve().parents[2] / "src"
+if str(SRC) not in sys.path:  # the research package (vaultic) for the audit log and the Test Lab
+    sys.path.insert(0, str(SRC))
 DEFAULT_BUNDLE = (
     Path(os.environ.get("VAULTIC_DATA_DIR", "data")) / "interim" / "demo_final_bundle.parquet"
 )
@@ -75,7 +81,12 @@ class CostIn(BaseModel):
 
 class FeedbackIn(BaseModel):
     label: str
-    role: str
+    role: str | None = None  # older clients; the X-Vaultic-Role header wins (D208)
+
+
+class AuditEventIn(BaseModel):
+    action: str  # one of vaultic.audit.http.CLIENT_EVENTS
+    detail: str = ""
 
 
 def _none(x):
@@ -236,7 +247,9 @@ def check_bundle_marker(bundle_path: Path, runs_dir: Path = RUNS_DIR) -> dict:
     return marker
 
 
-def create_app(bundle_path: Path | None = None, runs_dir: Path = RUNS_DIR) -> FastAPI:
+def create_app(
+    bundle_path: Path | None = None, runs_dir: Path = RUNS_DIR, audit_store=None
+) -> FastAPI:
     bundle_path = Path(bundle_path or os.environ.get("VAULTIC_DEMO_BUNDLE") or DEFAULT_BUNDLE)
     meta = json.loads(bundle_path.with_suffix(".json").read_text("utf-8"))
     check_bundle_marker(bundle_path, runs_dir)  # D154: before any test-period row is read
@@ -251,7 +264,11 @@ def create_app(bundle_path: Path | None = None, runs_dir: Path = RUNS_DIR) -> Fa
     thresholds = {k: _none(float(v)) if v is not None else None
                   for k, v in meta["thresholds"].items()}  # fmt: skip
     # the frozen E12 thresholds of the final run: read-only (D129); others only via what-if
-    state = {"feedback": {}, "audit": []}
+    from vaultic.audit.http import CLIENT_EVENTS, actor_of, public
+    from vaultic.audit.store import default_store, to_csv
+
+    audit_log_store = audit_store if audit_store is not None else default_store()  # D208
+    state = {"feedback": {}}
     # FastAPI runs these handlers in a thread pool: every read and write of `state` holds this
     # lock, so a label and its audit entry change together and a reader never sees half (D135)
     state_lock = threading.Lock()
@@ -624,13 +641,18 @@ def create_app(bundle_path: Path | None = None, runs_dir: Path = RUNS_DIR) -> Fa
     def get_thresholds():
         return {"thresholds": thresholds, "cost": cost, "frozen": True}
 
-    def audit(role: str, action: str, detail: str):
-        """Prepend an audit entry; the caller holds state_lock."""
-        state["audit"].insert(0, {"time": datetime.now(UTC).isoformat(timespec="seconds"),
-                                  "actor": role, "action": action, "detail": detail})  # fmt: skip
+    def audit(request, action: str, target=None, before=None, after=None, detail: str = "",
+              fallback_role: str | None = None) -> dict:  # fmt: skip
+        """Append an entry to the persistent audit log (D208) for the request's analyst."""
+        analyst, role = actor_of(request, fallback_role)
+        return audit_log_store.append(analyst, role, action, target=target, before=before,
+                                      after=after, detail=detail,
+                                      time=datetime.now(UTC).isoformat(timespec="seconds"))  # fmt: skip
 
     @app.put("/api/thresholds")
-    def save_thresholds():
+    def save_thresholds(request: Request):
+        audit(request, "Refused: change the frozen decision thresholds", target="thresholds",
+              detail="read-only (D129)")  # fmt: skip
         raise HTTPException(
             405,
             "The decision thresholds are the frozen ones of the final run and are read-only. "
@@ -638,12 +660,14 @@ def create_app(bundle_path: Path | None = None, runs_dir: Path = RUNS_DIR) -> Fa
         )
 
     @app.post("/api/feedback/{tid}")
-    def feedback(tid: int, body: FeedbackIn):
+    def feedback(tid: int, body: FeedbackIn, request: Request):
         with state_lock:  # the read, the write and the audit entry as one step
             before = state["feedback"].get(tid)
             state["feedback"][tid] = body.label
-            audit(body.role, f"Marked transaction {tid} as {body.label}",
-                  f"was {before}" if before else "first label")  # fmt: skip
+            audit(request, f"Marked transaction {tid} as {body.label}", target=f"tx:{tid}",
+                  before=before, after=body.label,
+                  detail=f"was {before}" if before else "first label",
+                  fallback_role=body.role)  # fmt: skip
         return {"ok": True}
 
     @app.get("/api/whatif")
@@ -654,9 +678,38 @@ def create_app(bundle_path: Path | None = None, runs_dir: Path = RUNS_DIR) -> Fa
                 "note": WHATIF_NOTE}  # fmt: skip
 
     @app.get("/api/audit")
-    def audit_log():
-        with state_lock:
-            return [dict(e) for e in state["audit"]]  # a copy, never the live list
+    def audit_log(analyst: str | None = None, action: str | None = None, since: str | None = None,
+                  until: str | None = None, limit: int = 500, offset: int = 0):  # fmt: skip
+        """Entries, newest first (D208); filters by analyst, action text and time."""
+        if not 1 <= limit <= 5000 or offset < 0:
+            raise HTTPException(422, "limit must be 1-5000 and offset >= 0")
+        rows = audit_log_store.query(analyst=analyst, action=action, since=since, until=until,
+                                     limit=limit, offset=offset)  # fmt: skip
+        return [public(r) for r in rows]
+
+    @app.get("/api/audit/verify")
+    def audit_verify():
+        return audit_log_store.verify()
+
+    @app.get("/api/audit/export.csv", response_class=PlainTextResponse)
+    def audit_export(request: Request):
+        n = audit_log_store.count()
+        audit(
+            request, "Exported the audit log", target="audit_log", detail=f"{n + 1} entries (CSV)"
+        )
+        body = to_csv(audit_log_store.query(limit=10**9))
+        return PlainTextResponse(body, media_type="text/csv",
+                                 headers={"Content-Disposition": "attachment; filename=vaultic_audit_log.csv"})  # fmt: skip
+
+    @app.post("/api/audit/event")
+    def audit_event(body: AuditEventIn, request: Request):
+        """Client-side actions the server cannot see (D208): only the listed ones are accepted."""
+        if body.action not in CLIENT_EVENTS:
+            raise HTTPException(422, f"action must be one of {sorted(CLIENT_EVENTS)}")
+        e = audit(request, CLIENT_EVENTS[body.action], target=body.action, detail=body.detail[:500])
+        return {"ok": True, "id": e["id"]}
+
+    app.state.audit = audit_log_store
 
     if os.environ.get("VAULTIC_TESTLAB") == "1":  # D182: the Test Lab's live scoring endpoints
         mount_testlab(app)
@@ -678,7 +731,7 @@ def mount_testlab(app: FastAPI, service=None, start: bool = True):
         service = TestLabService()
         if start:
             service.start_in_background()
-    app.include_router(mod.make_router(service))
+    app.include_router(mod.make_router(service, audit=getattr(app.state, "audit", None)))
     app.state.testlab = service
     # Phase B: the Attack Lab runs synthetic scenarios through the same engine (services/api/attack.py)
     aspec = importlib.util.spec_from_file_location(
@@ -689,7 +742,7 @@ def mount_testlab(app: FastAPI, service=None, start: bool = True):
     from vaultic.scenarios.service import AttackLab
 
     app.state.attack = AttackLab(service)
-    app.include_router(amod.make_router(app.state.attack))
+    app.include_router(amod.make_router(app.state.attack, audit=getattr(app.state, "audit", None)))
     return service
 
 

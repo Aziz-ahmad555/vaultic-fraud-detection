@@ -129,3 +129,33 @@ def test_endpoints(lab):
     lab.testlab.ready = False
     r = c.post("/api/attack/run", json={"scenario": "card_testing"})
     assert r.status_code == 503 and "not ready" in r.json()["detail"]
+
+
+def test_runs_are_recorded_in_the_audit_log(lab, tmp_path):
+    """D208: an Attack Lab run is an audit entry with the request's analyst."""
+    pytest.importorskip("httpx")
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from vaultic.audit.store import SQLiteAuditStore
+
+    spec = importlib.util.spec_from_file_location("attack_api", ROOT / "services/api/attack.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    store = SQLiteAuditStore(tmp_path / "audit.sqlite")
+    app = FastAPI()
+    app.include_router(mod.make_router(lab, audit=store))
+    c = TestClient(app)
+    r = c.post("/api/attack/run", json={"scenario": "card_testing", "intensity": "low", "seed": 4},
+               headers={"X-Vaultic-Analyst": "Aziz", "X-Vaultic-Role": "admin"})  # fmt: skip
+    assert r.status_code == 200
+    assert c.post("/api/attack/run", json={"scenario": "nope"}).status_code == 400
+    log = store.query()
+    assert len(log) == 1  # a refused run is not an action
+    assert (log[0]["analyst"], log[0]["role"], log[0]["target"]) == (
+        "Aziz",
+        "admin",
+        "card_testing",
+    )
+    assert "seed 4" in log[0]["detail"]

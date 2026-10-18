@@ -46,7 +46,7 @@ the data layer, and `src/api/mock/mockApi.test.ts` tests them:
 | Drift monitor | PSI, score and disagreement drift, alarm timeline that moves with the label delay, champion–challenger history |
 | Model lab | PR and calibration curves, ablation, fusion, cost sensitivity (mock numbers) |
 | Scenario simulator | Live risk, braid and reasons as inputs change |
-| Reports and settings | Print report, role, admin-only thresholds, audit log |
+| Reports and settings | Print report, analyst name and role, admin-only thresholds, the persistent audit log (filters, chain check, CSV export; see Audit log) |
 | Test Lab | Live scoring of one transaction by the frozen system: real held-out transactions (label hidden until revealed), custom transactions, batch CSV; parity-gated (see Running the Test Lab) |
 | Attack Lab | Synthetic attack scenarios (card testing, account takeover, mule ring, bust-out, mimicry) injected into a replay of real legitimate traffic and scored live by rules only / model only / rules + model; the 5-seed suite scorecard and post-hoc diagnostics. Synthetic scenario - not the evaluation (see Attack Lab) |
 
@@ -160,6 +160,18 @@ prints p50 / p95 of the scoring latency, the explanation and the HTTP request, a
 matched the frozen run.
 
 **Stop:** `Ctrl+C` in both windows (or the `Get-NetTCPConnection` command above).
+
+### Audit log
+
+Every analyst action is recorded in a persistent, append-only audit log (D208): labels (with the
+value before and after), refused threshold changes, Test Lab scores, reveals and batch files,
+Attack Lab runs, audit-log exports, report prints and what-if changes. Set your name in Reports and
+settings; it is sent with every request (headers `X-Vaultic-Analyst`, `X-Vaultic-Role`) and an
+action without a name is recorded as "unknown". The log is a SQLite file on drive E
+(`E:\dev-cache\audit\audit.sqlite`, or `VAULTIC_AUDIT_DB`); entries cannot be changed or removed,
+and each entry carries a hash chain, so "Check the chain" (or `GET /api/audit/verify`) finds any
+altered or missing entry. "Export CSV" downloads the whole log and records the export. The mock
+data source keeps the last 500 entries in this browser only.
 
 ### Attack Lab
 

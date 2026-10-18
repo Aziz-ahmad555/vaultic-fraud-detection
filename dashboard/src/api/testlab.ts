@@ -3,6 +3,7 @@
  * system scoring one transaction live. Needs the backend (VITE_DATA_SOURCE=http) started with
  * VAULTIC_TESTLAB=1; the mock has no Test Lab.
  */
+import { identityHeaders } from "./identity";
 import type { View } from "./types";
 
 export type LabState = "loading" | "ready" | "refused" | "error";
@@ -137,7 +138,7 @@ export function createTestLabApi(baseUrl = "http://127.0.0.1:8000", fetchImpl: F
   async function call<T>(path: string, init?: RequestInit): Promise<T> {
     let res: Response;
     try {
-      res = await fetchImpl(base + path, init);
+      res = await fetchImpl(base + path, { ...init, headers: { ...identityHeaders(), ...(init?.headers ?? {}) } });
     } catch {
       throw new LabError(`The Test Lab backend is not reachable at ${base}. Start it with VAULTIC_TESTLAB=1 (see the README).`, 0);
     }

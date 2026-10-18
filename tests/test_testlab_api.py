@@ -61,7 +61,7 @@ def serve(service):
     from fastapi import FastAPI
 
     app = FastAPI()
-    app.include_router(_router_module().make_router(service))
+    app.include_router(_router_module().make_router(service, audit=getattr(service, "audit", None)))
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
@@ -187,3 +187,35 @@ def test_benchmark_percentiles_match_numpy():
     v = [float(x) for x in np.random.default_rng(0).gamma(2.0, 200.0, 200)]
     for q in (50, 95):
         assert bench.percentile(v, q) == pytest.approx(float(np.percentile(v, q)))
+
+
+def test_scores_and_reveals_are_recorded_in_the_audit_log(tmp_path):
+    """D208: every live score and reveal is an audit entry with the request's analyst."""
+    from vaultic.audit.store import SQLiteAuditStore
+    from vaultic.live.service import TestLabService
+
+    service = TestLabService()
+    service.start(build=lambda log: FakeEngine(), parity=lambda e, p, log: {"passed": True},
+                  log=lambda m: None)  # fmt: skip
+    service.audit = SQLiteAuditStore(tmp_path / "audit.sqlite")
+    who = {
+        "X-Vaultic-Analyst": "Aziz",
+        "X-Vaultic-Role": "analyst",
+        "Content-Type": "application/json",
+    }
+    with serve(service) as base:
+        req = urllib.request.Request(base + "/api/score-live", data=json.dumps({"transaction_id": 1015}).encode(),
+                                     method="POST", headers=who)  # fmt: skip
+        with urllib.request.urlopen(req) as r:
+            assert r.status == 200
+        with urllib.request.urlopen(
+            urllib.request.Request(base + "/api/live/reveal/1015", headers=who)
+        ) as r:
+            assert r.status == 200
+    log = service.audit.query()
+    assert [e["action"] for e in log] == [
+        "Test Lab: revealed a label",
+        "Test Lab: scored a real test transaction",
+    ]
+    assert all(e["analyst"] == "Aziz" and e["target"] == "tx:1015" for e in log)
+    assert service.audit.verify()["ok"]

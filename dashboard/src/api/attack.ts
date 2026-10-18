@@ -3,6 +3,7 @@
  * run live through the Test Lab engine. Synthetic scenario - not the evaluation. Needs the backend
  * started with VAULTIC_TESTLAB=1.
  */
+import { identityHeaders } from "./identity";
 import { LabError } from "./testlab";
 
 export type Action = "allow" | "monitor" | "step_up" | "hold" | "block";
@@ -169,7 +170,7 @@ export function createAttackApi(baseUrl = "http://127.0.0.1:8000", fetchImpl: Fe
   async function call<T>(path: string, init?: RequestInit): Promise<T> {
     let res: Response;
     try {
-      res = await fetchImpl(base + path, init);
+      res = await fetchImpl(base + path, { ...init, headers: { ...identityHeaders(), ...(init?.headers ?? {}) } });
     } catch {
       throw new LabError(`The Attack Lab backend is not reachable at ${base}. Start it with VAULTIC_TESTLAB=1 (see the README).`, 0);
     }

@@ -47,10 +47,15 @@ def _mark(bundle: Path, runs: Path, status: str = "completed") -> Path:
 
 
 def _app(mod, bundle: Path):
+    from vaultic.audit.store import SQLiteAuditStore
+
     runs = bundle.parent / "runs"
     if not bundle.with_name(bundle.name + ".TEST_DATA.json").exists():
         _mark(bundle, runs)
-    return mod.create_app(bundle, runs_dir=runs)
+    # a fresh audit log per app (D208), never the real one
+    n = len(list(bundle.parent.glob("audit*.sqlite")))
+    return mod.create_app(bundle, runs_dir=runs,
+                          audit_store=SQLiteAuditStore(bundle.parent / f"audit{n}.sqlite"))  # fmt: skip
 
 
 def _bundle(tmp_path: Path) -> Path:
@@ -130,9 +135,9 @@ def _get(base, path):
         return json.loads(r.read())
 
 
-def _send(base, path, body, method):
+def _send(base, path, body, method, headers=None):
     req = urllib.request.Request(base + path, data=json.dumps(body).encode(), method=method,
-                                 headers={"Content-Type": "application/json"})  # fmt: skip
+                                 headers={"Content-Type": "application/json", **(headers or {})})  # fmt: skip
     try:
         with urllib.request.urlopen(req) as r:
             return r.status, json.loads(r.read())
@@ -210,7 +215,48 @@ def test_drift_lab_score_thresholds_feedback_audit(server):
     code, _ = _send(server, "/api/feedback/1000", {"label": "fraud", "role": "analyst"}, "POST")
     assert code == 200
     log = _get(server, "/api/audit")
-    assert log[0]["action"] == "Marked transaction 1000 as fraud" and len(log) == 1
+    assert log[0]["action"] == "Marked transaction 1000 as fraud" and len(log) == 3
+    # the two refused threshold changes are recorded too (D208)
+    assert [e["action"] for e in log[1:]] == ["Refused: change the frozen decision thresholds"] * 2
+
+
+def test_audit_log_records_the_named_analyst_exports_and_client_events(tmp_path):
+    """D208: named analyst + role from the headers, before / after, export recorded, only the
+    listed client events accepted, filters, and a verifiable hash chain."""
+    mod = _load_module()
+    who = {"X-Vaultic-Analyst": "Aziz Ahmad", "X-Vaultic-Role": "admin"}
+    with _serve(_app(mod, _bundle(tmp_path))) as base:
+        assert _send(base, "/api/feedback/1000", {"label": "fraud"}, "POST", who)[0] == 200
+        assert _send(base, "/api/feedback/1000", {"label": "legit"}, "POST", who)[0] == 200
+        assert (
+            _send(base, "/api/feedback/1001", {"label": "unsure", "role": "analyst"}, "POST")[0]
+            == 200
+        )
+        log = _get(base, "/api/audit")
+        assert log[0]["analyst"] == "unknown" and log[0]["role"] == "analyst"  # no header: honest
+        assert log[1]["analyst"] == "Aziz Ahmad" and log[1]["role"] == "admin"
+        assert (log[1]["before"], log[1]["after"], log[1]["target"]) == (
+            "fraud",
+            "legit",
+            "tx:1000",
+        )
+        assert len(_get(base, "/api/audit?analyst=Aziz%20Ahmad")) == 2
+        assert len(_get(base, "/api/audit?limit=1")) == 1
+        code, body = _send(base, "/api/audit/event", {"action": "report_printed"}, "POST", who)
+        assert code == 200
+        code, body = _send(base, "/api/audit/event", {"action": "delete_everything"}, "POST", who)
+        assert code == 422
+        with urllib.request.urlopen(urllib.request.Request(base + "/api/audit/export.csv",
+                                                           headers=who)) as r:  # fmt: skip
+            text = r.read().decode()
+        assert text.splitlines()[0].startswith("id,time,analyst,role,action")
+        assert "Exported the audit log" in text  # the export is itself an entry
+        assert _get(base, "/api/audit")[0]["action"] == "Exported the audit log"
+        v = _get(base, "/api/audit/verify")
+        assert v == {"ok": True, "entries": 5, "first_bad": None, "reason": None}
+        assert _send(base, "/api/feedback/1", {"label": "fraud"}, "POST")[0] == 200
+        code, _ = _send(base, "/api/audit?limit=0", {}, "GET")
+        assert code == 422
 
 
 AS_OF_ENDPOINTS = ("/api/day-summary?time={t}", "/api/stream?time={t}&start=0&end={t}",
