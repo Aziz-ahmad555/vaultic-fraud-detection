@@ -16,7 +16,8 @@ is written back.
 
 POST /api/score is not available: the final-run models score recorded transactions only, so the
 dashboard's what-if simulator keeps its illustrative model (labelled "illustrative model, not the
-evaluated system").
+evaluated system"). With VAULTIC_TESTLAB=1 the Test Lab's endpoints are mounted as well
+(services/api/testlab.py): the frozen stage-2 system scoring one transaction live (D182).
 
 What-if cost mode (D122, stateless since D128): a request that carries the what-if cost parameters
 (c_fp, c_rev, c_step, step_up_success_rate, legit_step_up_friction and optionally
@@ -657,7 +658,29 @@ def create_app(bundle_path: Path | None = None, runs_dir: Path = RUNS_DIR) -> Fa
         with state_lock:
             return [dict(e) for e in state["audit"]]  # a copy, never the live list
 
+    if os.environ.get("VAULTIC_TESTLAB") == "1":  # D182: the Test Lab's live scoring endpoints
+        mount_testlab(app)
     return app
+
+
+def mount_testlab(app: FastAPI, service=None, start: bool = True):
+    """Add the Test Lab router (services/api/testlab.py); its engine loads in the background."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "testlab_api", Path(__file__).with_name("testlab.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    if service is None:
+        from vaultic.live.service import TestLabService
+
+        service = TestLabService()
+        if start:
+            service.start_in_background()
+    app.include_router(mod.make_router(service))
+    app.state.testlab = service
+    return service
 
 
 app = create_app() if (os.environ.get("VAULTIC_DEMO_BUNDLE") or DEFAULT_BUNDLE.exists()) else None

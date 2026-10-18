@@ -18,6 +18,7 @@ export const PAGES = [
   { path: "/lab", label: "Model lab", key: "b" },
   { path: "/simulate", label: "Scenario simulator", key: "s" },
   { path: "/settings", label: "Reports and settings", key: "r" },
+  { path: "/testlab", label: "Test Lab", key: "t" },
 ] as const;
 
 function AsOfControl() {
@@ -81,7 +82,7 @@ export const SHORTCUTS: [string, string][] = [
   ["Ctrl+K", "Open the command palette"],
   ["J / K", "Next / previous case"],
   ["F / L / U", "Mark the open case as fraud / legit / unsure"],
-  ["G then O, M, Q, C, N, D, B, S, R", "Go to a page"],
+  ["G then O, M, Q, C, N, D, B, S, R, T", "Go to a page"],
   ["[ / ]", "Move the as-of time back / forward one hour"],
   ["?", "Show this help"],
   ["Esc", "Close a dialog"],
