@@ -137,7 +137,7 @@ def main() -> None:
                 sc = GENERATORS[name](store, seed=seed, intensity=inten)
                 res = run_scenario(store, system, stored, sc, log=lambda m: None)
                 save(res, root / f"{name}_s{seed}_{inten}")
-                runs.append({k: v for k, v in res.items() if k != "rows"})
+                runs.append({k: v for k, v in res.items() if k not in ("rows", "traces")})
                 print(f"[{time.perf_counter() - started:6.0f}s] {name} {inten} seed {seed}: "
                       f"{res['n_synthetic']} synthetic, {res['n_legit_live']} legit live, "
                       f"{res['seconds']} s", flush=True)  # fmt: skip

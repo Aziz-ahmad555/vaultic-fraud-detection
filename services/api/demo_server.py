@@ -680,6 +680,16 @@ def mount_testlab(app: FastAPI, service=None, start: bool = True):
             service.start_in_background()
     app.include_router(mod.make_router(service))
     app.state.testlab = service
+    # Phase B: the Attack Lab runs synthetic scenarios through the same engine (services/api/attack.py)
+    aspec = importlib.util.spec_from_file_location(
+        "attack_api", Path(__file__).with_name("attack.py")
+    )
+    amod = importlib.util.module_from_spec(aspec)
+    aspec.loader.exec_module(amod)
+    from vaultic.scenarios.service import AttackLab
+
+    app.state.attack = AttackLab(service)
+    app.include_router(amod.make_router(app.state.attack))
     return service
 
 

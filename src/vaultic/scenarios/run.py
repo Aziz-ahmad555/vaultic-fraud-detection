@@ -153,6 +153,12 @@ def run_scenario(store, system, stored_scores: pd.DataFrame, scenario, log=print
             table["combined_action"] = both
     for c in ("model_action", "rule_action", "combined_action"):
         table[c] = [ACTIONS[a] for a in table[c]]
+    from vaultic.rules.engine import evaluate
+
+    primary = threshold_sets()["D196 (primary)"]
+    syn_idx = np.flatnonzero(table["synthetic"].to_numpy())
+    traces = {int(table["TransactionID"].iat[i]): evaluate(frame.iloc[i].to_dict(), primary)["trace"]
+              for i in syn_idx}  # fmt: skip
     table = table.sort_values("TransactionDT").reset_index(drop=True)
     return {"label": LABEL, "scenario": scenario.name, "seed": scenario.seed,
             "intensity": scenario.intensity, "days": [int(d) for d in days],
@@ -160,7 +166,7 @@ def run_scenario(store, system, stored_scores: pd.DataFrame, scenario, log=print
             "n_legit_replay": int(len(pos)), "n_legit_stored": int(len(stored_pos)),
             "n_legit_live": int(len(live_pos)), "stored_score_max_diff": diff,
             "seconds": round(time.perf_counter() - started, 1), "results": results,
-            "rows": table}  # fmt: skip
+            "rows": table, "traces": traces}  # fmt: skip
 
 
 def overlay_check(store, scenario, live_rows, live_syn, frame) -> None:
@@ -266,14 +272,14 @@ def main() -> None:
     res = run_scenario(store, system, stored, sc)
     out = cache_root() / "scenarios" / "results" / f"{a.scenario}_s{a.seed}_{a.intensity}"
     save(res, out)
-    print(json.dumps({k: v for k, v in res.items() if k != "rows"}, indent=1))
+    print(json.dumps({k: v for k, v in res.items() if k not in ("rows", "traces")}, indent=1))
     print(res["rows"][res["rows"]["source"] == LIVE].to_string(max_rows=80))
 
 
 def save(res: dict, out) -> None:
     out.mkdir(parents=True, exist_ok=True)
     res["rows"].to_parquet(out / "rows.parquet", index=False)
-    summary = {k: v for k, v in res.items() if k != "rows"}
+    summary = {k: v for k, v in res.items() if k not in ("rows", "traces")}
     (out / "summary.json").write_text(json.dumps(summary, indent=1), "utf-8")
 
 

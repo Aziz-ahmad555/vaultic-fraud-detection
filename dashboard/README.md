@@ -48,6 +48,7 @@ the data layer, and `src/api/mock/mockApi.test.ts` tests them:
 | Scenario simulator | Live risk, braid and reasons as inputs change |
 | Reports and settings | Print report, role, admin-only thresholds, audit log |
 | Test Lab | Live scoring of one transaction by the frozen system: real held-out transactions (label hidden until revealed), custom transactions, batch CSV; parity-gated (see Running the Test Lab) |
+| Attack Lab | Synthetic attack scenarios (card testing, account takeover, mule ring, bust-out, mimicry) injected into a replay of real legitimate traffic and scored live by rules only / model only / rules + model; the 5-seed suite scorecard and post-hoc diagnostics. Synthetic scenario - not the evaluation (see Attack Lab) |
 
 Keyboard: Ctrl+K palette, J/K, F/L/U, G then a page letter, `[` / `]` for the as-of time, `?` for help.
 
@@ -159,6 +160,23 @@ prints p50 / p95 of the scoring latency, the explanation and the HTTP request, a
 matched the frozen run.
 
 **Stop:** `Ctrl+C` in both windows (or the `Get-NetTCPConnection` command above).
+
+### Attack Lab
+
+The Attack Lab page (`/attack`, G then A) uses the same backend and engine as the Test Lab (it
+answers only after the parity gate has passed). Pick a scenario, an intensity and a seed and run
+it: the generator injects seeded synthetic attack rows (TransactionID >= 1,000,000,000) into a
+replay of the real legitimate transactions of the attack's day(s), the history store is overlaid
+with the synthetic rows so later rows see earlier ones, and every row is scored three ways: rules
+only, model only (the frozen E12 decision) and rules + model (the more severe action). Legitimate
+rows unaffected by the attack keep their stored, parity-verified scores; the others are scored
+live. "Model off" is degraded mode: the rules alone decide. The scorecard shows the D196
+thresholds (primary), D195 (sensitivity) and D196 without R3 (post hoc, chosen after seeing the
+results), recall as counts, and the false-positive rate split into step-up only and hold/block
+(a step-up is an extra customer check, friction, not a block). Below: the 5-seed x 3-intensity
+results (`python -m vaultic.scenarios.suite`, read from `E:\dev-cache\scenarios\suite`) and the
+post-hoc diagnostics (`python -m vaultic.scenarios.posthoc`, `docs/scenarios/`). Every number on
+the page is labelled "synthetic scenario - not the evaluation".
 
 ## Real data: the final-run demo backend
 
