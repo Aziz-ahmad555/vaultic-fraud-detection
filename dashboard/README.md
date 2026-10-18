@@ -112,7 +112,7 @@ The Test Lab page (`/testlab`, G then T) scores one transaction live with the fr
 system (MVAF over the five views, E12 decisions): every feature is computed from the stored
 history strictly before the transaction, with the research pipeline's own feature code. It needs
 the real-data setup above (bundle and data files on drive E) and the frozen stage-2 system cache
-(`E:\dev-cache\stage2\system_dev.joblib` or `E:\dev-cache	estlab\system.joblib`; built
+(`E:\dev-cache\stage2\system_dev.joblib` or `E:\dev-cache\testlab\system.joblib`; built
 automatically on first start if neither exists, about 25 minutes).
 
 **1. Start the backend with the Test Lab** (window 1, repository root):
@@ -120,7 +120,7 @@ automatically on first start if neither exists, about 25 minutes).
 ```powershell
 $env:PYTHONPATH = "src"
 $env:VAULTIC_DATA_DIR = "E:/old work/fyp 11/fraud-detection/data"
-$env:VAULTIC_DEMO_BUNDLE = "E:\old workyp 11raud-detection\data\interim\demo_final_bundle.parquet"
+$env:VAULTIC_DEMO_BUNDLE = "E:\old work\fyp 11\fraud-detection\data\interim\demo_final_bundle.parquet"
 $env:VAULTIC_TESTLAB = "1"
 .\.venv\Scripts\python.exe -m uvicorn services.api.demo_server:app --port 8000
 ```
@@ -136,7 +136,7 @@ features that failed parity.
 **Parity gate.** Before it scores anything, the Test Lab recomputes the features of 2,000 random
 real test transactions online and requires them, and the live MVAF and B5 scores, to equal the
 offline frozen features and the stored final-run scores within 1e-6. If they do not, the page
-says so and refuses to score. The result is cached in `E:\dev-cache	estlab` and recomputed
+says so and refuses to score. The result is cached in `E:\dev-cache\testlab` and recomputed
 only when the data, the feature code or the system cache change.
 
 **Modes.**
