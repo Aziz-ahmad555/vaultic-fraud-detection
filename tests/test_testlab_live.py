@@ -167,3 +167,10 @@ def test_provenance_marks_stored_edited_and_new_rows():
     assert provenance(store, relabelled) == [
         EDITED
     ]  # stored label is 0: a changed label is an edit
+
+
+def test_parity_fails_without_the_stored_scores():
+    from vaultic.live.parity import run_parity
+
+    out = run_parity(SimpleNamespace(stored=None, store=None, system=None), log=None)
+    assert out["passed"] is False and "not available" in out["reason"]

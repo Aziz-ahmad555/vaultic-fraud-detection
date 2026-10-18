@@ -57,9 +57,17 @@ def _diff(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 
 def run_parity(engine, n: int = N, seed: int = SEED, log=print, pool=None) -> dict:
-    """pool: candidate row positions (default: every test-period row)."""
+    """pool: candidate row positions (default: every test-period row). Without the stored
+    final-run scores the scores cannot be compared, so parity FAILS (it is never skipped)."""
     from vaultic.live.features import online_features
 
+    if engine.stored is None:
+        return {"n": 0, "seed": seed, "feature_tolerance": FEATURE_TOLERANCE,
+                "score_tolerance": SCORE_TOLERANCE, "max_feature_diff": None,
+                "failing_features": {}, "n_failing_features": 0,
+                "max_score_diff": {"MVAF": None, "B5": None}, "passed": False,
+                "reason": "the stored EXP-200-final scores are not available, so the live scores "
+                          "cannot be compared", "seconds": 0}  # fmt: skip
     store, system = engine.store, engine.system
     day = store.df["day"].to_numpy()
     test = np.flatnonzero(day >= store.splits.test.first) if pool is None else np.asarray(pool)
@@ -80,11 +88,9 @@ def run_parity(engine, n: int = N, seed: int = SEED, log=print, pool=None) -> di
         risk = float(system.score(f, ctx)["risk"][0])
         b5 = float(system.b5(f)[0][0])
         tid = int(q["TransactionID"].iloc[0])
-        if engine.stored is not None:
-            score_diff["MVAF"] = max(score_diff["MVAF"],
-                                     abs(risk - float(engine.stored.at[tid, "score_MVAF"])))  # fmt: skip
-            score_diff["B5"] = max(score_diff["B5"],
-                                   abs(b5 - float(engine.stored.at[tid, "score_B5"])))  # fmt: skip
+        score_diff["MVAF"] = max(score_diff["MVAF"],
+                                 abs(risk - float(engine.stored.at[tid, "score_MVAF"])))  # fmt: skip
+        score_diff["B5"] = max(score_diff["B5"], abs(b5 - float(engine.stored.at[tid, "score_B5"])))
         if log and (i + 1) % 250 == 0:
             log(f"parity {i + 1}/{len(pick)} ({time.perf_counter() - started:.0f} s)")
     failing = {c: v for c, v in worst.items() if v > FEATURE_TOLERANCE}

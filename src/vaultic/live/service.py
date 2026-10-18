@@ -59,6 +59,9 @@ class TestLabService:
             path = SYSTEM_CACHE if SYSTEM_CACHE.exists() else STAGE2_DEV_SYSTEM
             result = (parity or cached_parity)(engine, path, log)
             self.parity = result
+            if not result["passed"] and result.get("reason"):
+                self.state, self.message = "refused", f"parity failed: {result['reason']}"
+                return
             if not result["passed"]:
                 self.state = "refused"
                 self.message = (f"parity failed: {result['n_failing_features']} feature columns "
