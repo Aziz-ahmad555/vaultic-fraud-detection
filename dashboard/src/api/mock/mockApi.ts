@@ -310,15 +310,11 @@ export function createMockApi(seed = 7): Api {
         .slice(0, filter?.limit ?? 500);
     },
 
-    async auditVerify() {
-      return { ok: true, entries: stored.audit.length, first_bad: null, reason: null };
-    },
-
     async auditExport() {
       audit(getIdentity().role, "Exported the audit log", `${stored.audit.length + 1} entries (CSV)`);
       const cell = (x: unknown) => `"${String(x ?? "").replace(/"/g, '""')}"`;
       const head = ["time", "analyst", "role", "action", "target", "detail"];
-      return [head.join(","), ...stored.audit.map((e) => [e.time, e.analyst, e.role, e.action, e.target, e.detail].map(cell).join(","))].join("\n") + "\n";
+      return { csv: [head.join(","), ...stored.audit.map((e) => [e.time, e.analyst, e.role, e.action, e.target, e.detail].map(cell).join(","))].join("\n") + "\n" };
     },
 
     async auditEvent(event, detail = "") {

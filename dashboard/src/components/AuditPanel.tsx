@@ -1,7 +1,8 @@
 /**
- * The persistent audit log (D208): every analyst action, newest first, with filters, a check of
- * the server's hash chain and a CSV export (the export is itself recorded). Append-only: nothing
- * here can change or remove an entry.
+ * The persistent audit log (D208, D209): every analyst action, newest first, with filters, a check
+ * of the server's hash chain and anchor, and a CSV export (the export is itself recorded). The log
+ * is tamper-evident, not tamper-proof: the check detects edits, removals, reordering and a cut-off
+ * tail, but not someone with file access who rewrites the whole chain and its anchor.
  */
 import { useState } from "react";
 import type { Api, AuditEntry, AuditVerify } from "../api/types";
@@ -28,14 +29,14 @@ export function AuditPanel({ api, nonce = 0, toast }: { api: Api; nonce?: number
   const exportCsv = async () => {
     if (!api.auditExport) return;
     try {
-      const text = await api.auditExport();
-      const url = URL.createObjectURL(new Blob([text], { type: "text/csv" }));
+      const { csv, audit } = await api.auditExport();
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
       const a = document.createElement("a");
       a.href = url;
       a.download = "vaultic_audit_log.csv";
       a.click();
       URL.revokeObjectURL(url);
-      toast("Audit log exported (the export is recorded in the log)");
+      toast(audit === "failed" ? "Audit log exported, but the export could not be recorded in the log" : "Audit log exported (the export is recorded in the log)", audit === "failed" ? "error" : "done");
       setApplied({ ...applied }); // refresh: the export entry appears
     } catch (e) {
       toast(`Couldn't export the audit log. ${(e as Error).message}`, "error");
@@ -46,7 +47,7 @@ export function AuditPanel({ api, nonce = 0, toast }: { api: Api; nonce?: number
     <section className="pane" aria-label="Audit log">
       <div className="pane-head">
         <h2>Audit log</h2>
-        <span className="muted xs">Append-only; every entry is kept</span>
+        <span className="muted xs">Append-only, every entry kept; tamper-evident, not tamper-proof</span>
       </div>
       <div className="pane-body">
         <form
@@ -63,9 +64,16 @@ export function AuditPanel({ api, nonce = 0, toast }: { api: Api; nonce?: number
           {api.auditVerify && <button type="button" className="btn" onClick={verify}>Check the chain</button>}
           {api.auditExport && <button type="button" className="btn" onClick={exportCsv}>Export CSV</button>}
         </form>
+        <p className="muted xs m0">
+          The chain check detects an entry that was edited, removed, reordered or cut off the end. It cannot detect someone with access to the files who
+          rewrites the whole chain and its anchor. Analyst names and roles are self-declared by the browser (no sign-in yet): attribution, not proof.
+        </p>
+        {!api.auditVerify && <p className="muted xs m0" data-testid="audit-check-unavailable">Chain check: not available in mock data.</p>}
         {check && (
           <p className="small" role="status" data-testid="audit-check">
-            {check.ok ? `Chain intact: ${check.entries.toLocaleString()} ${check.entries === 1 ? "entry" : "entries"}, none altered or missing.` : `Chain broken at entry ${check.first_bad}: ${check.reason}.`}
+            {check.ok
+              ? `Chain intact: ${check.entries.toLocaleString()} ${check.entries === 1 ? "entry" : "entries"}, no edit, removal, reordering or cut-off tail found${check.reason ? ` (${check.reason})` : ""}.`
+              : `Chain check failed${check.first_bad ? ` at entry ${check.first_bad}` : ""}: ${check.reason}.`}
           </p>
         )}
         {log.loading && !log.data && <Loading what="the audit log" />}

@@ -357,10 +357,10 @@ export interface Api {
   saveThresholds(t: Thresholds, role: Role): Promise<void>;
   feedback(id: number, label: Feedback, role: Role): Promise<void>;
   auditLog(filter?: AuditFilter): Promise<AuditEntry[]>;
-  /** optional: check the audit log's hash chain */
+  /** optional: check the audit log's hash chain and anchor (real backend only; tamper-evident, D209) */
   auditVerify?(): Promise<AuditVerify>;
-  /** optional: the audit log as CSV (the export is itself recorded) */
-  auditExport?(): Promise<string>;
+  /** optional: the audit log as CSV (the export is itself recorded; audit "failed" = fail-open, D209) */
+  auditExport?(): Promise<{ csv: string; audit?: "failed" }>;
   /** optional: record a client-side action */
   auditEvent?(event: AuditEvent, detail?: string): Promise<void>;
   /** optional (real-data backend): data-source notes */

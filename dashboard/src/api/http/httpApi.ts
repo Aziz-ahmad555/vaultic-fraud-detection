@@ -107,7 +107,8 @@ export function createHttpApi(baseUrl = "http://127.0.0.1:8000", fetchImpl: Fetc
     auditExport: async () => {
       const res = await fetchImpl(`${base}/api/audit/export.csv`, { headers: identityHeaders() });
       if (!res.ok) throw new Error(`${res.status}`);
-      return res.text();
+      const csv = await res.text();
+      return res.headers.get("X-Vaultic-Audit") === "failed" ? { csv, audit: "failed" as const } : { csv };
     },
     auditEvent: async (event: AuditEvent, detail = "") => {
       await request("/api/audit/event", { method: "POST", body: JSON.stringify({ action: event, detail }) });

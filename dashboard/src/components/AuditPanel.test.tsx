@@ -16,7 +16,7 @@ function fakeApi(over: Partial<Api> = {}): Api {
   return {
     auditLog: vi.fn(async () => ENTRIES),
     auditVerify: vi.fn(async () => ({ ok: true, entries: 2, first_bad: null, reason: null })),
-    auditExport: vi.fn(async () => "id,time\n1,x\n"),
+    auditExport: vi.fn(async () => ({ csv: "id,time\n1,x\n" })),
     ...over,
   } as unknown as Api;
 }
@@ -44,17 +44,17 @@ describe("audit panel (D208)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Filter" }));
     await waitFor(() => expect(api.auditLog).toHaveBeenLastCalledWith({ analyst: "Aziz", action: "Marked", limit: 500 }));
     await userEvent.click(screen.getByRole("button", { name: "Check the chain" }));
-    expect(await screen.findByTestId("audit-check")).toHaveTextContent("Chain intact: 2 entries");
+    expect(await screen.findByTestId("audit-check")).toHaveTextContent("Chain intact: 2 entries, no edit, removal, reordering or cut-off tail found");
     await userEvent.click(screen.getByRole("button", { name: "Export CSV" }));
     await waitFor(() => expect(api.auditExport).toHaveBeenCalled());
-    expect(toast).toHaveBeenCalledWith("Audit log exported (the export is recorded in the log)");
+    expect(toast).toHaveBeenCalledWith("Audit log exported (the export is recorded in the log)", "done");
   });
 
   it("says plainly when the chain is broken", async () => {
     const api = fakeApi({ auditVerify: vi.fn(async () => ({ ok: false, entries: 4, first_bad: 5, reason: "entry 5 does not match the chain" })) });
     render(<AuditPanel api={api} toast={() => undefined} />);
     await userEvent.click(await screen.findByRole("button", { name: "Check the chain" }));
-    expect(await screen.findByTestId("audit-check")).toHaveTextContent("Chain broken at entry 5: entry 5 does not match the chain");
+    expect(await screen.findByTestId("audit-check")).toHaveTextContent("Chain check failed at entry 5: entry 5 does not match the chain");
   });
 });
 
@@ -85,7 +85,7 @@ describe("acting analyst on every request (D208)", () => {
     const api = createMockApi();
     await api.feedback(9, "fraud", "analyst");
     await api.auditEvent!("whatif_applied", "c_fp 5");
-    const csv = await api.auditExport!();
+    const { csv } = await api.auditExport!();
     const log = await api.auditLog();
     expect(log.map((e) => e.action)).toEqual(["Exported the audit log", "Applied a what-if cost setting", "Marked transaction 9 as fraud"]);
     expect(log.every((e) => e.analyst === "Aziz")).toBe(true);
@@ -93,6 +93,35 @@ describe("acting analyst on every request (D208)", () => {
     expect(csv.split("\n")[0]).toBe("time,analyst,role,action,target,detail");
     expect((await api.auditLog({ action: "what-if" })).length).toBe(1);
     expect(getIdentity().analyst).toBe("Aziz");
+    expect(api.auditVerify).toBeUndefined(); // no chain in mock data
     setIdentity("", "analyst");
+  });
+});
+
+describe("audit wording and failures (D209)", () => {
+  it("never claims more than tamper-evident, and says so in mock mode", async () => {
+    const api = fakeApi({ auditVerify: undefined });
+    const { container } = render(<AuditPanel api={api} toast={() => undefined} />);
+    await screen.findByRole("table", { name: "Audit log entries" });
+    expect(screen.getByTestId("audit-check-unavailable")).toHaveTextContent("Chain check: not available in mock data");
+    expect(screen.queryByRole("button", { name: "Check the chain" })).toBeNull();
+    const text = container.textContent ?? "";
+    expect(text).toContain("tamper-evident, not tamper-proof");
+    expect(text).toContain("self-declared by the browser");
+    for (const claim of [/tamper-proof(?!,)/i, /cannot be changed/i, /\bsecure\b/i]) expect(text.replace("not tamper-proof", "")).not.toMatch(claim);
+  });
+
+  it("warns when an export could not be recorded", async () => {
+    globalThis.URL.createObjectURL = vi.fn(() => "blob:x");
+    globalThis.URL.revokeObjectURL = vi.fn();
+    const toast = vi.fn();
+    render(<AuditPanel api={fakeApi({ auditExport: vi.fn(async () => ({ csv: "id\n", audit: "failed" as const })) })} toast={toast} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Export CSV" }));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith("Audit log exported, but the export could not be recorded in the log", "error"));
+  });
+
+  it("reads the export's audit flag from the response header", async () => {
+    const api = createHttpApi("http://x", vi.fn(async () => new Response("id\n", { status: 200, headers: { "X-Vaultic-Audit": "failed" } })));
+    expect(await api.auditExport!()).toEqual({ csv: "id\n", audit: "failed" });
   });
 });

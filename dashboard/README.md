@@ -163,15 +163,25 @@ matched the frozen run.
 
 ### Audit log
 
-Every analyst action is recorded in a persistent, append-only audit log (D208): labels (with the
-value before and after), refused threshold changes, Test Lab scores, reveals and batch files,
+Every analyst action is recorded in a persistent, append-only audit log (D208, D209): labels (with
+the value before and after), refused threshold changes, Test Lab scores, reveals and batch files,
 Attack Lab runs, audit-log exports, report prints and what-if changes. Set your name in Reports and
 settings; it is sent with every request (headers `X-Vaultic-Analyst`, `X-Vaultic-Role`) and an
-action without a name is recorded as "unknown". The log is a SQLite file on drive E
-(`E:\dev-cache\audit\audit.sqlite`, or `VAULTIC_AUDIT_DB`); entries cannot be changed or removed,
-and each entry carries a hash chain, so "Check the chain" (or `GET /api/audit/verify`) finds any
-altered or missing entry. "Export CSV" downloads the whole log and records the export. The mock
-data source keeps the last 500 entries in this browser only.
+action without a name is recorded as "unknown". **Analyst name and role are self-declared by the
+browser and not authenticated (no sign-in until JWT); treat them as attribution, not proof.**
+
+The log is a SQLite file on drive E (`E:\dev-cache\audit\audit.sqlite`, or `VAULTIC_AUDIT_DB`) with
+an anchor file next to it (`audit.sqlite.anchor.json`: the latest entry count and hash). It is
+**tamper-evident, not tamper-proof**: the table refuses updates and deletes, each entry is
+hash-chained to the one before, and "Check the chain" (`GET /api/audit/verify`) detects an entry
+that was edited, removed or reordered inside the chain, and a tail that was cut off (the database
+is behind the anchor). It does **not** protect against someone with access to the files who drops
+the triggers and rewrites the whole chain, or who edits both the database and the anchor.
+
+If the audit write fails: a label is **not saved** and you get an error (fail-closed); a score, a
+run or an export is still shown, with a small "not recorded in the audit log" warning (fail-open).
+"Export CSV" downloads the whole log and records the export. The mock data source keeps the last 500
+entries in this browser only and has no chain check.
 
 ### Attack Lab
 
