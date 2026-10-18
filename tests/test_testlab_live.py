@@ -150,3 +150,19 @@ def test_batch_csv_of_real_rows_reproduces_the_stored_scores(engine):
     ref = engine.stored.loc[table["TransactionID"], "score_MVAF"].to_numpy()
     assert np.max(np.abs(table["risk"].to_numpy() - ref)) <= 1e-6
     assert metrics["has_label"] and sum(metrics["confusion_e12_alert"].values()) == len(pos)
+
+
+def test_provenance_marks_stored_edited_and_new_rows():
+    from vaultic.live.batch import EDITED, NEW, STORED, provenance
+
+    store = _fake_store()
+    head = "TransactionID,TransactionDT,TransactionAmt,ProductCD,card1\n"
+    same = "1,13046400,10,W,1000\n"  # stored row 1, uploaded fields equal (addr1 left out)
+    edited = "2,13132800,25,C,2000\n"  # stored row 2 with a different amount
+    new = "99,13046400,10,W,1000\n"
+    rows = parse(store, head + same + edited + new)
+    assert provenance(store, rows) == [STORED, EDITED, NEW]
+    relabelled = parse(store, head.strip() + ",isFraud\n" + "1,13046400,10,W,1000,1\n")
+    assert provenance(store, relabelled) == [
+        EDITED
+    ]  # stored label is 0: a changed label is an edit

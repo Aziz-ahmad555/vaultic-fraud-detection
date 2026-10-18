@@ -187,7 +187,7 @@ class TestLabService:
             table, metrics = score_batch(e, rows)
         buf = io.StringIO()
         table.to_csv(buf, index=False)
-        return {"metrics": metrics, "rows": table.to_dict(orient="records"),
-                "csv": buf.getvalue(),
+        return {"kind": "user file - not the evaluation", "metrics": metrics,
+                "rows": table.to_dict(orient="records"), "csv": buf.getvalue(),
                 "note": "each row was scored independently against the stored history before its "
                         "own time; rows of the file do not affect each other"}  # fmt: skip

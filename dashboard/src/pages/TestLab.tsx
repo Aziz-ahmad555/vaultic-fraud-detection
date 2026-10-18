@@ -410,7 +410,17 @@ function BatchMode({ api, onScored }: { api: TestLabApi; onScored: () => void })
         {error && <p role="alert" className="small"><strong>File refused:</strong> {error}</p>}
         {result && m && (
           <>
+            <p className="small" role="note" data-testid="batch-kind">
+              <strong>Your uploaded file only, using your labels. No confidence intervals. Not the research evaluation.</strong>{" "}
+              ({result.kind})
+            </p>
             <p className="small">{m.rows.toLocaleString()} rows scored. {result.note}.</p>
+            {(m.edited_rows ?? 0) > 0 && (
+              <p className="small" role="alert" data-testid="batch-edited">
+                {m.edited_rows} row{m.edited_rows === 1 ? "" : "s"} reuse a stored TransactionID with different field values: marked
+                "edited - not the stored transaction".
+              </p>
+            )}
             {m.has_label && (
               <div className="figures" aria-label="Batch metrics">
                 <div className="figure"><div className="figure-value num">{m.pr_auc == null ? "–" : m.pr_auc.toFixed(3)}</div><div className="figure-note">PR-AUC</div></div>
@@ -432,13 +442,13 @@ function BatchMode({ api, onScored }: { api: TestLabApi; onScored: () => void })
             {download && <p className="small"><a href={download} download="testlab_scored.csv">Download the scored CSV</a></p>}
             <div className="table-wrap">
               <table className="small" aria-label="Batch results">
-                <thead><tr><th>Transaction</th><th>Customer</th><th>Risk</th><th>Decision</th><th>Alert</th><th>Latency</th>{m.has_label && <th>isFraud</th>}</tr></thead>
+                <thead><tr><th>Transaction</th><th>Customer</th><th>Risk</th><th>Decision</th><th>Alert</th><th>Latency</th>{m.has_label && <th>isFraud</th>}<th>Row</th></tr></thead>
                 <tbody>
                   {result.rows.slice(0, 200).map((r) => (
                     <tr key={String(r.TransactionID)}>
                       <td className="num">{String(r.TransactionID)}</td><td className="num">{String(r.uid)}</td>
                       <td className="num">{pct(Number(r.risk))}</td><td>{String(r.decision)}</td><td>{r.alert ? "yes" : "no"}</td>
-                      <td className="num">{ms(Number(r.latency_ms))}</td>{m.has_label && <td>{String(r.isFraud)}</td>}
+                      <td className="num">{ms(Number(r.latency_ms))}</td>{m.has_label && <td>{String(r.isFraud)}</td>}<td>{String(r.provenance ?? "")}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -107,9 +107,11 @@ export interface Options {
 }
 
 export interface BatchResult {
+  kind: string;
   metrics: {
     rows: number;
     has_label: boolean;
+    edited_rows?: number;
     frauds?: number;
     pr_auc?: number | null;
     recall_e12_alert?: number | null;

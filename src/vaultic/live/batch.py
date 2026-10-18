@@ -98,6 +98,7 @@ def parse(store, text: str) -> pd.DataFrame:
     rows["isFraud"] = rows["isFraud"].fillna(0) if "isFraud" in rows else 0
     rows = rows[store.df.columns].astype(store.df.dtypes.to_dict())
     rows.attrs["has_label"] = bool(has_label)
+    rows.attrs["uploaded_columns"] = [c for c in up.columns if c in rows.columns]
     return rows
 
 
@@ -117,6 +118,41 @@ def resolve_uids(store, rows: pd.DataFrame) -> np.ndarray:
     return out
 
 
+STORED, EDITED, NEW = "stored transaction", "edited - not the stored transaction", "new transaction"
+
+
+def provenance(store, rows: pd.DataFrame) -> list[str]:
+    """Per uploaded row: a stored transaction (its TransactionID exists and every uploaded field
+    equals the stored value), an edited one (the id exists but any uploaded field differs, the
+    label included), or a new one. Only the columns present in the file are compared, so leaving
+    an optional column out is not an edit (D186 review #2)."""
+    ids = store.df["TransactionID"].to_numpy()
+    pos = pd.Series(np.arange(len(ids)), index=ids)
+    cols = rows.attrs.get("uploaded_columns", list(rows.columns))
+    out = []
+    for i in range(len(rows)):
+        tid = int(rows["TransactionID"].iat[i])
+        if tid not in pos.index:
+            out.append(NEW)
+            continue
+        ref = store.df.iloc[int(pos[tid])]
+        same = True
+        for c in cols:
+            a, b = rows[c].iat[i], ref[c]
+            if pd.isna(a) and pd.isna(b):
+                continue
+            if pd.isna(a) or pd.isna(b):
+                same = False
+            elif isinstance(rows[c].dtype, pd.CategoricalDtype):
+                same = str(a) == str(b)
+            else:
+                same = np.float32(a) == np.float32(b)
+            if not same:
+                break
+        out.append(STORED if same else EDITED)
+    return out
+
+
 def score_batch(engine, rows: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """Every row scored independently; results table and (with labels) metrics."""
     from vaultic.eval.metrics import pr_auc
@@ -130,7 +166,9 @@ def score_batch(engine, rows: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
                         "flagged_e10": r["flagged_e10"], "conformal_set": r["conformal_set"],
                         "latency_ms": r["latency_ms"]})  # fmt: skip
     table = pd.DataFrame(results)
-    metrics = {"rows": int(len(table)), "has_label": bool(rows.attrs.get("has_label"))}
+    table["provenance"] = provenance(engine.store, rows)
+    metrics = {"rows": int(len(table)), "has_label": bool(rows.attrs.get("has_label")),
+               "edited_rows": int((table["provenance"] == EDITED).sum())}  # fmt: skip
     if metrics["has_label"]:
         y = rows["isFraud"].to_numpy().astype(int)
         table["isFraud"] = y

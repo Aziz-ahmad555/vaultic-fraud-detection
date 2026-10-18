@@ -27,8 +27,9 @@ function fakeApi(over: Partial<TestLabApi> = {}): TestLabApi {
     options: vi.fn(async () => ({ products: ["W", "C"], card4: ["visa"], card6: ["debit"], email_domains: ["gmail.com"], device_types: ["mobile"], device_infos: ["Windows"], days: [151, 182] as [number, number] })),
     templateUrl: () => "http://x/api/live/template.csv",
     batch: vi.fn(async () => ({
-      metrics: { rows: 2, has_label: true, frauds: 1, pr_auc: 1, recall_e12_alert: 1, recall_e10_threshold: 0.5, confusion_e12_alert: { tp: 1, fp: 0, fn: 0, tn: 1 } },
-      rows: [{ TransactionID: 1, uid: 2, risk: 0.9, decision: "hold", alert: true, latency_ms: 400, isFraud: 1 }],
+      kind: "user file - not the evaluation",
+      metrics: { rows: 2, has_label: true, edited_rows: 1, frauds: 1, pr_auc: 1, recall_e12_alert: 1, recall_e10_threshold: 0.5, confusion_e12_alert: { tp: 1, fp: 0, fn: 0, tn: 1 } },
+      rows: [{ TransactionID: 1, uid: 2, risk: 0.9, decision: "hold", alert: true, latency_ms: 400, isFraud: 1, provenance: "edited - not the stored transaction" }],
       csv: "TransactionID,risk\n1,0.9\n",
       note: "each row was scored independently against the stored history before its own time",
     })),
@@ -115,6 +116,10 @@ describe("Test Lab page", () => {
     expect(await screen.findByRole("table", { name: "Confusion matrix (E12 alert)" })).toBeInTheDocument();
     expect(screen.getByText("recall, E10 threshold").previousSibling).toHaveTextContent("50.0%");
     expect(screen.getByText("Download the scored CSV")).toBeInTheDocument();
+    expect(screen.getByTestId("batch-kind")).toHaveTextContent("Your uploaded file only, using your labels. No confidence intervals. Not the research evaluation.");
+    expect(screen.getByTestId("batch-kind")).toHaveTextContent("user file - not the evaluation");
+    expect(screen.getByTestId("batch-edited")).toHaveTextContent("1 row reuse");
+    expect(screen.getByText("edited - not the stored transaction")).toBeInTheDocument();
 
     (api.batch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new LabError("unknown columns: ['bogus']", 400));
     fireEvent.click(screen.getByRole("button", { name: "Upload and score" }));
