@@ -5,7 +5,7 @@ import { createTestLabApi, LabError, type LabStatus, type LiveResult, type TestL
 import { emptyScoreboard, outcome, record } from "../lib/scoreboard";
 import { TestLab } from "./TestLab";
 
-const PARITY = { n: 2000, passed: true, tolerance: 1e-6, max_feature_diff: 0, max_score_diff: { MVAF: 0, B5: 0 }, n_failing_features: 0, failing_features: {} };
+const PARITY = { n: 2000, passed: true, feature_tolerance: 1e-6, score_tolerance: 1e-12, max_feature_diff: 0, max_score_diff: { MVAF: 0, B5: 0 }, n_failing_features: 0, failing_features: {} };
 const READY: LabStatus = { state: "ready", message: "ok", parity: PARITY, latency: { n: 3, p50_ms: 410, p95_ms: 620 } };
 const RESULT: LiveResult = {
   risk: 0.93, calibrated: 0.4, conformal_set: "fraud", disagreement: 0.1, decision: "hold", alert: true, flagged_e10: true, e10_threshold: 0.881,

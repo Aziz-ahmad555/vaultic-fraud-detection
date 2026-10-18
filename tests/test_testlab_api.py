@@ -100,7 +100,8 @@ def test_loading_and_refused_states_answer_503_with_the_reason():
         assert code == 503 and "not ready" in body["detail"]
         svc.start(build=lambda log: FakeEngine(),
                   parity=lambda e, p, log: {"passed": False, "n_failing_features": 3,
-                                            "max_score_diff": {"MVAF": 0.1}, "tolerance": 1e-6},
+                                            "max_score_diff": {"MVAF": 0.1}, "feature_tolerance": 1e-6,
+                                            "score_tolerance": 1e-12},
                   log=lambda m: None)  # fmt: skip
         st = call(base, "/api/live/status")[1]
         assert st["state"] == "refused" and "parity failed" in st["message"]

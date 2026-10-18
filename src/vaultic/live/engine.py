@@ -26,6 +26,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from vaultic.live.parity import SCORE_TOLERANCE
 from vaultic.live.store import CACHE_DIR
 
 SYSTEM_CACHE = CACHE_DIR / "system.joblib"
@@ -142,7 +143,7 @@ class LiveEngine:
         if self.stored is not None and tid in self.stored.index:
             ref = float(self.stored.at[tid, "score_MVAF"])
             out["stored_risk"] = ref
-            out["matches_frozen_run"] = bool(abs(ref - out["risk"]) <= 1e-6)
+            out["matches_frozen_run"] = bool(abs(ref - out["risk"]) <= SCORE_TOLERANCE)  # D189
         return out
 
 

@@ -1,9 +1,11 @@
-"""The Test Lab's parity gate (D183).
+"""The Test Lab's parity gate (D183, tolerances amended by D189).
 
 For a random sample of real test transactions (2,000, seed 0) the online features must equal the
-offline frozen features (every column of the feature frame, NaN on the same columns), and the live
-MVAF and B5 scores must equal the stored EXP-200-final scores, each within 1e-6. If not, the Test
-Lab refuses to score and reports which columns failed.
+offline frozen features within FEATURE_TOLERANCE (1e-6; the features are float32; every column of
+the feature frame, NaN on the same columns), and the live MVAF and B5 scores must equal the stored
+EXP-200-final scores within SCORE_TOLERANCE (1e-12; the observed difference is 3.3e-16, so 1e-6
+would not mean anything for float64 scores). If not, the Test Lab refuses to score and reports
+which columns failed.
 
 The result is cached on drive E under a key made of the data-file hashes of the stage-2 freeze
 record, the SHA-256 of the live and feature code, and the system cache, so it is recomputed only
@@ -23,7 +25,8 @@ from vaultic.live.store import CACHE_DIR
 
 N = 2000
 SEED = 0
-TOLERANCE = 1e-6
+FEATURE_TOLERANCE = 1e-6  # float32 features (D183)
+SCORE_TOLERANCE = 1e-12  # float64 scores (D189)
 CODE = ("live/features.py", "live/store.py", "live/engine.py", "features/pipeline.py",
         "features/behavioral.py", "features/graph.py", "features/sequences.py",
         "features/sets.py", "views/temporal_diag.py", "stage2/system.py")  # fmt: skip
@@ -40,7 +43,7 @@ def cache_key(system_path: Path | None) -> str:
     if system_path is not None and system_path.exists():
         st = system_path.stat()
         h.update(f"{system_path}:{st.st_size}:{st.st_mtime_ns}".encode())
-    h.update(f"{N}:{SEED}:{TOLERANCE}".encode())
+    h.update(f"{N}:{SEED}:{FEATURE_TOLERANCE}:{SCORE_TOLERANCE}".encode())
     return h.hexdigest()
 
 
@@ -84,9 +87,10 @@ def run_parity(engine, n: int = N, seed: int = SEED, log=print, pool=None) -> di
                                    abs(b5 - float(engine.stored.at[tid, "score_B5"])))  # fmt: skip
         if log and (i + 1) % 250 == 0:
             log(f"parity {i + 1}/{len(pick)} ({time.perf_counter() - started:.0f} s)")
-    failing = {c: v for c, v in worst.items() if v > TOLERANCE}
-    passed = not failing and all(v <= TOLERANCE for v in score_diff.values())
-    return {"n": int(len(pick)), "seed": seed, "tolerance": TOLERANCE,
+    failing = {c: v for c, v in worst.items() if v > FEATURE_TOLERANCE}
+    passed = not failing and all(v <= SCORE_TOLERANCE for v in score_diff.values())
+    return {"n": int(len(pick)), "seed": seed, "feature_tolerance": FEATURE_TOLERANCE,
+            "score_tolerance": SCORE_TOLERANCE,
             "max_feature_diff": max(worst.values()) if worst else 0.0,
             "failing_features": dict(sorted(failing.items(), key=lambda x: -x[1])[:25]),
             "n_failing_features": len(failing), "max_score_diff": score_diff,

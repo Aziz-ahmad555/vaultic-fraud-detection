@@ -116,7 +116,7 @@ export function StatusBanner({ status, error }: { status: LabStatus | null; erro
           <p className="m0">
             <strong>Parity passed</strong>: on {p.n.toLocaleString()} real test transactions the live features and scores equal the frozen run
             (largest feature difference {p.max_feature_diff.toExponential(1)}, scores MVAF {p.max_score_diff.MVAF.toExponential(1)} / B5{" "}
-            {p.max_score_diff.B5.toExponential(1)}, tolerance {p.tolerance}).{" "}
+            {p.max_score_diff.B5.toExponential(1)}; tolerances: features {p.feature_tolerance}, scores {p.score_tolerance}).{" "}
             Latency this session: p50 {ms(status.latency?.p50_ms)}, p95 {ms(status.latency?.p95_ms)} over {status.latency?.n ?? 0} scores.
           </p>
         )}

@@ -10,7 +10,8 @@ export type LabState = "loading" | "ready" | "refused" | "error";
 export interface Parity {
   n: number;
   passed: boolean;
-  tolerance: number;
+  feature_tolerance: number;
+  score_tolerance: number;
   max_feature_diff: number;
   max_score_diff: { MVAF: number; B5: number };
   n_failing_features: number;

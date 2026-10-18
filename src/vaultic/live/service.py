@@ -63,7 +63,8 @@ class TestLabService:
                 self.state = "refused"
                 self.message = (f"parity failed: {result['n_failing_features']} feature columns "
                                 f"and scores {result['max_score_diff']} differ from the frozen run "
-                                f"by more than {result['tolerance']}; the Test Lab will not score")  # fmt: skip
+                                f"(tolerances: features {result.get('feature_tolerance')}, scores "
+                                f"{result.get('score_tolerance')}); the Test Lab will not score")  # fmt: skip
                 return
             self.engine = engine
             self.state, self.message = "ready", "parity passed; scoring live"

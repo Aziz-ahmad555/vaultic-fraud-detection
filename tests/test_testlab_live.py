@@ -100,14 +100,15 @@ def engine():
 def test_online_features_and_scores_equal_the_frozen_run_on_a_sample(engine):
     """The parity gate on a sample of days 151-152 (the snapshots this fixture built); the full
     2,000-row gate runs at Test Lab startup (live/parity.cached_parity)."""
-    from vaultic.live.parity import TOLERANCE, run_parity
+    from vaultic.live.parity import FEATURE_TOLERANCE, SCORE_TOLERANCE, run_parity
 
     day = engine.store.df["day"].to_numpy()
     pool = np.flatnonzero((day >= 151) & (day <= 152))
     n = int(os.environ.get("VAULTIC_TESTLAB_PARITY_N", "60"))
     out = run_parity(engine, n=n, log=None, pool=pool)
     assert out["passed"], out
-    assert out["max_feature_diff"] <= TOLERANCE and out["n"] == n
+    assert out["max_feature_diff"] <= FEATURE_TOLERANCE and out["n"] == n
+    assert max(out["max_score_diff"].values()) <= SCORE_TOLERANCE
 
 
 @real
