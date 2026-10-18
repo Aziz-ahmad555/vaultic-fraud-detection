@@ -5,7 +5,8 @@ the file are not added to the history, so one row cannot change another's score.
 holds every IEEE-CIS transaction and identity column (isFraud optional). Required: TransactionID,
 TransactionDT, TransactionAmt, ProductCD, card1. Refused, with the reason: unknown columns, a
 missing required column, a TransactionDT outside the test period, a non-numeric value in a numeric
-column, a category never seen in the data, more than MAX_ROWS rows. Missing optional columns are
+column, a category never seen in the data, an isFraud column with an empty cell, more than
+MAX_ROWS rows. Missing optional columns are
 treated as missing values. The customer (uid) is reconstructed from card1 + addr1 + day - D1 as
 in the research pipeline; an unknown key is a new customer.
 
@@ -91,10 +92,14 @@ def parse(store, text: str) -> pd.DataFrame:
                          f"{list(outside[:5] + 2)}")  # fmt: skip
     ident = [c for c in rows.columns if IDENTITY.match(c)]
     rows = rows.assign(day=day, has_identity=rows[ident].notna().any(axis=1).astype("int8"))
-    if "isFraud" in up and rows["isFraud"].notna().all():
+    has_label = "isFraud" in up
+    if has_label:  # labels are all or nothing: an empty cell is refused, never silently ignored
+        empty = np.flatnonzero(rows["isFraud"].isna())
+        if len(empty):
+            raise BatchError(f"isFraud is empty in rows {list(empty[:5] + 2)}: give every row a "
+                             "label (0 or 1) or remove the isFraud column")  # fmt: skip
         if not set(rows["isFraud"].unique()) <= {0, 1}:
             raise BatchError("isFraud must be 0 or 1")
-    has_label = "isFraud" in up and rows["isFraud"].notna().all()
     rows["isFraud"] = rows["isFraud"].fillna(0) if "isFraud" in rows else 0
     rows = rows[store.df.columns].astype(store.df.dtypes.to_dict())
     rows.attrs["has_label"] = bool(has_label)

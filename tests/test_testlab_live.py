@@ -56,6 +56,7 @@ def test_a_good_file_parses_with_the_stored_dtypes():
     ("TransactionID,TransactionDT,TransactionAmt,ProductCD,card1\n5,13046400,abc,W,1\n", "non-numeric"),
     ("TransactionID,TransactionDT,TransactionAmt,ProductCD,card1\n5,13046400,,W,1\n", "is empty"),
     ("TransactionID,TransactionDT,TransactionAmt,ProductCD,card1,isFraud\n5,13046400,1,W,1,3\n", "0 or 1"),
+    ("TransactionID,TransactionDT,TransactionAmt,ProductCD,card1,isFraud\n5,13046400,1,W,1,1\n6,13046400,1,W,1,\n", r"isFraud is empty in rows \[3\]"),
 ])  # fmt: skip
 def test_bad_files_are_refused_with_a_clear_reason(text, msg):
     with pytest.raises(BatchError, match=msg):
