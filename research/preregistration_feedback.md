@@ -1,6 +1,6 @@
 # Pre-registration: feedback loop with champion–challenger retraining (Phase C (b), D210)
 
-**Status: PRE-REGISTERED as D210 (2026-10-19), awaiting Aziz's approval.** Written and committed
+**Status: PRE-REGISTERED as D210 (2026-10-19), approved by Aziz with amendment 1 (D211).** Written and committed
 before any simulation code is written or run. Nothing here touches the test period except a single
 `--final` run, started only with Aziz's go-ahead. Any change after approval is logged as an
 amendment (D2xx) **before** the run it affects; a change made after seeing test results is reported
@@ -198,3 +198,52 @@ is after the last slot, 177).
 3. Confirm recomputing the three label-derived columns per delay (section 6) instead of dropping
    them.
 4. Confirm the EXP-310-dev design span (champion on 1–60, simulate 61–120).
+
+---
+
+## Amendment 1 (D211, 2026-10-19, before any code): Aziz's answers and four additions
+
+**Section 9 answered (Aziz):** (1) challenger = the B5 XGBoost retrained on matured labels; views,
+MVAF and E12's fitted components untouched; (2) gate margin 0.005, CI entirely above 0 and >= 50
+frauds approved; a gate that rejects every challenger is a reportable finding; (3) the three
+label-derived inputs are recomputed per delay, not dropped; (4) design span approved. The shared
+weekly slots for P2 / P3 are approved as an amendment to D44 (D44's same-day attempt is replaced
+for this experiment).
+
+**a) Second use of the test period.** Days 151-182 were already used once, in the stage-1 final
+run (EXP-200-final) and the stage-2 final runs. EXP-310-final is a second use of the same days
+under this new pre-registration. No B5 setting was chosen using test results: B5's hyperparameters
+come from validation tuning (EXP-009, D-log), its seed models from days 1-120, and every setting of
+this experiment is fixed in this document before EXP-310-final runs.
+
+**b) PSI reference resets after each promotion.** P2 compares the scores served by the CURRENT
+champion with that champion's own reference scores (its threshold slice). After a promotion the
+reference is replaced by the new champion's threshold-slice scores and the trailing 7-day window
+restarts with the new champion's served days; no P2 alarm is possible until it has served 7 days.
+Otherwise the change of model would itself trigger the alarm.
+
+**c) Cost model: E12's, not the binary review cost.** The D44 / D45 policy code used the E10 binary
+cost (flag = review: legitimate flagged $15, fraud flagged $5, missed fraud its amount). That equals
+E12's cost model only for its allow / block actions; E12 (trust.decision.CostModel, D43 / D45 / D46
+defaults: C_FP $10, C_rev $5, step-up $0.50 + $1 friction for a legitimate customer and 90% of fraud
+stopped, hold $5 and 100% stopped) also has step-up and hold. **This experiment uses E12's cost
+model and decision rule:** every serving model's action is E12's decide(p, amount, thresholds) on
+its expected loss p x amount (no conformal sets or disagreement for B5: the expected loss alone
+decides), with thresholds chosen by E12's choose_thresholds (same grid) on the model's threshold
+slice; cost = E12's total_cost of the served actions; P3's error stream uses alert = step-up or
+higher (D159). B5's scores are not calibrated; the thresholds are chosen on its own scores, so the
+expected-loss scale is absorbed by the threshold choice (stated). The champion's thresholds: in
+EXP-310-final, chosen once on calibrate_fused (days 147-150), like the frozen system's other
+thresholds (part of the champion's head start, stated as a limitation); in EXP-310-dev the champion
+is fitted on days 1-56 and its thresholds and P2 reference are chosen on days 57-60 (it is still
+built from days 1-60, deployed day 61, with no label from the simulated span).
+
+**d) What varies across the 5 seeds.** Only the XGBoost random seed s (0-4), which drives B5's row
+and column subsampling (subsample 0.76, colsample_bytree 0.90): the champion is the frozen seed-s
+B5 model (dev: the seed-s fit on days 1-56) and every challenger of simulation s is fitted with seed
+s. Identical across seeds: the data, splits, delays, slots, the recomputed inputs, the threshold
+procedure, the gate's bootstrap resamples (seed 0, the same resampled gate rows for every seed and
+attempt of a given day and delay) and the evaluation bootstrap resamples (seed 0). The five
+simulations can therefore make different gate decisions; each policy's metric is the mean over the
+five, with CIs by the shared bootstrap. Parity (section 3) compares the mean of the five seed-model
+champion scores with the stored score_B5, which is that same 5-seed mean.
