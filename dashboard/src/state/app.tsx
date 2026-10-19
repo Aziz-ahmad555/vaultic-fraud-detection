@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../api";
+import { setIdentity } from "../api/identity";
 import type { AsOf, CostModel, Role } from "../api/types";
 import { LABEL_DELAYS } from "../api/types";
 import { DAY } from "../lib/format";
@@ -25,6 +26,9 @@ interface AppState {
   setTheme: (t: Theme) => void;
   role: Role;
   setRole: (r: Role) => void;
+  /** the named analyst recorded in the audit log with every action (D208); "" = not set */
+  analyst: string;
+  setAnalyst: (name: string) => void;
   toasts: Toast[];
   toast: (text: string, tone?: Toast["tone"]) => void;
   dismissToast: (id: number) => void;
@@ -47,6 +51,7 @@ interface Prefs {
   labelDelayDays: number;
   theme: Theme;
   role: Role;
+  analyst?: string;
 }
 
 /** A remembered label delay outside LABEL_DELAYS (e.g. from an older version) falls back to 30 days. */
@@ -78,6 +83,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [labelDelayDays, setLabelDelayDays] = useState(initial.labelDelayDays);
   const [theme, setTheme] = useState<Theme>(initial.theme);
   const [role, setRole] = useState<Role>(initial.role);
+  const [analyst, setAnalyst] = useState<string>(typeof initial.analyst === "string" ? initial.analyst.slice(0, 60) : "");
+  // every request carries the acting analyst and role (D208); set before any child renders
+  setIdentity(analyst, role);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -109,11 +117,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [theme]);
   useEffect(() => {
     try {
-      window.localStorage.setItem(PREFS_KEY, JSON.stringify({ time, labelDelayDays, theme, role }));
+      window.localStorage.setItem(PREFS_KEY, JSON.stringify({ time, labelDelayDays, theme, role, analyst }));
     } catch {
       /* storage unavailable: preferences last for this session only */
     }
-  }, [time, labelDelayDays, theme, role]);
+  }, [time, labelDelayDays, theme, role, analyst]);
 
   const dismissToast = useCallback((id: number) => setToasts((ts) => ts.filter((t) => t.id !== id)), []);
   const toast = useCallback(
@@ -134,6 +142,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTheme,
     role,
     setRole,
+    analyst,
+    setAnalyst: (name: string) => setAnalyst(name.slice(0, 60)),
     toasts,
     toast,
     dismissToast,

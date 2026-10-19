@@ -126,4 +126,13 @@ describe("Test Lab page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Upload and score" }));
     expect((await screen.findByText(/File refused:/)).closest("p")).toHaveTextContent("unknown columns");
   });
+
+  it("shows a small warning when the score could not be recorded in the audit log (D209)", async () => {
+    const api = fakeApi({ scoreReal: vi.fn(async () => ({ ...RESULT, audit: "failed" as const })) });
+    render(<TestLab api={api} pollMs={60000} />);
+    await screen.findByText(/Parity passed/);
+    await userEvent.click(screen.getByRole("button", { name: /Pick a random/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Score live" }));
+    expect(await screen.findByTestId("audit-failed")).toHaveTextContent("Not recorded in the audit log");
+  });
 });

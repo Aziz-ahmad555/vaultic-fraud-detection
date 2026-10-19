@@ -3,6 +3,7 @@ import { HTTP_SOURCE_LABEL } from "../api/http/httpApi";
 import { api, DATA_SOURCE } from "../api";
 import type { Thresholds } from "../api/types";
 import { ACTION_LABEL } from "../api/types";
+import { AuditPanel } from "../components/AuditPanel";
 import { LockIcon, WhatIfReportNote } from "../components/Badges";
 import { WhatIfPanel } from "../components/WhatIfPanel";
 import { ErrorState, Loading } from "../components/States";
@@ -19,11 +20,10 @@ const FIELDS: { key: "t_monitor" | "t_step" | "t_hold"; label: string }[] = [
 ];
 
 export function Settings() {
-  const { asOf, role, setRole, toast } = useApp();
+  const { asOf, role, setRole, analyst, setAnalyst, toast } = useApp();
   const cfg = useData(() => api.thresholds(), []);
   const summary = useData(() => api.daySummary(asOf), [asOfKey(asOf)]);
   const [nonce, setNonce] = useState(0);
-  const log = useData(() => api.auditLog(), [nonce]);
   // fields as text: an emptied Monitor / Step-up / Hold field keeps its value; an empty Block or
   // disagreement field means "never", as the placeholder says (D137)
   const [draft, setDraft] = useState<Record<keyof Thresholds, string> | null>(null);
@@ -75,7 +75,17 @@ export function Settings() {
                   expected fraud value stopped {fmtMoney(summary.data.expectedFraudStopped)}, estimated loss {fmtMoney(summary.data.expectedLoss)}. {DATA_SOURCE === "http" ? `${HTTP_SOURCE_LABEL}.` : "Synthetic mock data."}
                 </p>
                 <div className="actions no-print" style={{ marginTop: 12 }}>
-                  <button type="button" className="btn btn-primary" onClick={() => window.print()}>Print or save daily report as PDF</button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => {
+                      // printing happens in the browser: recorded explicitly (D208), never blocks the print
+                      api.auditEvent?.("report_printed", `day ${summary.data?.day}`).catch(() => undefined);
+                      window.print();
+                    }}
+                  >
+                    Print or save daily report as PDF
+                  </button>
                 </div>
               </>
             ) : (
@@ -84,8 +94,12 @@ export function Settings() {
           </div>
         </section>
         <section className="pane">
-          <div className="pane-head"><h2>Role</h2></div>
+          <div className="pane-head"><h2>Analyst and role</h2></div>
           <div className="pane-body">
+            <label className="field">
+              <span>Your name (recorded with every action in the audit log)</span>
+              <input value={analyst} onChange={(e) => setAnalyst(e.target.value)} placeholder="not set: actions are recorded as unknown" maxLength={60} />
+            </label>
             <div className="segmented" role="group" aria-label="Role">
               <button type="button" aria-pressed={role === "analyst"} onClick={() => { setRole("analyst"); toast("Role set to analyst"); }}>Analyst</button>
               <button type="button" aria-pressed={role === "admin"} onClick={() => { setRole("admin"); toast("Role set to admin"); }}>Admin</button>
@@ -158,38 +172,7 @@ export function Settings() {
         </div>
       </section>
       <WhatIfPanel />
-      <section className="pane">
-        <div className="pane-head"><h2>Audit log</h2></div>
-        {log.loading && !log.data && <Loading what="the audit log" />}
-        {log.data && log.data.length === 0 && (
-          <p className="pane-body muted">Nothing recorded yet. Labels you give on a case and threshold changes appear here.</p>
-        )}
-        {log.data && log.data.length > 0 && (
-          <div className="table-wrap" style={{ maxHeight: 320 }}>
-            <table className="data">
-              <caption className="visually-hidden">Audit log</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Time</th>
-                  <th scope="col">Role</th>
-                  <th scope="col">Action</th>
-                  <th scope="col">Detail</th>
-                </tr>
-              </thead>
-              <tbody>
-                {log.data.map((a, i) => (
-                  <tr key={`${a.time}-${i}`}>
-                    <td className="num">{new Date(a.time).toLocaleString()}</td>
-                    <td>{a.actor}</td>
-                    <td>{a.action}</td>
-                    <td className="small">{a.detail}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      <AuditPanel api={api} nonce={nonce} toast={toast} />
     </div>
   );
 }

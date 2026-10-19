@@ -12,6 +12,9 @@ import type {
   Api,
   AsOf,
   AuditEntry,
+  AuditEvent,
+  AuditFilter,
+  AuditVerify,
   CostModel,
   DaySummary,
   DriftReport,
@@ -28,6 +31,7 @@ import type {
   WhatIf,
 } from "../types";
 import { flagsIn, noteServed, whatIfKey, whatIfParams } from "../../lib/whatIf";
+import { identityHeaders } from "../identity";
 
 export const HTTP_SOURCE_LABEL = "IEEE-CIS test period, final run";
 export const SCORE_SOURCE = "Simulator: illustrative model, not the evaluated system (the final-run models score recorded transactions only)";
@@ -41,7 +45,8 @@ export function createHttpApi(baseUrl = "http://127.0.0.1:8000", fetchImpl: Fetc
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetchImpl(`${base}${path}`, {
       ...init,
-      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+      // the acting analyst and role travel with every request (D208)
+      headers: { "Content-Type": "application/json", ...identityHeaders(), ...(init?.headers ?? {}) },
     });
     if (!res.ok) {
       let detail = `${res.status}`;
@@ -90,7 +95,24 @@ export function createHttpApi(baseUrl = "http://127.0.0.1:8000", fetchImpl: Fetc
     feedback: async (id: number, label: Feedback, role: Role) => {
       await request(`/api/feedback/${id}`, { method: "POST", body: JSON.stringify({ label, role }) });
     },
-    auditLog: () => request<AuditEntry[]>("/api/audit"),
+    auditLog: (filter?: AuditFilter) => {
+      const params = new URLSearchParams();
+      if (filter?.analyst) params.set("analyst", filter.analyst);
+      if (filter?.action) params.set("action", filter.action);
+      if (filter?.limit) params.set("limit", String(filter.limit));
+      const qs = params.toString();
+      return request<AuditEntry[]>(`/api/audit${qs ? `?${qs}` : ""}`);
+    },
+    auditVerify: () => request<AuditVerify>("/api/audit/verify"),
+    auditExport: async () => {
+      const res = await fetchImpl(`${base}/api/audit/export.csv`, { headers: identityHeaders() });
+      if (!res.ok) throw new Error(`${res.status}`);
+      const csv = await res.text();
+      return res.headers.get("X-Vaultic-Audit") === "failed" ? { csv, audit: "failed" as const } : { csv };
+    },
+    auditEvent: async (event: AuditEvent, detail = "") => {
+      await request("/api/audit/event", { method: "POST", body: JSON.stringify({ action: event, detail }) });
+    },
     info: async (): Promise<SourceInfo> => {
       const m = await request<{ source: string; no_block_note: string | null; whatif_available: boolean }>("/api/meta");
       return { source: m.source, noBlockNote: m.no_block_note, whatIfAvailable: m.whatif_available };

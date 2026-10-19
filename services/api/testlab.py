@@ -20,12 +20,21 @@ from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 
 
-def make_router(service) -> APIRouter:
+def make_router(service, audit=None) -> APIRouter:
+    """audit: the persistent audit store (D208); every score, reveal and batch is recorded."""
+    from vaultic.audit.http import AUDIT_FAILED, record_open
     from vaultic.live.batch import BatchError
     from vaultic.live.custom import CustomInputError
     from vaultic.live.service import FILTERS, NotFound, NotReady
 
     router = APIRouter()
+
+    def record(request, out, action, target=None, after=None, detail=""):
+        """Fail-open (D209): the result is returned either way; a failed audit write is flagged."""
+        if not record_open(audit, request, action, target=target, after=after, detail=detail):
+            if isinstance(out, dict):
+                out["audit"] = AUDIT_FAILED
+        return out
 
     def guard(fn, *a, **k):
         try:
@@ -50,16 +59,25 @@ def make_router(service) -> APIRouter:
         return guard(service.sample, filter, seed)  # seed: reproducible draws (benchmark)
 
     @router.post("/api/score-live")
-    def score_live(body: dict = Body(...)):  # noqa: B008
+    def score_live(request: Request, body: dict = Body(...)):  # noqa: B008
         if "transaction_id" in body:
-            return guard(service.score_real, int(body["transaction_id"]))
+            tid = int(body["transaction_id"])
+            out = guard(service.score_real, tid)
+            return record(request, out, "Test Lab: scored a real test transaction",
+                          target=f"tx:{tid}", detail=f"decision {out.get('decision')}")  # fmt: skip
         if "custom" in body and isinstance(body["custom"], dict):
-            return guard(service.score_custom, body["custom"])
+            out = guard(service.score_custom, body["custom"])
+            c = body["custom"]
+            return record(request, out, "Test Lab: scored a custom transaction",
+                          target=f"customer:{c.get('customer') or 'new'}",
+                          detail=f"amount {c.get('amount')}, day {c.get('day')}; decision {out.get('decision')}")  # fmt: skip
         raise HTTPException(400, "send {'transaction_id': id} or {'custom': {...}}")
 
     @router.get("/api/live/reveal/{tid}")
-    def reveal(tid: int):
-        return guard(service.reveal, tid)
+    def reveal(tid: int, request: Request):
+        out = guard(service.reveal, tid)
+        return record(request, out, "Test Lab: revealed a label", target=f"tx:{tid}",
+                      after=out.get("isFraud"))  # fmt: skip
 
     @router.get("/api/live/latency")
     def latency():
@@ -82,6 +100,9 @@ def make_router(service) -> APIRouter:
             text = raw.decode("utf-8-sig")
         except UnicodeDecodeError as e:
             raise HTTPException(400, "the file must be UTF-8 text (CSV)") from e
-        return guard(service.score_batch, text)
+        out = guard(service.score_batch, text)
+        rows = len(out.get("rows", [])) if isinstance(out, dict) else None
+        return record(request, out, "Test Lab: scored and exported a batch file", target="batch",
+                      detail=f"{rows} rows")  # fmt: skip
 
     return router

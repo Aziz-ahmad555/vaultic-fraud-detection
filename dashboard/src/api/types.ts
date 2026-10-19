@@ -292,12 +292,32 @@ export interface Lab {
 }
 
 export type Role = "analyst" | "admin";
+/** One entry of the persistent audit log (D208): append-only and hash-chained on the server. */
 export interface AuditEntry {
+  id?: number;
   time: string; // wall-clock ISO time of the action
-  actor: Role;
+  analyst: string; // the named analyst ("unknown" when none was set)
+  role: Role | "unknown";
   action: string;
+  target?: string | null;
+  before?: unknown;
+  after?: unknown;
   detail: string;
+  hash?: string;
 }
+export interface AuditFilter {
+  analyst?: string;
+  action?: string;
+  limit?: number;
+}
+export interface AuditVerify {
+  ok: boolean;
+  entries: number;
+  first_bad: number | null;
+  reason: string | null;
+}
+/** Client-side actions the server cannot see; the dashboard reports them explicitly (D208). */
+export type AuditEvent = "report_printed" | "whatif_applied" | "whatif_cleared";
 export type Feedback = "fraud" | "legit" | "unsure";
 
 /** What-if cost mode (D122, D128): thresholds re-chosen on the calibration days for other costs. */
@@ -336,7 +356,13 @@ export interface Api {
   thresholds(): Promise<{ thresholds: Thresholds; cost: CostModel; frozen?: boolean }>;
   saveThresholds(t: Thresholds, role: Role): Promise<void>;
   feedback(id: number, label: Feedback, role: Role): Promise<void>;
-  auditLog(): Promise<AuditEntry[]>;
+  auditLog(filter?: AuditFilter): Promise<AuditEntry[]>;
+  /** optional: check the audit log's hash chain and anchor (real backend only; tamper-evident, D209) */
+  auditVerify?(): Promise<AuditVerify>;
+  /** optional: the audit log as CSV (the export is itself recorded; audit "failed" = fail-open, D209) */
+  auditExport?(): Promise<{ csv: string; audit?: "failed" }>;
+  /** optional: record a client-side action */
+  auditEvent?(event: AuditEvent, detail?: string): Promise<void>;
   /** optional (real-data backend): data-source notes */
   info?(): Promise<SourceInfo>;
   /** optional (real-data backend): what-if status for a cost setting (null = the evaluated system) */

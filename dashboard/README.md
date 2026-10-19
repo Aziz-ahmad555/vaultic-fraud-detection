@@ -46,7 +46,7 @@ the data layer, and `src/api/mock/mockApi.test.ts` tests them:
 | Drift monitor | PSI, score and disagreement drift, alarm timeline that moves with the label delay, champion–challenger history |
 | Model lab | PR and calibration curves, ablation, fusion, cost sensitivity (mock numbers) |
 | Scenario simulator | Live risk, braid and reasons as inputs change |
-| Reports and settings | Print report, role, admin-only thresholds, audit log |
+| Reports and settings | Print report, analyst name and role, admin-only thresholds, the persistent audit log (filters, chain check, CSV export; see Audit log) |
 | Test Lab | Live scoring of one transaction by the frozen system: real held-out transactions (label hidden until revealed), custom transactions, batch CSV; parity-gated (see Running the Test Lab) |
 | Attack Lab | Synthetic attack scenarios (card testing, account takeover, mule ring, bust-out, mimicry) injected into a replay of real legitimate traffic and scored live by rules only / model only / rules + model; the 5-seed suite scorecard and post-hoc diagnostics. Synthetic scenario - not the evaluation (see Attack Lab) |
 
@@ -160,6 +160,28 @@ prints p50 / p95 of the scoring latency, the explanation and the HTTP request, a
 matched the frozen run.
 
 **Stop:** `Ctrl+C` in both windows (or the `Get-NetTCPConnection` command above).
+
+### Audit log
+
+Every analyst action is recorded in a persistent, append-only audit log (D208, D209): labels (with
+the value before and after), refused threshold changes, Test Lab scores, reveals and batch files,
+Attack Lab runs, audit-log exports, report prints and what-if changes. Set your name in Reports and
+settings; it is sent with every request (headers `X-Vaultic-Analyst`, `X-Vaultic-Role`) and an
+action without a name is recorded as "unknown". **Analyst name and role are self-declared by the
+browser and not authenticated (no sign-in until JWT); treat them as attribution, not proof.**
+
+The log is a SQLite file on drive E (`E:\dev-cache\audit\audit.sqlite`, or `VAULTIC_AUDIT_DB`) with
+an anchor file next to it (`audit.sqlite.anchor.json`: the latest entry count and hash). It is
+**tamper-evident, not tamper-proof**: the table refuses updates and deletes, each entry is
+hash-chained to the one before, and "Check the chain" (`GET /api/audit/verify`) detects an entry
+that was edited, removed or reordered inside the chain, and a tail that was cut off (the database
+is behind the anchor). It does **not** protect against someone with access to the files who drops
+the triggers and rewrites the whole chain, or who edits both the database and the anchor.
+
+If the audit write fails: a label is **not saved** and you get an error (fail-closed); a score, a
+run or an export is still shown, with a small "not recorded in the audit log" warning (fail-open).
+"Export CSV" downloads the whole log and records the export. The mock data source keeps the last 500
+entries in this browser only and has no chain check.
 
 ### Attack Lab
 

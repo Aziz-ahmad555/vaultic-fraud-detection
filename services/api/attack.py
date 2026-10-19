@@ -9,10 +9,12 @@ until the Test Lab's parity gate has passed.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, HTTPException, Request
 
 
-def make_router(lab) -> APIRouter:
+def make_router(lab, audit=None) -> APIRouter:
+    """audit: the persistent audit store (D208); every run is recorded."""
+    from vaultic.audit.http import AUDIT_FAILED, record_open
     from vaultic.live.service import NotReady
     from vaultic.scenarios.service import AttackInputError
 
@@ -23,9 +25,16 @@ def make_router(lab) -> APIRouter:
         return lab.scenarios()
 
     @router.post("/api/attack/run")
-    def run(body: dict = Body(...)):  # noqa: B008
+    def run(request: Request, body: dict = Body(...)):  # noqa: B008
         try:
-            return lab.run(body)
+            out = lab.run(body)
+            detail = (f"intensity {out.get('intensity')}, seed {out.get('seed')}, generator "
+                      f"{out.get('generator')}, model {out.get('model')}")  # fmt: skip
+            # fail-open (D209): the run is returned either way; a failed audit write is flagged
+            if not record_open(audit, request, "Attack Lab: ran a scenario",
+                               target=out.get("scenario"), detail=detail):  # fmt: skip
+                out["audit"] = AUDIT_FAILED
+            return out
         except NotReady as e:
             raise HTTPException(503, f"Test Lab not ready: {e}") from e
         except AttackInputError as e:
