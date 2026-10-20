@@ -1,0 +1,20 @@
+id: EXP-310-dev
+question: >-
+  Feedback loop with champion-challenger retraining under delayed labels: DESIGN run on the
+  training period only (days 1-120), to check the code end to end and that the gate is not
+  degenerate. No number from it enters any hypothesis (research/preregistration_feedback.md,
+  D210, D211).
+status: dev
+model_config: EXP-009        # B5: hyperparameters and feature set, frozen
+seeds: [0, 1, 2, 3, 4]       # only the XGBoost seed varies (D211 d)
+delays: [0, 7, 30, 60]       # label delay L, days
+champion:
+  fit_days: [1, 56]          # dev champion, built from days 1-60 (D211 c)
+  calibration_days: [57, 60] # its E12 thresholds and P2 reference
+deploy_day: 61
+end_day: 120
+evaluation_days: [61, 120]   # dev: descriptive only
+policies: [P0, P1, P2, P3, P1_ungated, P1_4weekly]
+bootstrap:
+  n: 1000
+  seed: 0

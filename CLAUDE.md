@@ -89,3 +89,8 @@ Each run saves `config.yaml`, `metrics.json` (mean, std, 95% CI per metric), `pr
 - After finishing, run `pytest` (including leakage tests) and report results; don't claim success without running them.
 - Stop at each phase's exit gate and report whether it passed, with numbers.
 - Don't install heavy dependencies or change pinned versions without saying so.
+- A final run interrupted by sleep or shutdown may be resumed with the experiment's `--resume`
+  (same guards as a start; a FINAL-RESUMED row pushed before any test data is read): a resume
+  of the same run, logged; not a re-run. An aborted final run cannot be resumed. A crash or
+  shutdown leaves the run's `RUNNING.lock` in its run folder: check that no run is active, then
+  delete it by hand before `--resume` (D215).

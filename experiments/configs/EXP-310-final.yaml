@@ -1,0 +1,25 @@
+id: EXP-310-final
+question: >-
+  Feedback loop with champion-challenger retraining under delayed labels: the EVALUATION run
+  (research/preregistration_feedback.md, D210, D211; tooling D213). Test days 151-182, once,
+  behind the final-run guards; only with Aziz's go-ahead.
+status: frozen-final
+venv: .venv
+model_config: EXP-009
+seeds: [0, 1, 2, 3, 4]
+delays: [0, 7, 30, 60]
+champion:
+  source: frozen B5 (stage-2 system cache, D179)
+  fit_days: [1, 120]
+  calibration_days: [147, 150]
+deploy_day: 121
+end_day: 182
+warmup_days: [121, 150]
+evaluation_days: [151, 182]
+policies: [P0, P1, P2, P3, P1_ungated, P1_monthly]
+bootstrap:
+  n: 1000
+  seed: 0
+e10_run: experiments/runs/EXP-200-final/20261011-002400-202994
+parity_tolerance: 1.0e-06
+holm_alpha: 0.05
