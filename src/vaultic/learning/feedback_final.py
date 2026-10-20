@@ -618,4 +618,8 @@ def _run(cfg: dict, run_dir: Path, token: str) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # D217: `python -m` runs this file as __main__; feedback_inputs imports
+    # vaultic.learning.feedback_final, so run that one copy (it holds the token store)
+    from vaultic.learning import feedback_final
+
+    feedback_final.main()

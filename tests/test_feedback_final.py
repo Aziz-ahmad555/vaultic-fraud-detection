@@ -627,3 +627,54 @@ def test_temp_repo_row_only_local_is_refused(repo):
     with pytest.raises(RuntimeError, match="not on origin"):
         fi.require_final_started(run_dir, token)
     ff.release_running(run_dir)
+
+
+# ---- D217: the real `python -m` entry point ---------------------------------------------------
+DRIVER = """
+import runpy, sys, types
+from pathlib import Path
+
+root, runs, data = map(Path, sys.argv[1:4])
+import vaultic.paths as P  # before any other vaultic module: every copy sees the temp repo
+
+P.REPO_ROOT, P.RESEARCH_DIR, P.RUNS_DIR = root, root / "research", runs
+import vaultic.fusion.final_run as fr
+import vaultic.learning.feedback_final as ff
+import vaultic.stage2.system as system
+
+ff.frozen_files = lambda: [root / "src" / "x.py"]
+ff.data_files = lambda: [data]
+ff._load_system = lambda: types.SimpleNamespace(b5_models=[])
+fr.check_package_location = lambda *a, **k: None
+
+
+def stand_in(dev):  # stand-in data: reached only after the loader's token check passed
+    print("LOADER-TOKEN-OK", flush=True)
+    raise SystemExit(3)
+
+
+system.load_parts = stand_in
+sys.argv = ["feedback_final"]
+runpy.run_module("vaultic.learning.feedback_final", run_name="__main__", alter_sys=True)
+"""
+
+
+def test_python_m_entry_point_passes_the_loader_token_check(repo, tmp_path):
+    """D217: `python -m vaultic.learning.feedback_final` (runpy as __main__, as python -m does) in a
+    subprocess, against the temp repo and bare origin: start pushes FINAL-STARTED and the loader
+    accepts the token (one module copy). Stand-in data only; nothing real is read."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    driver = tmp_path / "driver.py"
+    driver.write_text(DRIVER, "utf-8")
+    src = Path(ff.__file__).resolve().parents[2]
+    env = {**os.environ, "PYTHONPATH": str(src)}
+    r = subprocess.run([sys.executable, str(driver), str(repo.root), str(ff.RUNS_DIR), str(repo.data)],
+                       capture_output=True, text=True, env=env, timeout=600)  # fmt: skip
+    assert r.returncode == 3 and "LOADER-TOKEN-OK" in r.stdout, r.stdout + r.stderr
+    run_dir = next((ff.RUNS_DIR / ff.EXP).iterdir())
+    assert ff.started_on_origin(run_dir.name, "feedback")
+    assert not (run_dir / ff.RUNNING_NAME).exists()  # released when the process ended
