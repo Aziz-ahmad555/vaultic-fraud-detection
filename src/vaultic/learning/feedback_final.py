@@ -25,8 +25,9 @@ delays are skipped; a partial delay is recomputed from scratch.
 D215: load('final') needs the token start() / resume() issue in this process after their row is
 pushed, and the run's latest FINAL-STARTED / FINAL-RESUMED row must be on origin. A resume also
 needs the start's data hashes, no re-freeze since the start, no FINAL-ABORTED row (HEAD or
-origin) and no <run>/RUNNING.lock: the lock is held for the whole run and stays after a crash or
-shutdown; check that no run is active, then delete it by hand before resuming.
+origin) and no <run>/RUNNING.lock: the lock is held for the whole run; a normal Python error
+releases it (finally), so it is left behind only by a hard kill or shutdown; then check that no
+run is active and delete it by hand before resuming.
 """
 
 from __future__ import annotations
