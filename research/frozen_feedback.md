@@ -1,6 +1,6 @@
 # Frozen config for the feedback-loop final run (EXP-310-final; D210, D211, D213, D214, D215)
 
-Frozen 2026-10-20T16:59:31 at git commit `845f51b7dc04c02379c1349e31d53d986ad37799`, before any --final run. Final runs are made once per baseline and never repeated after seeing results (a forced re-run is logged in research/decisions.md as FINAL-RERUN).
+Frozen 2026-10-20T17:39:02 at git commit `c0b7beae0cd52a6edd602fcdaa6b9bb4d9266231`, before any --final run. Final runs are made once per baseline and never repeated after seeing results (a forced re-run is logged in research/decisions.md as FINAL-RERUN).
 
 | file | sha256 |
 |---|---|
@@ -13,7 +13,7 @@ Frozen 2026-10-20T16:59:31 at git commit `845f51b7dc04c02379c1349e31d53d986ad377
 | `src/vaultic/learning/feedback.py` | `3543eff7e350d1e94282d012d7d397e50560eea61751d23202b7cfa08d6dc9e3` |
 | `src/vaultic/learning/feedback_inputs.py` | `d904b4b2ee12a74ad0809a7218e6a15a5fb53404e13e60d0dee65e24f4d6a4d7` |
 | `src/vaultic/learning/feedback_run.py` | `03345898abecd7e3edd7efd90478fb1faac7cf8d7345515e646aae72271fb4be` |
-| `src/vaultic/learning/feedback_final.py` | `4bf70ca4e91f3da12ab65253c08ea84c57e20d352dc2a594d3dcede7d4e67f83` |
+| `src/vaultic/learning/feedback_final.py` | `bb7769e9dcbd890d3e6032a65ec6541b40e1b86ff75defd13a26355b16ae9bb2` |
 
 ## Data files (D112)
 
