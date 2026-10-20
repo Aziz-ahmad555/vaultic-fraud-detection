@@ -104,3 +104,30 @@ logged amendment before EXP-310-final). Labelled as the design run, not the eval
   FREEZE row; temp-repo + bare-origin tests; nits.
 - Not frozen, not run. Next: Aziz's review, then `--freeze` (commit the record + FREEZE row), then
   the run with his go-ahead. Next decision number: D216.
+
+## Frozen, not run (2026-10-20)
+- `7fcf447`: docstring wording (RUNNING.lock is left only by a hard kill or shutdown).
+- D216 (`26be2dd`, alone) + code `845f51b`: EXP-310-final records and checks library versions of
+  `.venv` only (`.venv-dice` out of scope); stage-2 code unchanged. Full suite 642 passed, 5 skipped.
+- **Frozen** `93f9730`: `research/frozen_feedback.md` (frozen at `845f51b`) + its D113 FREEZE row.
+  Recorded with VAULTIC_DATA_DIR = `E:/old work/fyp 11/fraud-detection/data`, VAULTIC_RAW_DIR
+  unset: the run must use exactly these, the `.venv` interpreter, PYTHONPATH = this worktree's
+  `src`, from this worktree (the E10 predictions path is recorded through its runs junction).
+- Dry start-guard check (guards + read-only re-run checks; no start, no lock, no row, no data
+  loaded): passed at HEAD `93f9730`, 10 data files, 5 champion hashes, no earlier final run
+  folders, 0 FINAL rows at HEAD / origin.
+- Cosmetic: the record's title lists D210-D215 (fixed string in code); D216 is in the library
+  section heading.
+- **Not run.** Next: Aziz's go-ahead, then
+  `python -m vaultic.learning.feedback_final` (detached, keep-awake, log on E:). Next decision D217.
+- Note: `.venv-dice` is missing on this machine, so E15 (stage-2 explanation final run) cannot
+  currently be re-run; to be rebuilt later from `requirements-dice.txt`
+  (`tools/setup_dice_venv.ps1`).
+
+## Run (2026-10-20/21)
+- First start `20261020-171045-498585` refused before any test row (D217: python -m double-import
+  bug); marked aborted (FINAL-ABORTED `9de52d0`). Fix `c0b7bea`, re-freeze `7a08ecc`.
+- Re-run `20261020-174032-191246` (FINAL-STARTED `1adc724`, --rerun-reason D217): parity passed
+  (92,427 rows, max diff 0.0), completed 00:33 (exit 0). Results `262d937`
+  (`research/tables/feedback/exp310_final.json`): H-FB1 not supported, H-FB2 supported, H-FB3
+  supported (descriptive), H-FB4 supported (point estimate). Next decision D218.
