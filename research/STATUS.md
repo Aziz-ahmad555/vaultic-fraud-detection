@@ -25,9 +25,9 @@ Short summary of where Vaultic stands after PR #10. Details live in `research/de
   imports dice_ml and xgboost 2.0.3; `.venv-torch` is there too). The main checkout and the other
   worktrees have neither, so E15 (EXP-215-final) and the dice / torch tests can only be re-run from
   the stage2 worktree, or after rebuilding the venvs from `requirements-dice.txt` /
-  `requirements-torch.txt` (`tools/setup_dice_venv.ps1`). D216 and the feedback handoff say
-  `.venv-dice` is "missing on this machine"; that was checked only in the main checkout and the
-  feedback worktree and is a correction for the next decision row.
+  `requirements-torch.txt` (`tools/setup_dice_venv.ps1`). D216, the feedback handoff and the PR #10
+  text said `.venv-dice` was "missing on this machine"; corrected in D219 (D216's decision is
+  unchanged: EXP-310 never uses dice).
 - **Test counts.** Locally (with `VAULTIC_DATA_DIR` = the main checkout's data) the full suite skips 5:
   torch x1, dice_ml x2, a Windows temp-folder link test, `.venv-torch`. CI (Linux, no data, no venvs,
   no run folders) skips 30: those 4 (the link test runs on Linux) + 19 real-data leakage cases + 8
@@ -38,4 +38,4 @@ Short summary of where Vaultic stands after PR #10. Details live in `research/de
 
 ## Next decision number
 
-D219.
+D220.
