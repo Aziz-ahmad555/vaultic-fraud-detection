@@ -19,7 +19,7 @@ from vaultic.learning.feedback import (
 )
 from vaultic.learning.feedback_inputs import label_derived_at, load, require_last_day
 
-POLICIES = ("P0", "P1", "P2", "P3", "P1_ungated", "P1_4weekly")
+POLICIES = ("P0", "P1", "P2", "P3", "P1_ungated", "P1_monthly", "P1_4weekly")
 
 
 def toy(n_days=70, per_day=120, seed=0, delay=7, fraud_rate=0.12, drift_day=40):
@@ -62,7 +62,7 @@ def test_i_no_training_threshold_or_gate_row_violates_the_curtain(delay):
     for t in slots(31, 70):
         fit, thr, gate = split_matured(data, t)
         for rows in (fit, thr, gate):
-            assert np.all(data.time[rows] + delay * DAY <= t * DAY)
+            assert np.all(data.time[rows] + delay * DAY < t * DAY)  # strict (D214)
             assert np.all(data.time[rows] < t * DAY)
         assert set(fit).isdisjoint(thr) and set(thr).isdisjoint(gate)
     calls = []
@@ -75,7 +75,7 @@ def test_i_no_training_threshold_or_gate_row_violates_the_curtain(delay):
     fitted_days = sorted({e["day"] for e in events if "challenger" in e})
     assert len(calls) == len(fitted_days)  # one fit per attempt day, shared by policies
     for rows, t in zip(calls, fitted_days, strict=True):
-        assert np.all(data.time[rows] + delay * DAY <= t * DAY)
+        assert np.all(data.time[rows] + delay * DAY < t * DAY)
 
 
 # ---- (ii) flipping labels not yet known at t changes nothing up to t -------------------------
@@ -188,7 +188,8 @@ def test_policies_attempt_on_their_slots_and_p0_never():
     att = [e for e in events if e["kind"] == "attempt"]
     assert not [e for e in att if e["policy"] == "P0"]
     assert sorted({e["day"] for e in att if e["policy"] == "P1"}) == slots(31, 70)
-    assert sorted({e["day"] for e in att if e["policy"] == "P1_4weekly"}) == [59]
+    assert sorted({e["day"] for e in att if e["policy"] == "P1_monthly"}) == [61]  # 30 days (D214)
+    assert sorted({e["day"] for e in att if e["policy"] == "P1_4weekly"}) == [59]  # design run only
     assert all(e["day"] in slots(31, 70) for e in att if e["policy"] in ("P2", "P3"))
     # every policy serves every row of the span exactly once
     for pol in POLICIES:
@@ -232,3 +233,14 @@ def test_matured_rows_follow_the_delay():
     data = toy(delay=30)
     rows = matured_rows(data, 50)
     assert rows.max() < np.flatnonzero(data.day == 21)[0]  # only days <= 19 / 20 are known
+
+
+def test_strict_curtain_a_row_exactly_on_the_day_boundary_is_not_yet_known():
+    """D214: a label is usable only if its_time + L < t; a row at exactly t * 86400 (L = 0) is
+    known from day t + 1, not on day t."""
+    time = np.array([10 * DAY - 1, 10 * DAY, 10 * DAY + 1, 11 * DAY])
+    data = Data(time, [0, 1, 0, 1], [10.0] * 4, pd.DataFrame({"x": [0.0] * 4}), 0)
+    assert matured_rows(data, 10).tolist() == [0]  # the boundary row (index 1) is not known
+    assert matured_rows(data, 11).tolist() == [0, 1, 2]
+    lagged = Data(time, [0, 1, 0, 1], [10.0] * 4, pd.DataFrame({"x": [0.0] * 4}), 7)
+    assert matured_rows(lagged, 17).tolist() == [0]  # 10 days + 7 = day 17 exactly: not yet

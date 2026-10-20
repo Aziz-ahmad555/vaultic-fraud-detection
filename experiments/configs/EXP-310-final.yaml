@@ -16,7 +16,7 @@ deploy_day: 121
 end_day: 182
 warmup_days: [121, 150]
 evaluation_days: [151, 182]
-policies: [P0, P1, P2, P3, P1_ungated, P1_4weekly]
+policies: [P0, P1, P2, P3, P1_ungated, P1_monthly]
 bootstrap:
   n: 1000
   seed: 0

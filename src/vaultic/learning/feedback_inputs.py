@@ -20,6 +20,7 @@ from vaultic.views.definitions import LABEL_DERIVED
 
 STORED_DELAY = 30
 DEV_LAST_DAY = 120
+EXP_FINAL = "EXP-310-final"
 
 
 def require_last_day(day, last: int) -> None:
@@ -39,16 +40,38 @@ def label_derived_at(df: pd.DataFrame, uid: pd.Series, delay: int, train_mask) -
     return out[list(LABEL_DERIVED)].reset_index(drop=True)
 
 
-def load(mode: str, final_started: bool = False) -> dict:
-    """Data and B5 inputs for 'dev' (days 1-120) or 'final' (every day). 'final' is refused unless
-    the caller has passed the final-run guards and pushed FINAL-STARTED (feedback_final.main)."""
+def require_final_started(run_dir, experiment_log=None) -> None:
+    """The FINAL-STARTED row naming this run folder must be in the experiment log (D214), and the
+    run must have started and not been aborted or completed."""
+    import json
+    from pathlib import Path
+
+    from vaultic.paths import RESEARCH_DIR
+
+    if run_dir is None:
+        raise RuntimeError("EXP-310-final needs Aziz's go-ahead and the final-run guards")
+    run_dir = Path(run_dir)
+    log = Path(experiment_log) if experiment_log else RESEARCH_DIR / "experiment_log.md"
+    rows = [line for line in log.read_text("utf-8").splitlines()
+            if line.startswith(f"| {EXP_FINAL} |") and "FINAL-STARTED" in line and run_dir.name in line]  # fmt: skip
+    if not rows:
+        raise RuntimeError(f"no FINAL-STARTED row for {run_dir.name} in {log.name}: test data is "
+                           "read only after the guards have recorded the start")  # fmt: skip
+    meta = run_dir / "metrics.json"
+    status = json.loads(meta.read_text("utf-8")).get("status") if meta.exists() else None
+    if status != "started":
+        raise RuntimeError(f"{run_dir.name} has status {status!r}, not 'started'")
+
+
+def load(mode: str, run_dir=None) -> dict:
+    """Data and B5 inputs for 'dev' (days 1-120) or 'final' (every day). 'final' needs the run
+    folder whose FINAL-STARTED row is in the experiment log (require_final_started)."""
     from vaultic.stage2.system import load_parts
 
     if mode not in ("dev", "final"):
         raise ValueError("mode must be dev or final")
     if mode == "final":
-        if not final_started:
-            raise RuntimeError("EXP-310-final needs Aziz's go-ahead and the final-run guards")
+        require_final_started(run_dir)
         parts = load_parts(dev=False)  # every day, test period included (after FINAL-STARTED)
         return {"df": parts["df"], "features": parts["features"], "b5_cols": list(parts["b5_cols"]),
                 "splits": parts["splits"], "mode": mode}  # fmt: skip
@@ -61,17 +84,52 @@ def load(mode: str, final_started: bool = False) -> dict:
             "splits": parts["splits"], "mode": mode}  # fmt: skip
 
 
+def input_key(loaded: dict, delay: int) -> str:
+    """SHA-256 of everything the recomputed columns depend on: row ids, times, labels, the uid,
+    the delay and the code that computes them (D214)."""
+    import hashlib
+    from pathlib import Path
+
+    import vaultic.features.pipeline as pipeline
+
+    h = hashlib.sha256()
+    df = loaded["df"]
+    for col in ("TransactionID", "TransactionDT", "isFraud"):
+        h.update(np.ascontiguousarray(df[col].to_numpy(np.int64)).tobytes())
+    h.update(
+        pd.util.hash_pandas_object(loaded["features"]["uid"].astype(str), index=False)
+        .to_numpy()
+        .tobytes()
+    )
+    h.update(str(delay).encode())
+    for src in (Path(__file__), Path(pipeline.__file__)):
+        h.update(src.read_bytes())
+    return h.hexdigest()
+
+
+def _file_sha256(path) -> str:
+    import hashlib
+
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def inputs_for_delay(loaded: dict, delay: int, cache_dir=None) -> pd.DataFrame:
-    """B5 inputs with the label-derived columns at delay L (stored values when L = 30)."""
+    """B5 inputs with the label-derived columns at delay L (stored values when L = 30). A cached
+    recomputation is used only if its recorded input key and file hash both match (D214)."""
+    import json
+
     X = loaded["features"][loaded["b5_cols"]].copy()
     if delay == STORED_DELAY:
         return X
-    path = None
+    path = side = key = None
     if cache_dir is not None:
+        key = input_key(loaded, delay)
         path = cache_dir / f"label_derived_{loaded['mode']}_L{delay}.parquet"
-        if path.exists():
-            cols = pd.read_parquet(path)
-            if len(cols) == len(X):
+        side = path.with_suffix(".json")
+        if path.exists() and side.exists():
+            meta = json.loads(side.read_text("utf-8"))
+            if meta.get("input_key") == key and meta.get("file_sha256") == _file_sha256(path):
+                cols = pd.read_parquet(path)
                 for c in LABEL_DERIVED:
                     X[c] = cols[c].to_numpy(dtype=np.float32)
                 return X
@@ -81,6 +139,8 @@ def inputs_for_delay(loaded: dict, delay: int, cache_dir=None) -> pd.DataFrame:
     if path is not None:
         path.parent.mkdir(parents=True, exist_ok=True)
         cols.to_parquet(path, index=False)
+        side.write_text(json.dumps({"input_key": key, "file_sha256": _file_sha256(path),
+                                    "delay": delay, "rows": len(cols)}), "utf-8")  # fmt: skip
     for c in LABEL_DERIVED:
         X[c] = cols[c].to_numpy(dtype=np.float32)
     return X

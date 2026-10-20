@@ -15,14 +15,17 @@ challengers are shared (a challenger depends only on the attempt day and L):
               higher vs the label) of the current champion's served decisions, in label-arrival
               order (time + L); the detector restarts after a promotion
   P1_ungated  P1 with every fitted challenger accepted (secondary, H-FB4)
-  P1_4weekly  attempts every 28 days (the monthly cadence, secondary)
+  P1_monthly  attempts every 30 days from deployment (the monthly cadence, secondary; D214)
+  P1_4weekly  every 28 days: the design run EXP-310-dev only (kept so its config stays true)
 
 A pending P2 / P3 alarm is attempted at every slot until a challenger is accepted, at most 6
 attempts (D44 retry rule; slots per D211).
 
-Label curtain: a label is used (training, threshold, gate, ADWIN) only when
-its_time + L <= the simulated time; training at attempt day t uses rows with
-TransactionDT + L * 86400 <= t * 86400. Matured rows are split by time (D58): fit = all but the
+Label curtain (strict, D214): a label is used (training, threshold, gate) only when
+its_time + L < the simulated time; training at attempt day t uses rows with
+TransactionDT + L * 86400 < t * 86400 (the design run used <=, which differs only for rows
+exactly on a day boundary at L = 0). ADWIN reads, at the end of day d, the labels that arrived
+during day d (arrival time + L before the end of day d). Matured rows are split by time (D58): fit = all but the
 most recent 14 matured days, threshold slice = the next 7 (E12 thresholds and P2's reference),
 gate window = the most recent 7. The gate compares challenger and current champion on the gate
 window after removing every row either trained on; fewer than 50 frauds there = rejected
@@ -50,7 +53,8 @@ from vaultic.eval.metrics import pr_auc
 from vaultic.trust.decision import STEP_UP, choose_thresholds, decide, total_cost
 
 SLOT_DAYS = 7
-FOUR_WEEKS = 28
+FOUR_WEEKS = 28  # design run only (P1_4weekly)
+MONTH_DAYS = 30  # P1_monthly (D214)
 FIT_GAP_DAYS = 14  # threshold slice + gate window
 THRESHOLD_DAYS = 7
 GATE_DAYS = 7
@@ -61,7 +65,7 @@ PSI_WINDOW_DAYS = 7
 ADWIN_DELTA = 0.002
 MAX_RETRIES = 6
 GATE_N_BOOT = 1000
-POLICIES = ("P0", "P1", "P2", "P3", "P1_ungated", "P1_4weekly")
+POLICIES = ("P0", "P1", "P2", "P3", "P1_ungated", "P1_monthly", "P1_4weekly")
 DAY = SECONDS_PER_DAY
 
 
@@ -94,6 +98,7 @@ class Model:
     train_mask: np.ndarray  # rows the model trained on (bool, all rows)
     trained_day: int
     cache: np.ndarray | None = None  # score of every row, NaN until computed
+    threshold_mask: np.ndarray | None = None  # rows of its threshold slice (bool, all rows)
 
     def score(self, data: Data, rows: np.ndarray) -> np.ndarray:
         rows = np.asarray(rows, dtype=np.int64)
@@ -107,8 +112,9 @@ class Model:
 
 # ---- the label curtain and the D58 split ---------------------------------------------------
 def matured_rows(data: Data, as_of_day: int) -> np.ndarray:
-    """Rows whose label is known at the start of as_of_day: time + L days <= as_of_day."""
-    return np.flatnonzero(data.time + data.delay * DAY <= as_of_day * DAY)
+    """Rows whose label is known at the start of as_of_day: time + L days < as_of_day (strict,
+    D214: a row exactly at the boundary is not yet known)."""
+    return np.flatnonzero(data.time + data.delay * DAY < as_of_day * DAY)
 
 
 def split_matured(data: Data, as_of_day: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -142,6 +148,8 @@ def make_model(model_id, estimator, data: Data, train_rows, threshold_rows, trai
     mask = np.zeros(len(data.time), bool)
     mask[np.asarray(train_rows, dtype=np.int64)] = True
     m = Model(model_id, estimator, th, p_thr, mask, trained_day)
+    m.threshold_mask = np.zeros(len(data.time), bool)
+    m.threshold_mask[np.asarray(threshold_rows, dtype=np.int64)] = True
     m.cache = np.full(len(data.time), np.nan)
     m.cache[np.asarray(threshold_rows, dtype=np.int64)] = p_thr
     return m
@@ -149,7 +157,7 @@ def make_model(model_id, estimator, data: Data, train_rows, threshold_rows, trai
 
 def fit_challenger(data: Data, as_of_day: int, fit: Callable, seed_tag: str = "") -> Model:
     fit_rows, thr_rows, _ = split_matured(data, as_of_day)
-    if np.any(data.time[fit_rows] + data.delay * DAY > as_of_day * DAY):
+    if np.any(data.time[fit_rows] + data.delay * DAY >= as_of_day * DAY):
         raise AssertionError("label curtain violated")  # cannot happen; guards the tests
     est = fit(data.X.iloc[fit_rows], data.y[fit_rows])
     return make_model(
@@ -174,7 +182,10 @@ def gate(data: Data, champion: Model, challenger: Model, rows: np.ndarray) -> di
     return {"accepted": bool(auc_ok and cost_ok), "reason": reason, "gain": bs["diff"],
             "ci_low": bs["ci_low"], "ci_high": bs["ci_high"], "cost_champion": float(cost_c),
             "cost_challenger": float(cost_n), "gate_rows": int(len(rows)),
-            "gate_frauds": int(y.sum())}  # fmt: skip
+            "gate_frauds": int(y.sum()),
+            # rows where the champion's E12 thresholds were chosen: its cost there is in-sample
+            "champion_threshold_rows_in_gate": int(champion.threshold_mask[rows].sum())
+            if champion.threshold_mask is not None else 0}  # fmt: skip
 
 
 # ---- the simulation -----------------------------------------------------------------------
@@ -196,6 +207,7 @@ def simulate(data: Data, champion: Model, deploy_day: int, end_day: int, fit: Ca
     """Returns (served: one row per policy x served transaction, events: every attempt and alarm)."""
     log = log or (lambda m: None)
     weekly, four = set(slots(deploy_day, end_day)), set(slots(deploy_day, end_day, FOUR_WEEKS))
+    monthly = set(slots(deploy_day, end_day, MONTH_DAYS))
     state = {p: _State(champion) for p in policies}
     challengers: dict[int, Model] = {}
     served, events = [], []
@@ -235,6 +247,7 @@ def simulate(data: Data, champion: Model, deploy_day: int, end_day: int, fit: Ca
     for d in range(deploy_day, end_day + 1):
         for pol, st in state.items():  # attempts at the start of day d
             due = ((pol in ("P1", "P1_ungated") and d in weekly) or (pol == "P1_4weekly" and d in four)
+                   or (pol == "P1_monthly" and d in monthly)
                    or (pol in ("P2", "P3") and st.pending and d in weekly))  # fmt: skip
             if due:
                 attempt(pol, d, st)
@@ -284,7 +297,8 @@ def served_cost(data: Data, served: pd.DataFrame) -> float:
 
 
 def evaluate(datas: dict[int, Data], served_by_seed: dict[int, pd.DataFrame], days: tuple[int, int],
-             policies=POLICIES, n_boot: int = 1000, reference: str = "P0") -> dict:  # fmt: skip
+             policies=POLICIES, n_boot: int = 1000, reference: str = "P0",
+             boot_seed: int = 0) -> dict:  # fmt: skip
     """Per policy: PR-AUC (seed mean, per seed, 95% CI over rows), E12 cost (seed mean, per
     seed), and the paired comparison with the reference policy (PR-AUC and cost)."""
     from vaultic.eval.bootstrap import _iter_resample_indices, seed_mean_ci
@@ -308,7 +322,7 @@ def evaluate(datas: dict[int, Data], served_by_seed: dict[int, pd.DataFrame], da
             costs.append(served_cost(datas[s], f))
             per[(pol, s)] = f
         y = data.y[rows_ref]
-        ci = seed_mean_ci(y, scores, pr_auc, n_boot=n_boot, seed=0)
+        ci = seed_mean_ci(y, scores, pr_auc, n_boot=n_boot, seed=boot_seed)
         out[pol] = {"pr_auc": float(np.mean([pr_auc(y, x) for x in scores])),
                     "pr_auc_per_seed": [float(pr_auc(y, x)) for x in scores],
                     "pr_auc_ci": [float(ci[0]), float(ci[1])], "cost": float(np.mean(costs)),
@@ -322,7 +336,7 @@ def evaluate(datas: dict[int, Data], served_by_seed: dict[int, pd.DataFrame], da
                 continue
             o = out[pol]
             o["vs_" + reference] = paired_bootstrap(y, o["_scores"], ref["_scores"], pr_auc,
-                                                    n_boot=n_boot, seed=0)  # fmt: skip
+                                                    n_boot=n_boot, seed=boot_seed)  # fmt: skip
             # cost difference (policy - reference) on the same resamples, seed-averaged
             per_row = {}
             for name in (pol, reference):
@@ -336,7 +350,7 @@ def evaluate(datas: dict[int, Data], served_by_seed: dict[int, pd.DataFrame], da
                     per_row[name].append(c[np.arange(len(r)), f["action"].to_numpy()])
             a, b = np.mean(per_row[pol], 0), np.mean(per_row[reference], 0)
             diffs = [float((a[idx] - b[idx]).sum()) for idx in
-                     _iter_resample_indices(len(y), n_boot, 0, y)]  # fmt: skip
+                     _iter_resample_indices(len(y), n_boot, boot_seed, y)]  # fmt: skip
             q = np.quantile(diffs, [0.025, 0.975])
             p = 2 * min(np.mean(np.array(diffs) <= 0), np.mean(np.array(diffs) >= 0))
             o["cost_vs_" + reference] = {"diff": float((a - b).sum()), "ci_low": float(q[0]),

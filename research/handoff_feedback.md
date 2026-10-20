@@ -48,7 +48,7 @@ logged amendment before EXP-310-final). Labelled as the design run, not the eval
 ## Not done, needs Aziz
 - **EXP-310-final needs Aziz's go-ahead.** The final mode is now built (see the update below) but
   NOT run; next: Aziz's independent review of the final-mode code, the freeze, then the run.
-  Next decision number: D214.
+  Next decision number: D215.
 
 ## Update after the design run (2026-10-20)
 - EXP-310-dev completed (run `20261020-004133`, exit 0, 4.8 h). P1 vs P0 PR-AUC: +0.064 (L=0),
@@ -70,3 +70,16 @@ logged amendment before EXP-310-final). Labelled as the design run, not the eval
 - Full test suite: 620 passed, 5 skipped, 1 flaky (`test_demo_server.py::test_whatif_is_stateless...`,
   ConnectionResetError WinError 10054; the file passes 32/32 on re-run; this branch does not touch
   the demo server).
+
+## Update after the independent review of the final mode (2026-10-20)
+- D214 (amendment 2, `0c68b19`, committed alone before the code): resume runs the same guards as a
+  start plus the recorded-commit and origin FINAL-STARTED checks, and pushes FINAL-RESUMED before
+  any test row; parity failure aborts (status "aborted", FINAL-ABORTED pushed, no resume); the
+  stage-2 system cache is a frozen data file and each seed's booster hash is checked at parity;
+  strict label curtain (its_time + L < t); monthly P1 every 30 days (P1_monthly; the design run
+  used 28 days); cached recomputed inputs verified by input key + file hash; nits (bootstrap seed
+  from config, warm-up 121-150, load('final') checks the FINAL-STARTED row, champion
+  threshold-slice overlap reported in each gate, H-FB3 descriptive, H-FB4 point estimate, D210
+  status, CLAUDE.md resume wording).
+- Not frozen, not run. Next: Aziz's short second review of the resume / guard code, then
+  `python -m vaultic.learning.feedback_final --freeze`, then the run with his go-ahead.
