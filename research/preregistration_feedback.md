@@ -1,6 +1,6 @@
 # Pre-registration: feedback loop with champion–challenger retraining (Phase C (b), D210)
 
-**Status: PRE-REGISTERED as D210 (2026-10-19), approved by Aziz with amendment 1 (D211).** Written and committed
+**Status: PRE-REGISTERED as D210 (2026-10-19), approved by Aziz with amendments 1 (D211) and 2 (D214).** Written and committed
 before any simulation code is written or run. Nothing here touches the test period except a single
 `--final` run, started only with Aziz's go-ahead. Any change after approval is logged as an
 amendment (D2xx) **before** the run it affects; a change made after seeing test results is reported
@@ -247,3 +247,26 @@ attempt of a given day and delay) and the evaluation bootstrap resamples (seed 0
 simulations can therefore make different gate decisions; each policy's metric is the mean over the
 five, with CIs by the shared bootstrap. Parity (section 3) compares the mean of the five seed-model
 champion scores with the stored score_B5, which is that same 5-seed mean.
+
+---
+
+## Amendment 2 (D214, 2026-10-20, after the review of the final mode, before any code)
+
+- **Resume.** A run interrupted by sleep or shutdown is resumed in the same run folder:
+  `--resume <run folder>` repeats every start guard, checks that the run's recorded commit is an
+  ancestor of HEAD with only the logs changed since and that its FINAL-STARTED row is on origin,
+  then commits and pushes a FINAL-RESUMED row before any test row is read. It is a resume of the
+  same run, logged; not a re-run. Completed delays are skipped; a partial delay is recomputed.
+- **Parity failure** aborts the run: logged (run.log, experiment log), status "aborted",
+  FINAL-ABORTED row pushed; an aborted run cannot be resumed.
+- **Champion models** are frozen data: the system cache file is hashed in the freeze, and each
+  seed's booster hash is checked at parity.
+- **Strict label curtain:** a label is usable only if its_time + L < the simulated time. The
+  design run used <= (affects only rows exactly on a day boundary at L = 0; not re-run).
+- **Monthly P1** (secondary) attempts every 30 days from deployment (days 151 and 181); the design
+  run used 28 days.
+- **Warm-up** is days 121-150 (section 2's "128-150" is corrected).
+- **H-FB3** is descriptive; **H-FB4** is decided on the point estimate of the cost difference.
+- **In-sample champion cost in early gates:** the champion's E12 thresholds were chosen on days
+  147-150, so where a gate window includes those days its cost there is in-sample; each gate
+  reports the overlap, and this is stated as a limitation.
