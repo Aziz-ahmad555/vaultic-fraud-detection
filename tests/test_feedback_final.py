@@ -50,8 +50,9 @@ def test_the_guards_run_before_any_data_is_read(monkeypatch):
     assert calls == ["start"]  # no load: FINAL-STARTED comes before any test row
 
 
-def test_final_data_needs_the_final_started_row(tmp_path):
-    """D214: load('final') checks the FINAL-STARTED row naming the run folder, not a flag."""
+def test_final_data_needs_this_process_token_and_the_start_row(monkeypatch, tmp_path):
+    """D215: load('final') needs the token start() / resume() issued in this process and the run's
+    start row (its origin check is tested against a real repo below)."""
     from vaultic.learning.feedback_inputs import load, require_final_started
 
     with pytest.raises(RuntimeError, match="go-ahead"):
@@ -61,13 +62,22 @@ def test_final_data_needs_the_final_started_row(tmp_path):
     (run / "metrics.json").write_text(json.dumps({"status": "started"}))
     log = tmp_path / "experiment_log.md"
     log.write_text("| EXP-310-final | 2026-10-21 | FINAL-STARTED: x | run `other` | - |\n")
+    with pytest.raises(RuntimeError, match="did not pass in this process"):
+        require_final_started(run, None, log)
+    token = ff._grant(run)
+    with pytest.raises(RuntimeError, match="did not pass in this process"):
+        require_final_started(run, "forged" + token, log)
     with pytest.raises(RuntimeError, match="no FINAL-STARTED row"):
-        require_final_started(run, log)
-    log.write_text(f"| EXP-310-final | 2026-10-21 | FINAL-STARTED: x | run `{run.name}` | - |\n")
-    require_final_started(run, log)
+        require_final_started(run, token, log)
+    monkeypatch.setattr(ff, "latest_row_on_origin", lambda r, log=None: "row")
+    require_final_started(run, token, log)
     (run / "metrics.json").write_text(json.dumps({"status": "aborted"}))
     with pytest.raises(RuntimeError, match="aborted"):
-        require_final_started(run, log)
+        require_final_started(run, token, log)
+    ff.release_running(run)
+    (run / "metrics.json").write_text(json.dumps({"status": "started"}))
+    with pytest.raises(RuntimeError, match="did not pass in this process"):  # token gone
+        require_final_started(run, token, log)
 
 
 def test_start_refuses_without_the_freeze_record(monkeypatch, tmp_path):
@@ -123,20 +133,24 @@ def test_resume_skips_completed_delays_and_never_reuses_a_partial_one(tmp_path):
 
 
 def test_check_resume_accepts_only_a_started_unfinished_run(tmp_path):
-    run = tmp_path / "EXP-310-final" / "20261021-000000-000000"
+    run = tmp_path / "runs" / "EXP-310-final" / "20261021-000000-000000"
     with pytest.raises(RuntimeError, match="not a started"):
         ff.check_resume(run)
     run.mkdir(parents=True)
-    (run / "metrics.json").write_text(json.dumps({"status": "completed"}))
+    (run / "metrics.json").write_text(json.dumps({"mode": "final", "status": "completed"}))
     with pytest.raises(RuntimeError, match="already completed"):
         ff.check_resume(run)
-    (run / "metrics.json").write_text(json.dumps({"status": "started"}))
+    (run / "metrics.json").write_text(json.dumps({"mode": "final", "status": "started"}))
     assert ff.check_resume(run)["status"] == "started"
-    other = tmp_path / "EXP-999" / "x"
-    other.mkdir(parents=True)
-    (other / "metrics.json").write_text(json.dumps({"status": "started"}))
+    (run / "metrics.json").write_text(json.dumps({"status": "started"}))  # D215: mode final
     with pytest.raises(RuntimeError, match="not a started"):
-        ff.check_resume(other)
+        ff.check_resume(run)
+    # D215: the resolved parent must be RUNS_DIR/EXP-310-final, not any folder of that name
+    for other in (tmp_path / "EXP-999" / "x", tmp_path / "elsewhere" / "EXP-310-final" / "x"):
+        other.mkdir(parents=True)
+        (other / "metrics.json").write_text(json.dumps({"mode": "final", "status": "started"}))
+        with pytest.raises(RuntimeError, match="not a started"):
+            ff.check_resume(other)
 
 
 def test_resume_refuses_when_a_frozen_file_changed(monkeypatch, tmp_path):
@@ -173,16 +187,18 @@ def test_hypotheses_read_out():
 def _started_run(tmp_path, status="started"):
     run = tmp_path / "runs" / "EXP-310-final" / "20261021-000000-000002"
     run.mkdir(parents=True)
-    (run / "metrics.json").write_text(json.dumps({"status": status, "git_commit": "a" * 40}))
+    (run / "metrics.json").write_text(json.dumps({"mode": "final", "status": status,
+                                                  "git_commit": "a" * 40, "data_hashes": {}}))  # fmt: skip
     return run
 
 
-def _guards_ok(monkeypatch, calls):
+def _guards_ok(monkeypatch, calls, hashes=None):
     def ok(c):
         calls.append("guards")
-        return "record", "b" * 40, "feedback", {}
+        return "record", "b" * 40, "feedback", hashes or {}
 
     monkeypatch.setattr(ff, "guards", ok)
+    monkeypatch.setattr(ff, "aborted_on_record", lambda name, branch: [])
 
 
 def test_resume_runs_the_same_guards_as_a_start(monkeypatch, tmp_path):
@@ -233,10 +249,17 @@ def test_resume_pushes_final_resumed_before_any_data_and_stops_if_the_push_fails
     monkeypatch.setattr(ff, "started_on_origin", lambda name, branch: True)
     events = []
     monkeypatch.setattr(ff, "record_event", lambda r, kind, detail: events.append((kind, detail)))
-    assert ff.resume(cfg(), run) == run
+    run_dir, token = ff.resume(cfg(), run)
+    assert run_dir == run and ff.guards_passed(run, token)
     assert events[0][0] == "FINAL-RESUMED" and "not a re-run" in events[0][1]
     assert "FINAL-STARTED" not in events[0][1]  # the re-run guard must not count a resume
     assert (run / "resume.log").exists()
+    # D215: the RUNNING lock is held: a second resume is refused before anything is logged
+    assert (run / ff.RUNNING_NAME).exists()
+    with pytest.raises(RuntimeError, match="still running"):
+        ff.resume(cfg(), run)
+    assert len(events) == 1
+    ff.release_running(run)
 
     def push_fails(*a):
         raise RuntimeError("git push -q origin HEAD failed")
@@ -249,6 +272,7 @@ def test_resume_pushes_final_resumed_before_any_data_and_stops_if_the_push_fails
     with pytest.raises(RuntimeError, match="push"):
         ff.main(["--resume", str(run)])
     assert loads == []  # refused before any test row is read
+    assert not (run / ff.RUNNING_NAME).exists()  # a failed push leaves no lock behind
 
 
 def test_an_aborted_run_is_logged_and_cannot_be_resumed(monkeypatch, tmp_path):
@@ -273,9 +297,9 @@ def test_main_aborts_on_a_parity_failure(monkeypatch, tmp_path):
     import vaultic.learning.feedback_inputs as fi
 
     run = _started_run(tmp_path)
-    monkeypatch.setattr(ff, "start", lambda c, r: (run, "b" * 40))
+    monkeypatch.setattr(ff, "start", lambda c, r: (run, "token"))
     df = pd.DataFrame({"day": [150, 151], "TransactionID": [1, 2]})
-    monkeypatch.setattr(fi, "load", lambda mode, run_dir=None: {"df": df})
+    monkeypatch.setattr(fi, "load", lambda mode, run_dir=None, token=None: {"df": df})
     monkeypatch.setattr(
         fi, "inputs_for_delay", lambda loaded, L, cache_dir=None: pd.DataFrame({"a": [0, 0]})
     )
@@ -356,3 +380,229 @@ def test_input_cache_is_used_only_when_its_hashes_match(tmp_path):
     side_before = cache.with_suffix(".json").read_text()
     inputs_for_delay(loaded, 0, cache_dir=tmp_path)
     assert cache.with_suffix(".json").read_text() != side_before
+
+
+# ---- D215: data hashes, aborted rows, running lock, record_event ------------------------------
+def test_resume_refuses_other_data_or_an_aborted_row_on_record(monkeypatch, tmp_path):
+    run = _started_run(tmp_path)
+    calls = []
+    _guards_ok(monkeypatch, calls, hashes={"data.parquet": "c" * 64})
+    monkeypatch.setattr(ff, "record_event", lambda *a: calls.append("event"))
+    with pytest.raises(RuntimeError, match="data hashes differ"):
+        ff.resume(cfg(), run)
+    _guards_ok(monkeypatch, calls)
+    monkeypatch.setattr(ff, "aborted_on_record", lambda name, branch: ["origin/feedback"])
+    with pytest.raises(RuntimeError, match="FINAL-ABORTED row"):
+        ff.resume(cfg(), run)  # metrics.json still says "started"
+    assert "event" not in calls and not (run / ff.RUNNING_NAME).exists()
+
+
+def test_running_lock_is_exclusive_and_released(tmp_path):
+    ff.acquire_running(tmp_path)
+    with pytest.raises(RuntimeError, match="delete it by hand"):
+        ff.acquire_running(tmp_path)
+    ff.release_running(tmp_path)
+    ff.acquire_running(tmp_path)
+    ff.release_running(tmp_path)
+    assert not (tmp_path / ff.RUNNING_NAME).exists()
+
+
+def test_main_releases_the_running_lock_when_the_run_stops(monkeypatch, tmp_path):
+    run = _started_run(tmp_path)
+
+    def start(c, r):
+        ff.acquire_running(run)
+        return run, ff._grant(run)
+
+    monkeypatch.setattr(ff, "start", start)
+    import vaultic.learning.feedback_inputs as fi
+
+    def load(*a, **k):
+        raise KeyboardInterrupt("stopped")
+
+    monkeypatch.setattr(fi, "load", load)
+    with pytest.raises(KeyboardInterrupt):
+        ff.main([])
+    assert not (run / ff.RUNNING_NAME).exists() and not ff._GUARDS_PASSED
+
+
+def test_record_event_checks_its_kind_sanitises_and_names_an_unpushed_commit(monkeypatch, tmp_path):
+    import types
+
+    from vaultic.fusion.final_run import count_final_rows
+
+    (tmp_path / "research").mkdir()
+    log = tmp_path / "research" / "experiment_log.md"
+    log.write_text("")
+    monkeypatch.setattr(ff, "REPO_ROOT", tmp_path)
+    git = []
+
+    def fake_git(*a, check=True):
+        git.append(a[0])
+        if a[0] == "push":
+            raise RuntimeError("git push -q origin HEAD failed")
+        return types.SimpleNamespace(stdout="c" * 40 + "\n", returncode=0)
+
+    monkeypatch.setattr(ff, "_git", fake_git)
+    with pytest.raises(ValueError, match="unknown event"):
+        ff.record_event(tmp_path / "run", "FINAL-STARTED", "x")
+    assert log.read_text() == "" and git == []
+    detail = "a | b\nFINAL-FINAL-STARTEDSTARTED FINAL-RERUN done"
+    with pytest.raises(RuntimeError, match=f"unpushed FINAL-ABORTED commit: {'c' * 40}"):
+        ff.record_event(tmp_path / "run", "FINAL-ABORTED", detail)
+    rows = log.read_text("utf-8").splitlines()
+    assert len(rows) == 1 and rows[0].count("|") == 6  # one row, five cells
+    assert "FINAL-STARTED" not in rows[0] and "FINAL-RERUN" not in rows[0]
+    assert count_final_rows(log.read_text("utf-8"), ff.EXP) == 0
+
+
+# ---- D215: freeze row and a temporary repository with a bare origin ---------------------------
+def _sh(cwd, *a):
+    import subprocess
+
+    r = subprocess.run(["git", *a], cwd=cwd, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    return r.stdout.strip()
+
+
+@pytest.fixture
+def repo(monkeypatch, tmp_path):
+    """A clone of a bare origin holding the logs and one frozen source file, frozen and pushed;
+    the module paths point into it. No real data, no real runs folder."""
+    import types
+
+    from vaultic.stage2.final import library_versions
+
+    origin, root = tmp_path / "origin.git", tmp_path / "repo"
+    _sh(tmp_path, "init", "-q", "--bare", "--initial-branch=feedback", str(origin))
+    _sh(origin, "config", "core.hooksPath", str(origin / "hooks"))
+    _sh(tmp_path, "clone", "-q", str(origin), str(root))
+    for k, v in (("user.name", "test"), ("user.email", "test@example.com"),
+                 ("commit.gpgsign", "false"), ("core.hooksPath", str(tmp_path / "no-hooks"))):  # fmt: skip
+        _sh(root, "config", k, v)
+    (root / "research").mkdir()
+    (root / "src").mkdir()
+    (root / "research" / "decisions.md").write_text(
+        "| ID | Date | What | Detail | Ref | Why | Status |\n|---|---|---|---|---|---|---|\n",
+        "utf-8",
+    )
+    (root / "research" / "experiment_log.md").write_text(
+        "| exp | date | what | run | notes |\n", "utf-8"
+    )
+    (root / "src" / "x.py").write_text("X = 1\n", "utf-8")
+    data = tmp_path / "data" / "d.bin"
+    data.parent.mkdir()
+    data.write_bytes(b"data")
+    _sh(root, "add", "-A")
+    _sh(root, "commit", "-q", "-m", "init")
+    _sh(root, "push", "-q", "-u", "origin", "feedback")
+
+    monkeypatch.setattr(ff, "REPO_ROOT", root)
+    monkeypatch.setattr(ff, "RESEARCH_DIR", root / "research")
+    monkeypatch.setattr(ff, "FROZEN", root / "research" / "frozen_feedback.md")
+    monkeypatch.setattr("vaultic.reports.phase2_summary.REPO_ROOT", root)
+    monkeypatch.setattr(ff, "frozen_files", lambda: [root / "src" / "x.py"])
+    monkeypatch.setattr(ff, "data_files", lambda: [data])
+    monkeypatch.setattr(ff, "_load_system", lambda: types.SimpleNamespace(b5_models=[]))
+    monkeypatch.setattr("vaultic.fusion.final_run.check_package_location", lambda: None)
+    libs = "".join(f"| library `.venv:{k}` | `{v}` |\n" for k, v in library_versions().items())
+    monkeypatch.setattr("vaultic.stage2.final.library_section_venvs", lambda: "\n" + libs)
+
+    ff.freeze()  # D215: also writes the FREEZE row
+    _sh(root, "add", "-A")
+    _sh(root, "commit", "-q", "-m", "freeze")
+    _sh(root, "push", "-q")
+    yield types.SimpleNamespace(root=root, origin=origin, data=data)
+    ff._GUARDS_PASSED.clear()
+
+
+def _reject_pushes(origin):
+    import os
+
+    hook = origin / "hooks" / "pre-receive"
+    hook.write_text("#!/bin/sh\necho rejected >&2\nexit 1\n", newline="\n")
+    os.chmod(hook, 0o755)
+
+
+def test_freeze_then_commit_then_start_guards_pass(repo):
+    import hashlib
+    import re
+
+    record = ff.FROZEN.read_text("utf-8")
+    frozen = re.search(r"at git commit `([0-9a-f]{40})`", record).group(1)
+    rows = [x for x in (repo.root / "research" / "decisions.md").read_text("utf-8").splitlines()
+            if x.startswith("| FREEZE |")]  # fmt: skip
+    assert len(rows) == 1 and frozen in rows[0] and "D113" in rows[0]
+    _, head, branch, hashes = ff.guards(cfg())
+    assert head == _sh(repo.root, "rev-parse", "HEAD") and branch == "feedback"
+    assert hashes == {repo.data.as_posix(): hashlib.sha256(b"data").hexdigest()}
+
+
+def test_temp_repo_start_push_lets_the_loader_through(monkeypatch, repo):
+    import vaultic.learning.feedback_inputs as fi
+
+    monkeypatch.setattr("vaultic.stage2.system.load_parts",
+                        lambda dev: {"df": "df", "features": "f", "b5_cols": [], "splits": "s"})  # fmt: skip
+    run_dir, token = ff.start(cfg(), None)
+    assert ff.started_on_origin(run_dir.name, "feedback")
+    assert fi.load("final", run_dir=run_dir, token=token)["df"] == "df"
+    with pytest.raises(RuntimeError, match="did not pass in this process"):
+        fi.load("final", run_dir=run_dir)  # no token: another process, or no guards
+    ff.release_running(run_dir)
+
+
+def test_temp_repo_rejected_push_loads_nothing(monkeypatch, repo):
+    import vaultic.learning.feedback_inputs as fi
+
+    _reject_pushes(repo.origin)
+    loads = []
+    monkeypatch.setattr(fi, "load", lambda *a, **k: loads.append(1))
+    with pytest.raises(RuntimeError, match="unpushed FINAL-STARTED commit"):
+        ff.main([])
+    assert loads == [] and not ff._GUARDS_PASSED
+    run_dir = next((ff.RUNS_DIR / ff.EXP).iterdir())
+    assert not ff.started_on_origin(run_dir.name, "feedback")
+    with pytest.raises(RuntimeError, match="not on origin"):  # even with a token, local only
+        fi.require_final_started(run_dir, ff._grant(run_dir))
+
+
+def test_temp_repo_non_ancestor_commit_is_refused(repo):
+    head = _sh(repo.root, "rev-parse", "HEAD")
+    orphan = _sh(repo.root, "commit-tree", "HEAD^{tree}", "-m", "elsewhere")
+    with pytest.raises(RuntimeError, match="not an ancestor"):
+        ff.check_recorded_commit(orphan, head)
+    ff.check_recorded_commit(head, head)
+
+
+def test_temp_repo_changed_source_or_refreeze_after_the_start_is_refused(repo):
+    run_dir, _ = ff.start(cfg(), None)
+    ff.release_running(run_dir)
+    started = json.loads((run_dir / "metrics.json").read_text("utf-8"))["git_commit"]
+    (repo.root / "src" / "x.py").write_text("X = 2\n", "utf-8")
+    _sh(repo.root, "commit", "-q", "-am", "change a frozen source file")
+    _sh(repo.root, "push", "-q")
+    with pytest.raises(RuntimeError, match="frozen file changed"):
+        ff.resume(cfg(), run_dir)
+    with pytest.raises(RuntimeError, match="other than the logs"):
+        ff.check_recorded_commit(started, _sh(repo.root, "rev-parse", "HEAD"))
+    _sh(repo.root, "reset", "-q", "--hard", started)
+    (repo.root / "research" / "frozen_feedback.md").write_text(
+        ff.FROZEN.read_text("utf-8") + "\nre-frozen\n", "utf-8"
+    )
+    _sh(repo.root, "commit", "-q", "-am", "re-freeze after the start")
+    with pytest.raises(RuntimeError, match=r"other than the logs.*frozen_feedback"):
+        ff.check_recorded_commit(started, _sh(repo.root, "rev-parse", "HEAD"))
+
+
+def test_temp_repo_row_only_local_is_refused(repo):
+    import vaultic.learning.feedback_inputs as fi
+
+    run_dir, token = ff.start(cfg(), None)
+    fi.require_final_started(run_dir, token)  # the start row is on origin
+    log = repo.root / "research" / "experiment_log.md"
+    with open(log, "a", encoding="utf-8") as f:  # a resume row committed but never pushed
+        f.write(f"| {ff.EXP} | 2026-10-21 | FINAL-RESUMED: x | run `{run_dir.name}` | — |\n")
+    _sh(repo.root, "commit", "-q", "-am", "local only")
+    with pytest.raises(RuntimeError, match="not on origin"):
+        fi.require_final_started(run_dir, token)
+    ff.release_running(run_dir)

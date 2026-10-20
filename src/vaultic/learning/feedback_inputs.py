@@ -40,38 +40,37 @@ def label_derived_at(df: pd.DataFrame, uid: pd.Series, delay: int, train_mask) -
     return out[list(LABEL_DERIVED)].reset_index(drop=True)
 
 
-def require_final_started(run_dir, experiment_log=None) -> None:
-    """The FINAL-STARTED row naming this run folder must be in the experiment log (D214), and the
-    run must have started and not been aborted or completed."""
+def require_final_started(run_dir, token=None, experiment_log=None) -> None:
+    """D215: proof that the final-run guards passed in THIS process (the token start() / resume()
+    issued for this run folder), that the latest FINAL-STARTED / FINAL-RESUMED row naming it is in
+    the experiment log AND on origin, and that the run has status 'started'."""
     import json
     from pathlib import Path
 
-    from vaultic.paths import RESEARCH_DIR
+    from vaultic.learning import feedback_final as ff
 
     if run_dir is None:
         raise RuntimeError("EXP-310-final needs Aziz's go-ahead and the final-run guards")
     run_dir = Path(run_dir)
-    log = Path(experiment_log) if experiment_log else RESEARCH_DIR / "experiment_log.md"
-    rows = [line for line in log.read_text("utf-8").splitlines()
-            if line.startswith(f"| {EXP_FINAL} |") and "FINAL-STARTED" in line and run_dir.name in line]  # fmt: skip
-    if not rows:
-        raise RuntimeError(f"no FINAL-STARTED row for {run_dir.name} in {log.name}: test data is "
-                           "read only after the guards have recorded the start")  # fmt: skip
+    if not ff.guards_passed(run_dir, token):
+        raise RuntimeError(f"the final-run guards did not pass in this process for {run_dir.name}: "
+                           "test data is read only through start() / resume()")  # fmt: skip
+    ff.latest_row_on_origin(run_dir, experiment_log)
     meta = run_dir / "metrics.json"
     status = json.loads(meta.read_text("utf-8")).get("status") if meta.exists() else None
     if status != "started":
         raise RuntimeError(f"{run_dir.name} has status {status!r}, not 'started'")
 
 
-def load(mode: str, run_dir=None) -> dict:
+def load(mode: str, run_dir=None, token=None) -> dict:
     """Data and B5 inputs for 'dev' (days 1-120) or 'final' (every day). 'final' needs the run
-    folder whose FINAL-STARTED row is in the experiment log (require_final_started)."""
+    folder and the token from start() / resume() in this process (require_final_started)."""
     from vaultic.stage2.system import load_parts
 
     if mode not in ("dev", "final"):
         raise ValueError("mode must be dev or final")
     if mode == "final":
-        require_final_started(run_dir)
+        require_final_started(run_dir, token)
         parts = load_parts(dev=False)  # every day, test period included (after FINAL-STARTED)
         return {"df": parts["df"], "features": parts["features"], "b5_cols": list(parts["b5_cols"]),
                 "splits": parts["splits"], "mode": mode}  # fmt: skip

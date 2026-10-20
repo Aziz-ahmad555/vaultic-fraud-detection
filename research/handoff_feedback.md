@@ -93,3 +93,14 @@ logged amendment before EXP-310-final). Labelled as the design run, not the eval
   the loader; resume requires data hashes equal to the start's and treats a re-freeze as a
   change; refuse resume on a FINAL-ABORTED row at HEAD or origin; per-run RUNNING lock;
   freeze() writes the D113 FREEZE row; a temp-repo + bare-origin test; nits). Do NOT freeze yet.
+
+## Status after the second-review fixes (2026-10-20)
+- D215 (amendment 3, `ebc521a`, committed alone before the code; corrects D214 point 8: the 5
+  skips are torch x1, dice_ml x2, a Windows temp-folder link test and .venv-torch).
+- Fixes: load('final') needs the per-process token from start() / resume() and the run's latest
+  FINAL-STARTED / FINAL-RESUMED row on origin; resume needs the start's data hashes, refuses after
+  a re-freeze, a FINAL-ABORTED row (HEAD or origin) or while `<run>/RUNNING.lock` exists (held for
+  the whole run; delete by hand after a crash once no run is active); `--freeze` writes the D113
+  FREEZE row; temp-repo + bare-origin tests; nits.
+- Not frozen, not run. Next: Aziz's review, then `--freeze` (commit the record + FREEZE row), then
+  the run with his go-ahead. Next decision number: D216.

@@ -21,6 +21,12 @@ be an ancestor of HEAD with only the logs changed since, and its FINAL-STARTED r
 origin; then a FINAL-RESUMED row is committed and pushed BEFORE any test row is read (refused if
 the push fails). A resume continues the same run and is logged; it is not a re-run. Completed
 delays are skipped; a partial delay is recomputed from scratch.
+
+D215: load('final') needs the token start() / resume() issue in this process after their row is
+pushed, and the run's latest FINAL-STARTED / FINAL-RESUMED row must be on origin. A resume also
+needs the start's data hashes, no re-freeze since the start, no FINAL-ABORTED row (HEAD or
+origin) and no <run>/RUNNING.lock: the lock is held for the whole run and stays after a crash or
+shutdown; check that no run is active, then delete it by hand before resuming.
 """
 
 from __future__ import annotations
@@ -28,7 +34,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
+import secrets
 import subprocess
 from datetime import date, datetime
 from functools import partial
@@ -44,7 +52,11 @@ EXP = "EXP-310-final"
 FROZEN = RESEARCH_DIR / "frozen_feedback.md"
 FREEZE_RECORD = "research/frozen_feedback.md"
 EXPERIMENT_LOG = "research/experiment_log.md"
-LOG_FILES = {FREEZE_RECORD, EXPERIMENT_LOG, "research/decisions.md"}
+DECISIONS = "research/decisions.md"
+LOG_FILES = {FREEZE_RECORD, EXPERIMENT_LOG, DECISIONS}  # may differ from the frozen commit
+RESUME_LOG_FILES = {EXPERIMENT_LOG, DECISIONS}  # D215: may differ from the run's start commit
+RUNNING_NAME = "RUNNING.lock"
+_GUARDS_PASSED: dict[str, str] = {}  # D215: run folder -> token, this process only
 OUTPUTS = ("research/tables/feedback/",)
 OUTPUT_DIR = RESEARCH_DIR / "tables" / "feedback"
 PARITY_TOLERANCE = 1e-6
@@ -117,16 +129,16 @@ def read_champion_hashes(record: str) -> list[str]:
 
 
 def freeze() -> None:
-    import joblib
-
+    """Write the freeze record, then the D113 FREEZE row naming its commit (D215), as
+    stage2/final.py does; commit both before a run."""
     from vaultic.fusion.final_run import data_section, env_values
     from vaultic.reports.phase2_summary import write_freeze
     from vaultic.stage2.final import library_section_venvs
 
     check_settings(yaml.safe_load((CONFIG_DIR / f"{EXP}.yaml").read_text("utf-8")))
     write_freeze(frozen_files(), FROZEN, title="Frozen config for the feedback-loop final run "
-                 "(EXP-310-final; D210, D211, D213, D214)")  # fmt: skip
-    hashes = booster_hashes(joblib.load(system_cache()).b5_models)
+                 "(EXP-310-final; D210, D211, D213, D214, D215)")  # fmt: skip
+    hashes = booster_hashes(_load_system().b5_models)
     with open(FROZEN, "a", encoding="utf-8") as f:
         f.write(data_section(data_files(), env_values()))
         f.write(library_section_venvs())
@@ -134,7 +146,14 @@ def freeze() -> None:
             f"\n{CHAMPION_HEADER}\n\n"
             + "".join(f"- seed {s}: `{h}`\n" for s, h in enumerate(hashes))
         )
-    print(f"wrote {FROZEN}")
+    commit = re.search(r"at git commit `([0-9a-f]{40})`", FROZEN.read_text("utf-8")).group(1)
+    with open(RESEARCH_DIR / "decisions.md", "a", encoding="utf-8") as f:
+        f.write(f"| FREEZE | {datetime.now().date().isoformat()} | Feedback-loop final-run config "
+                f"({EXP}), frozen files, data files (champion models included), data paths and "
+                f"library versions frozen at git commit `{commit}` ({FREEZE_RECORD}) | — | Written "
+                "by `vaultic.learning.feedback_final --freeze` | A feedback-loop final run needs "
+                "this row for its frozen commit (D113) | Default |\n")  # fmt: skip
+    print(f"wrote {FROZEN}; logged the freeze of {commit[:12]}")
 
 
 # ---- guards -------------------------------------------------------------------------------
@@ -172,8 +191,44 @@ def _lock():
     return exclusive_lock(RUNS_DIR / EXP / LOCK_NAME)
 
 
+def _key(run_dir: Path) -> str:
+    return str(Path(run_dir).resolve())
+
+
+def _grant(run_dir: Path) -> str:
+    """D215: the token that proves the guards passed in THIS process (memory only)."""
+    token = secrets.token_hex(16)
+    _GUARDS_PASSED[_key(run_dir)] = token
+    return token
+
+
+def guards_passed(run_dir: Path, token: str | None) -> bool:
+    want = _GUARDS_PASSED.get(_key(run_dir))
+    return bool(want and token and secrets.compare_digest(want, token))
+
+
+def acquire_running(run_dir: Path) -> Path:
+    """D215: <run>/RUNNING.lock (O_CREAT | O_EXCL), held for the whole run. A lock left by a
+    crash or shutdown is deleted by hand once no run is active."""
+    path = Path(run_dir) / RUNNING_NAME
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError as e:
+        raise RuntimeError(f"{path} exists: the run is still running, or a crash or shutdown left "
+                           "the lock; check that no run is active, then delete it by hand") from e  # fmt: skip
+    os.write(fd, f"pid {os.getpid()} {datetime.now().isoformat(timespec='seconds')}\n".encode())
+    os.close(fd)
+    return path
+
+
+def release_running(run_dir: Path) -> None:
+    (Path(run_dir) / RUNNING_NAME).unlink(missing_ok=True)
+    _GUARDS_PASSED.pop(_key(run_dir), None)
+
+
 def start(cfg: dict, rerun_reason: str | None) -> tuple[Path, str]:
-    """All guards, then FINAL-STARTED committed and pushed; no test row is read before."""
+    """All guards, then FINAL-STARTED committed and pushed; no test row is read before. Returns
+    (run folder, token for load('final')); the run's RUNNING.lock is held from here."""
     from vaultic.eval.run import _guard_final_rerun, previous_final_runs
     from vaultic.fusion.final_run import log_guard, record_start
 
@@ -187,11 +242,13 @@ def start(cfg: dict, rerun_reason: str | None) -> tuple[Path, str]:
                      extra_logs=[RESEARCH_DIR / "decisions.md"], repo=REPO_ROOT,
                      data_hashes=hashes, what="feedback loop (champion-challenger) final run",
                      prereg="D210", freeze_record=FREEZE_RECORD)  # fmt: skip
-    return run_dir, head
+        acquire_running(run_dir)
+    return run_dir, _grant(run_dir)
 
 
 def check_resume(run_dir: Path) -> dict:
-    """Only an existing EXP-310-final run that started, was not aborted and did not complete."""
+    """Only an existing EXP-310-final run (mode final, in RUNS_DIR/EXP-310-final) that started,
+    was not aborted and did not complete."""
     meta_path = Path(run_dir) / "metrics.json"
     if not meta_path.exists():
         raise RuntimeError(f"{run_dir} is not a started {EXP} run (no metrics.json)")
@@ -201,8 +258,9 @@ def check_resume(run_dir: Path) -> dict:
         raise RuntimeError(f"{run_dir} already completed: nothing to resume")
     if status == "aborted":
         raise RuntimeError(f"{run_dir} was aborted ({meta.get('reason')}): it cannot be resumed")
-    if status != "started" or Path(run_dir).parent.name != EXP:
-        raise RuntimeError(f"{run_dir} is not a started {EXP} run")
+    if (status != "started" or meta.get("mode") != "final"
+            or Path(run_dir).resolve().parent != (RUNS_DIR / EXP).resolve()):  # fmt: skip
+        raise RuntimeError(f"{run_dir} is not a started {EXP} run in {RUNS_DIR / EXP}")
     return meta
 
 
@@ -217,54 +275,124 @@ def _git(*a, check=True):
 
 
 def check_recorded_commit(recorded: str, head: str) -> None:
-    """The run's start commit is an ancestor of HEAD and only the logs changed since (D214)."""
+    """The run's start commit is an ancestor of HEAD and only the two logs changed since (D214;
+    D215: the freeze record may not change, so a re-freeze after the start blocks a resume)."""
     if _git("merge-base", "--is-ancestor", recorded, head, check=False).returncode != 0:
         raise RuntimeError(
             f"the run's commit {recorded[:12]} is not an ancestor of HEAD {head[:12]}"
         )
     changed = set(_git("diff", "--name-only", "--no-renames", recorded, head).stdout.splitlines())
-    if changed - LOG_FILES:
+    if changed - RESUME_LOG_FILES:
         raise RuntimeError(f"files other than the logs changed since the run started: "
-                           f"{sorted(changed - LOG_FILES)}")  # fmt: skip
+                           f"{sorted(changed - RESUME_LOG_FILES)}")  # fmt: skip
+
+
+def run_rows(text: str, run_name: str, kinds=("FINAL-STARTED", "FINAL-RESUMED")) -> list[str]:
+    """Experiment-log rows of these kinds naming this run folder, in order."""
+    return [line for line in text.splitlines()
+            if line.startswith(f"| {EXP} |") and any(f"| {k}:" in line for k in kinds)
+            and f"{run_name}`" in line]  # fmt: skip
+
+
+def _log_at(ref: str) -> str:
+    return _git("show", f"{ref}:{EXPERIMENT_LOG}", check=False).stdout or ""
+
+
+def _branch() -> str:
+    return _git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
 
 
 def started_on_origin(run_name: str, branch: str) -> bool:
     """The FINAL-STARTED row naming this run folder is in the experiment log on origin."""
-    text = _git("show", f"origin/{branch}:{EXPERIMENT_LOG}", check=False).stdout or ""
-    return any(line.startswith(f"| {EXP} |") and "FINAL-STARTED" in line and run_name in line
-               for line in text.splitlines())  # fmt: skip
+    return bool(run_rows(_log_at(f"origin/{branch}"), run_name, ("FINAL-STARTED",)))
+
+
+def aborted_on_record(run_name: str, branch: str) -> list[str]:
+    """D215: refs (HEAD, origin/<branch>) whose experiment log has a FINAL-ABORTED row for it."""
+    return [ref for ref in ("HEAD", f"origin/{branch}")
+            if run_rows(_log_at(ref), run_name, ("FINAL-ABORTED",))]  # fmt: skip
+
+
+def latest_row_on_origin(run_dir: Path, experiment_log: Path | None = None) -> str:
+    """D215: the latest FINAL-STARTED / FINAL-RESUMED row naming the run in the local experiment
+    log must also be on origin/<branch> (fetched now); returns it."""
+    name = Path(run_dir).name
+    log = Path(experiment_log) if experiment_log else REPO_ROOT / EXPERIMENT_LOG
+    local = run_rows(log.read_text("utf-8"), name)
+    if not local:
+        raise RuntimeError(f"no FINAL-STARTED row for {name} in {log.name}: test data is read "
+                           "only after the guards have recorded the start")  # fmt: skip
+    branch = _branch()
+    _git("fetch", "-q", "origin", branch)
+    on_origin = run_rows(_log_at(f"origin/{branch}"), name)
+    if on_origin.count(local[-1]) < local.count(local[-1]):
+        raise RuntimeError(f"the latest start / resume row for {name} is not on origin/{branch}: "
+                           f"{local[-1]!r}; push it first")  # fmt: skip
+    return local[-1]
+
+
+def _clean(detail: str) -> str:
+    """One table cell: no pipes or newlines, and never the words the re-run guard counts."""
+    out = re.sub(r"[\r\n]+", " ", str(detail)).replace("|", "/")
+    while True:
+        new = re.sub(r"FINAL-STARTED|FINAL-RERUN", "", out)
+        if new == out:
+            return out.strip()
+        out = new
 
 
 def record_event(run_dir: Path, kind: str, detail: str) -> None:
     """Append a FINAL-RESUMED / FINAL-ABORTED row to the experiment log, commit and push; raises
-    if any git step fails (the caller stops). The text never contains the words the re-run guard
-    counts (FINAL-STARTED, FINAL-RERUN), so a resume is not taken for a second run."""
+    if any git step fails (the caller stops), naming an unpushed commit. The detail is sanitised
+    (_clean), so a resume is never taken for a second run."""
     from vaultic.fusion.final_run import repo_relative
 
-    assert kind in ("FINAL-RESUMED", "FINAL-ABORTED")
-    assert "FINAL-STARTED" not in detail and "FINAL-RERUN" not in detail
+    if kind not in ("FINAL-RESUMED", "FINAL-ABORTED"):
+        raise ValueError(f"unknown event {kind!r}")
     rel = repo_relative(run_dir, REPO_ROOT)
     with open(REPO_ROOT / EXPERIMENT_LOG, "a", encoding="utf-8") as f:
-        f.write(f"| {EXP} | {date.today().isoformat()} | {kind}: {detail} | run `{rel}` | — |\n")
+        f.write(f"| {EXP} | {date.today().isoformat()} | {kind}: {_clean(detail)} | run `{rel}` "
+                "| — |\n")  # fmt: skip
     _git("add", EXPERIMENT_LOG)
     _git("commit", "-q", "-m", f"{kind} {EXP} ({Path(run_dir).name})")
-    _git("push", "-q", "origin", "HEAD")
+    try:
+        _git("push", "-q", "origin", "HEAD")
+    except (RuntimeError, subprocess.TimeoutExpired) as e:
+        commit = _git("rev-parse", "HEAD", check=False).stdout.strip()
+        print(f"{kind} commit {commit} was NOT pushed; push it by hand (git push origin HEAD)",
+              flush=True)  # fmt: skip
+        raise RuntimeError(f"{e}\nunpushed {kind} commit: {commit}") from e
 
 
-def resume(cfg: dict, run_dir: Path) -> Path:
-    """Same guards as a start (D214), then FINAL-RESUMED pushed before any test row is read."""
+def resume(cfg: dict, run_dir: Path) -> tuple[Path, str]:
+    """Same guards as a start (D214) plus the D215 checks, then FINAL-RESUMED pushed before any
+    test row is read. Returns (run folder, token for load('final')); RUNNING.lock is held."""
+    run_dir = Path(run_dir)
     with _lock():
-        _, head, branch, _ = guards(cfg)
+        _, head, branch, hashes = guards(cfg)
         meta = check_resume(run_dir)
+        if hashes != meta.get("data_hashes"):
+            raise RuntimeError(f"data hashes differ from the run's start: refusing to resume "
+                               f"(now {hashes}, at start {meta.get('data_hashes')})")  # fmt: skip
+        aborted = aborted_on_record(run_dir.name, branch)
+        if aborted:
+            raise RuntimeError(f"{run_dir.name} has a FINAL-ABORTED row at {aborted}: it cannot be "
+                               "resumed")  # fmt: skip
         check_recorded_commit(meta["git_commit"], head)
-        if not started_on_origin(Path(run_dir).name, branch):
-            raise RuntimeError(f"no FINAL-STARTED row for {Path(run_dir).name} on origin/{branch}: "
+        if not started_on_origin(run_dir.name, branch):
+            raise RuntimeError(f"no FINAL-STARTED row for {run_dir.name} on origin/{branch}: "
                                "refusing to resume")  # fmt: skip
-        record_event(run_dir, "FINAL-RESUMED", f"resume of the same run (started at commit "
-                     f"`{meta['git_commit'][:12]}`), logged; not a re-run")  # fmt: skip
-        with open(Path(run_dir) / "resume.log", "a", encoding="utf-8") as f:
+        acquire_running(run_dir)
+        try:
+            record_event(run_dir, "FINAL-RESUMED", f"resume of the same run (started at commit "
+                         f"`{meta['git_commit'][:12]}`) at "
+                         f"{datetime.now().isoformat(timespec='seconds')}, logged; not a re-run")  # fmt: skip
+        except BaseException:
+            release_running(run_dir)
+            raise
+        with open(run_dir / "resume.log", "a", encoding="utf-8") as f:
             f.write(f"resumed {datetime.now().isoformat(timespec='seconds')} at HEAD {head}\n")
-    return Path(run_dir)
+    return run_dir, _grant(run_dir)
 
 
 def abort(run_dir: Path, reason: str, log=print) -> None:
@@ -410,8 +538,6 @@ def _stored_scores() -> pd.Series:
 
 
 def main(argv=None) -> None:
-    import vaultic.learning.feedback_inputs as fi
-
     p = argparse.ArgumentParser(description=f"{EXP} (needs Aziz's go-ahead)")
     p.add_argument("--freeze", action="store_true")
     p.add_argument("--resume", type=Path)
@@ -420,10 +546,18 @@ def main(argv=None) -> None:
     if a.freeze:
         return freeze()
     cfg = yaml.safe_load((CONFIG_DIR / f"{EXP}.yaml").read_text("utf-8"))
-    if a.resume:
-        run_dir = resume(cfg, a.resume)  # FINAL-RESUMED pushed before any test row
-    else:
-        run_dir, _ = start(cfg, a.rerun_reason)  # FINAL-STARTED pushed before any test row
+    if a.resume:  # FINAL-RESUMED pushed before any test row
+        run_dir, token = resume(cfg, a.resume)
+    else:  # FINAL-STARTED pushed before any test row
+        run_dir, token = start(cfg, a.rerun_reason)
+    try:  # D215: RUNNING.lock is held until this process ends (a crash leaves it)
+        _run(cfg, run_dir, token)
+    finally:
+        release_running(run_dir)
+
+
+def _run(cfg: dict, run_dir: Path, token: str) -> None:
+    import vaultic.learning.feedback_inputs as fi
 
     def log(msg: str) -> None:
         line = f"[{datetime.now().isoformat(timespec='seconds')}] {msg}"
@@ -431,7 +565,7 @@ def main(argv=None) -> None:
         with open(Path(run_dir) / "run.log", "a", encoding="utf-8") as fh:
             fh.write(line + "\n")
 
-    loaded = fi.load("final", run_dir=run_dir)  # test rows are read from here on
+    loaded = fi.load("final", run_dir=run_dir, token=token)  # test rows are read from here on
     system = _load_system()
     df = loaded["df"]
     test = (df["day"] >= cfg["evaluation_days"][0]).to_numpy()
