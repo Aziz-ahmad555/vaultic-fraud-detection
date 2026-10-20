@@ -1,4 +1,4 @@
-# Handoff: Phase C (b) feedback loop (EXP-310), 2026-10-20
+# Handoff: Phase C (b) feedback loop (EXP-310), updated 2026-10-20 (after the design run)
 
 ## Branch state
 - Branch `feedback` (worktree `.worktrees/feedback`, from `phase0-1` after PR #9), pushed.
@@ -50,3 +50,24 @@ logged amendment before EXP-310-final). Labelled as the design run, not the eval
   final-run guards (frozen config, freeze record, FINAL-STARTED before scoring, one run) and the
   parity check (the 5-seed champion mean vs the stored `score_B5`, within 1e-6) as its first
   step. Next decision number: D212.
+
+## Update after the design run (2026-10-20)
+- EXP-310-dev completed (run `20261020-004133`, exit 0, 4.8 h). P1 vs P0 PR-AUC: +0.064 (L=0),
+  +0.021 (L=7), +0.0016 (L=30), 0 (L=60, all attempts "insufficient evidence"). Gate not
+  degenerate. P2 never fired at any delay.
+- P2 PSI diagnostic (design days only, `python -m vaultic.learning.psi_diagnostic`): code correct,
+  daily PSI max 0.018 / 0.018 / 0.024 / 0.191 (L = 0/7/30/60), never > 0.2: P2 = P0, threshold
+  kept (D212).
+- D212: predictions before the final mode (small effect at L=30, H-FB1 may fail, H-FB4 may fail,
+  L=60 structural null, P0 not comparable across delays, dev frequency-encoder limitation).
+- D213: final-mode tooling. Built in `src/vaultic/learning/feedback_final.py` with
+  `experiments/configs/EXP-310-final.yaml`; tests in `tests/test_feedback_final.py` (9 passed).
+  Order: guards and FINAL-STARTED pushed -> data loaded (`load("final", final_started=True)`) ->
+  parity (5-seed B5 mean vs stored score_B5, 1e-6, abort on failure) -> delays one by one with a
+  DONE marker; `--resume <run folder>` continues in the same folder and skips completed delays.
+- **Not run.** Before a run: Aziz's independent review of the final-mode code, then
+  `python -m vaultic.learning.feedback_final --freeze` (commit the freeze record + FREEZE row),
+  then the run with Aziz's go-ahead.
+- Full test suite: 620 passed, 5 skipped, 1 flaky (`test_demo_server.py::test_whatif_is_stateless...`,
+  ConnectionResetError WinError 10054; the file passes 32/32 on re-run; this branch does not touch
+  the demo server).

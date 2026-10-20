@@ -39,14 +39,19 @@ def label_derived_at(df: pd.DataFrame, uid: pd.Series, delay: int, train_mask) -
     return out[list(LABEL_DERIVED)].reset_index(drop=True)
 
 
-def load(mode: str) -> dict:
-    """Data and B5 inputs for 'dev' (days 1-120) or 'final' (every day, behind the guards)."""
+def load(mode: str, final_started: bool = False) -> dict:
+    """Data and B5 inputs for 'dev' (days 1-120) or 'final' (every day). 'final' is refused unless
+    the caller has passed the final-run guards and pushed FINAL-STARTED (feedback_final.main)."""
     from vaultic.stage2.system import load_parts
 
     if mode not in ("dev", "final"):
         raise ValueError("mode must be dev or final")
     if mode == "final":
-        raise RuntimeError("EXP-310-final needs Aziz's go-ahead and the final-run guards")
+        if not final_started:
+            raise RuntimeError("EXP-310-final needs Aziz's go-ahead and the final-run guards")
+        parts = load_parts(dev=False)  # every day, test period included (after FINAL-STARTED)
+        return {"df": parts["df"], "features": parts["features"], "b5_cols": list(parts["b5_cols"]),
+                "splits": parts["splits"], "mode": mode}  # fmt: skip
     parts = load_parts(dev=True)  # test-period rows dropped at load (D180)
     keep = parts["df"]["day"].to_numpy() <= DEV_LAST_DAY
     df = parts["df"][keep].reset_index(drop=True)
