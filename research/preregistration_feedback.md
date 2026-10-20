@@ -1,6 +1,6 @@
 # Pre-registration: feedback loop with champion–challenger retraining (Phase C (b), D210)
 
-**Status: PRE-REGISTERED as D210 (2026-10-19), approved by Aziz with amendments 1 (D211) and 2 (D214).** Written and committed
+**Status: PRE-REGISTERED as D210 (2026-10-19), approved by Aziz with amendments 1 (D211), 2 (D214) and 3 (D215).** Written and committed
 before any simulation code is written or run. Nothing here touches the test period except a single
 `--final` run, started only with Aziz's go-ahead. Any change after approval is logged as an
 amendment (D2xx) **before** the run it affects; a change made after seeing test results is reported
@@ -270,3 +270,16 @@ champion scores with the stored score_B5, which is that same 5-seed mean.
 - **In-sample champion cost in early gates:** the champion's E12 thresholds were chosen on days
   147-150, so where a gate window includes those days its cost there is in-sample; each gate
   reports the overlap, and this is stated as a limitation.
+
+---
+
+## Amendment 3 (D215, 2026-10-20, after the second review of the final mode, before any code)
+
+Final-run tooling only; no setting, policy, metric or hypothesis changes.
+
+- **Loader proof.** Test rows are read only with a token from start() / resume() in the same
+  process and only if the run's latest FINAL-STARTED / FINAL-RESUMED row is on origin.
+- **Resume** needs the start's data hashes and refuses after a re-freeze, after a FINAL-ABORTED
+  row (HEAD or origin), and while the run's RUNNING.lock exists (delete it by hand after a crash,
+  once no run is active).
+- **--freeze** also writes the D113 FREEZE row to research/decisions.md.
