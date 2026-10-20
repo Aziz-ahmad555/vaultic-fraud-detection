@@ -469,9 +469,13 @@ def _sh(cwd, *a):
 def repo(monkeypatch, tmp_path):
     """A clone of a bare origin holding the logs and one frozen source file, frozen and pushed;
     the module paths point into it. No real data, no real runs folder."""
+    import os
+    import subprocess
+    import sys
     import types
+    from pathlib import Path
 
-    from vaultic.stage2.final import VENVS
+    from vaultic.stage2 import final as s2
 
     origin, root = tmp_path / "origin.git", tmp_path / "repo"
     _sh(tmp_path, "init", "-q", "--bare", "--initial-branch=feedback", str(origin))
@@ -505,9 +509,25 @@ def repo(monkeypatch, tmp_path):
     monkeypatch.setattr(ff, "data_files", lambda: [data])
     monkeypatch.setattr(ff, "_load_system", lambda: types.SimpleNamespace(b5_models=[]))
     monkeypatch.setattr("vaultic.fusion.final_run.check_package_location", lambda: None)
-    # D216: the real .venv versions are recorded; .venv-dice is absent (a folder that does not exist)
-    monkeypatch.setattr("vaultic.stage2.final.VENVS",
-                        {".venv": VENVS[".venv"], ".venv-dice": tmp_path / "no-venv-dice"})  # fmt: skip
+    # D216: .venv's versions are read by THIS interpreter (sys.executable), in a subprocess as the
+    # real venv_versions does, so the fixture needs no .venv folder (Linux CI has none);
+    # .venv-dice is absent (a folder that does not exist) and keeps the real lookup
+    real_venv_versions = s2.venv_versions
+
+    def venv_versions(venv):
+        if venv != ".venv":
+            return real_venv_versions(venv)
+        code = ("import json; from vaultic.stage2.final import library_versions; "
+                "print(json.dumps(library_versions()))")  # fmt: skip
+        src = Path(ff.__file__).resolve().parents[2]
+        out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                             env={**os.environ, "PYTHONPATH": str(src)}, check=True)  # fmt: skip
+        return json.loads(out.stdout.strip().splitlines()[-1])
+
+    monkeypatch.setattr(s2, "venv_versions", venv_versions)
+    monkeypatch.setattr(
+        s2, "VENVS", {".venv": tmp_path / "no-venv", ".venv-dice": tmp_path / "no-venv-dice"}
+    )
 
     ff.freeze()  # D215: also writes the FREEZE row
     _sh(root, "add", "-A")
