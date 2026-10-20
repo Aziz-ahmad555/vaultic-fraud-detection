@@ -46,10 +46,9 @@ predictions hold in the design span, and any setting that looks broken (which wo
 logged amendment before EXP-310-final). Labelled as the design run, not the evaluation.
 
 ## Not done, needs Aziz
-- **EXP-310-final needs Aziz's go-ahead.** Its mode is not implemented yet: it needs the
-  final-run guards (frozen config, freeze record, FINAL-STARTED before scoring, one run) and the
-  parity check (the 5-seed champion mean vs the stored `score_B5`, within 1e-6) as its first
-  step. Next decision number: D212.
+- **EXP-310-final needs Aziz's go-ahead.** The final mode is now built (see the update below) but
+  NOT run; next: Aziz's independent review of the final-mode code, the freeze, then the run.
+  Next decision number: D214.
 
 ## Update after the design run (2026-10-20)
 - EXP-310-dev completed (run `20261020-004133`, exit 0, 4.8 h). P1 vs P0 PR-AUC: +0.064 (L=0),
