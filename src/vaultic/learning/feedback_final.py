@@ -57,6 +57,7 @@ DECISIONS = "research/decisions.md"
 LOG_FILES = {FREEZE_RECORD, EXPERIMENT_LOG, DECISIONS}  # may differ from the frozen commit
 RESUME_LOG_FILES = {EXPERIMENT_LOG, DECISIONS}  # D215: may differ from the run's start commit
 RUNNING_NAME = "RUNNING.lock"
+VENV = ".venv"  # D216: the only environment recorded and checked
 _GUARDS_PASSED: dict[str, str] = {}  # D215: run folder -> token, this process only
 OUTPUTS = ("research/tables/feedback/",)
 OUTPUT_DIR = RESEARCH_DIR / "tables" / "feedback"
@@ -129,12 +130,36 @@ def read_champion_hashes(record: str) -> list[str]:
     ]
 
 
+def library_section() -> str:
+    """D216: library versions of .venv only (the run never uses dice; .venv-dice is out of
+    scope), in the D114 row format that check_libraries reads."""
+    from vaultic.stage2.final import venv_versions
+
+    lines = ["", "## Library versions (D114; .venv only, D216)", "", "| library | version |",
+             "|---|---|"]  # fmt: skip
+    lines += [f"| library `{VENV}:{k}` | `{v}` |" for k, v in venv_versions(VENV).items()]
+    return "\n".join(lines) + "\n"
+
+
+def check_libraries(record: str, venv: str) -> dict[str, str]:
+    """D216: the record holds library rows for .venv only, and they match this interpreter."""
+    from vaultic.fusion.final_run import LIB_ROW
+    from vaultic.stage2.final import check_libraries_venv
+
+    if venv != VENV:
+        raise RuntimeError(f"{EXP} runs in {VENV}, not {venv}")
+    other = sorted({k.split(":", 1)[0] for k, _ in LIB_ROW.findall(record)} - {VENV})
+    if other:
+        raise RuntimeError(f"the freeze record holds library rows for {other}; {EXP} records "
+                           f"{VENV} only (D216): re-freeze")  # fmt: skip
+    return check_libraries_venv(record, VENV)
+
+
 def freeze() -> None:
     """Write the freeze record, then the D113 FREEZE row naming its commit (D215), as
     stage2/final.py does; commit both before a run."""
     from vaultic.fusion.final_run import data_section, env_values
     from vaultic.reports.phase2_summary import write_freeze
-    from vaultic.stage2.final import library_section_venvs
 
     check_settings(yaml.safe_load((CONFIG_DIR / f"{EXP}.yaml").read_text("utf-8")))
     write_freeze(frozen_files(), FROZEN, title="Frozen config for the feedback-loop final run "
@@ -142,7 +167,7 @@ def freeze() -> None:
     hashes = booster_hashes(_load_system().b5_models)
     with open(FROZEN, "a", encoding="utf-8") as f:
         f.write(data_section(data_files(), env_values()))
-        f.write(library_section_venvs())
+        f.write(library_section())
         f.write(
             f"\n{CHAMPION_HEADER}\n\n"
             + "".join(f"- seed {s}: `{h}`\n" for s, h in enumerate(hashes))
@@ -170,7 +195,6 @@ def guards(cfg: dict) -> tuple[str, str, str, dict]:
         env_values,
     )
     from vaultic.reports.phase2_summary import check_freeze
-    from vaultic.stage2.final import check_libraries_venv
 
     check_settings(cfg)
     check_package_location()
@@ -178,7 +202,7 @@ def guards(cfg: dict) -> tuple[str, str, str, dict]:
         raise RuntimeError(f"{FROZEN} is missing or a frozen file changed: "
                            f"{check_freeze(FROZEN) if FROZEN.exists() else 'no record'}")  # fmt: skip
     record = FROZEN.read_text("utf-8")
-    check_libraries_venv(record, cfg["venv"])
+    check_libraries(record, cfg["venv"])
     head = check_git(FROZEN, REPO_ROOT, log_files=LOG_FILES, freeze_record=FREEZE_RECORD,
                      outputs=OUTPUTS)  # fmt: skip
     branch = check_origin(REPO_ROOT)

@@ -471,7 +471,7 @@ def repo(monkeypatch, tmp_path):
     the module paths point into it. No real data, no real runs folder."""
     import types
 
-    from vaultic.stage2.final import library_versions
+    from vaultic.stage2.final import VENVS
 
     origin, root = tmp_path / "origin.git", tmp_path / "repo"
     _sh(tmp_path, "init", "-q", "--bare", "--initial-branch=feedback", str(origin))
@@ -505,8 +505,9 @@ def repo(monkeypatch, tmp_path):
     monkeypatch.setattr(ff, "data_files", lambda: [data])
     monkeypatch.setattr(ff, "_load_system", lambda: types.SimpleNamespace(b5_models=[]))
     monkeypatch.setattr("vaultic.fusion.final_run.check_package_location", lambda: None)
-    libs = "".join(f"| library `.venv:{k}` | `{v}` |\n" for k, v in library_versions().items())
-    monkeypatch.setattr("vaultic.stage2.final.library_section_venvs", lambda: "\n" + libs)
+    # D216: the real .venv versions are recorded; .venv-dice is absent (a folder that does not exist)
+    monkeypatch.setattr("vaultic.stage2.final.VENVS",
+                        {".venv": VENVS[".venv"], ".venv-dice": tmp_path / "no-venv-dice"})  # fmt: skip
 
     ff.freeze()  # D215: also writes the FREEZE row
     _sh(root, "add", "-A")
@@ -536,6 +537,26 @@ def test_freeze_then_commit_then_start_guards_pass(repo):
     _, head, branch, hashes = ff.guards(cfg())
     assert head == _sh(repo.root, "rev-parse", "HEAD") and branch == "feedback"
     assert hashes == {repo.data.as_posix(): hashlib.sha256(b"data").hexdigest()}
+
+
+def test_freeze_and_guards_use_venv_only_with_no_venv_dice(repo):
+    """D216: freeze -> commit -> start guards pass with no .venv-dice present; the record holds
+    .venv rows only, and a record with rows for another environment is refused."""
+    from vaultic.fusion.final_run import LIB_ROW
+    from vaultic.stage2 import final as s2
+
+    assert not s2.VENVS[".venv-dice"].exists()
+    with pytest.raises(FileNotFoundError):  # the stage-2 helper would need .venv-dice
+        s2.library_section_venvs()
+    record = ff.FROZEN.read_text("utf-8")
+    envs = {k.split(":", 1)[0] for k, _ in LIB_ROW.findall(record)}
+    assert envs == {".venv"}
+    ff.guards(cfg())
+    ff.check_libraries(record, ".venv")
+    with pytest.raises(RuntimeError, match="library rows for"):
+        ff.check_libraries(record + "| library `.venv-dice:dice-ml` | `0.11` |\n", ".venv")
+    with pytest.raises(RuntimeError, match="runs in .venv"):
+        ff.check_libraries(record, ".venv-dice")
 
 
 def test_temp_repo_start_push_lets_the_loader_through(monkeypatch, repo):
