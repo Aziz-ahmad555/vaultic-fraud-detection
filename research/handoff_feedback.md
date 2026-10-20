@@ -83,3 +83,13 @@ logged amendment before EXP-310-final). Labelled as the design run, not the eval
   status, CLAUDE.md resume wording).
 - Not frozen, not run. Next: Aziz's short second review of the resume / guard code, then
   `python -m vaultic.learning.feedback_final --freeze`, then the run with his go-ahead.
+
+## Status after the second review (2026-10-20)
+- D214 fixes done and pushed (`d585919`); full suite 631 passed, 5 skipped.
+- Second review: FIX FIRST, no blockers in the normal CLI path.
+- Next step: log D215 (amendment, committed alone; includes a one-line correction to D214 point 8:
+  the 5 skips are torch x1, dice_ml x2, a Windows temp-folder link test and .venv-torch, not
+  real-data tests), then the second-review fixes (per-process guard token + origin row check in
+  the loader; resume requires data hashes equal to the start's and treats a re-freeze as a
+  change; refuse resume on a FINAL-ABORTED row at HEAD or origin; per-run RUNNING lock;
+  freeze() writes the D113 FREEZE row; a temp-repo + bare-origin test; nits). Do NOT freeze yet.
