@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api";
 import type { ScoreInput, ScoreResult, View } from "../api/types";
 import { VIEWS, VIEW_LABEL } from "../api/types";
@@ -19,6 +20,10 @@ const START: ScoreInput = {
 };
 
 /** What-if scoring: every change re-scores through the same api.score the case page uses. */
+/** D220: the sliders run an illustrative model in every mode; the frozen system is in the Test Lab. */
+export const SIM_LABEL = "Illustrative mock: not the frozen system, not the evaluation";
+export const SIM_POINTER = "To score a transaction you build with the frozen final-run system, use the Test Lab's custom mode.";
+
 export function Simulator() {
   const [x, setX] = useState<ScoreInput>(START);
   const [r, setR] = useState<ScoreResult | null>(null);
@@ -37,7 +42,10 @@ export function Simulator() {
       <div className="page-head">
         <h1>Scenario simulator</h1>
         <p className="muted small">Change one thing at a time and watch the risk, the braid and the reasons.</p>
-        <p className="mock-note xs" style={{ display: "inline-block" }}>Illustrative model, not the evaluated system</p>
+        <p className="mock-note xs" style={{ display: "inline-block" }} data-testid="sim-label">{SIM_LABEL}</p>
+        <p className="muted xs" data-testid="sim-pointer">
+          {SIM_POINTER} <Link to="/testlab">Open the Test Lab</Link>.
+        </p>
       </div>
       <div className="grid-sim">
         <section className="pane" aria-label="Inputs">

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import io
 import threading
+import time
 import traceback
 
 import numpy as np
@@ -44,20 +45,24 @@ class TestLabService:
     def __init__(self):
         self.state, self.message, self.parity = "loading", "starting up", None
         self.engine = None
+        self.timings: dict = {}  # D220: start time per step, shown in the status
         self.lock = threading.Lock()
 
     # ---- startup -------------------------------------------------------------------------------
     def start(self, build=None, parity=None, log=print) -> None:
         """Build the engine and run (or read) the parity gate; never raises."""
+        started = time.perf_counter()
         try:
             from vaultic.live.engine import STAGE2_DEV_SYSTEM, SYSTEM_CACHE, build_engine
             from vaultic.live.parity import cached_parity
 
             self.message = "loading the frozen system and the history store"
             engine = (build or build_engine)(log)
+            self.timings["engine_seconds"] = round(time.perf_counter() - started, 1)
             self.message = "running the parity check (first start only)"
             path = SYSTEM_CACHE if SYSTEM_CACHE.exists() else STAGE2_DEV_SYSTEM
             result = (parity or cached_parity)(engine, path, log)
+            self.timings["start_seconds"] = round(time.perf_counter() - started, 1)
             self.parity = result
             if not result["passed"] and result.get("reason"):
                 self.state, self.message = "refused", f"parity failed: {result['reason']}"
@@ -86,7 +91,8 @@ class TestLabService:
         return self.engine
 
     def status(self) -> dict:
-        out = {"state": self.state, "message": self.message, "parity": self.parity}
+        out = {"state": self.state, "message": self.message, "parity": self.parity,
+               "timings": self.timings}  # fmt: skip
         if self.engine is not None:
             out["latency"] = self.engine.latency.summary()
         return out

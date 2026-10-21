@@ -26,6 +26,8 @@ export function Lab() {
   const { runs, ablation, sensitivity } = lab.data;
   const chosen = runs.filter((r) => picked.includes(r.id));
   const byId = new Map(runs.map((r) => [r.id, r]));
+  const hasSteps = ablation.some((a) => a.stepDiff != null);
+  const ablationSources = [...new Set(ablation.flatMap((a) => [a.source, a.stepSource]).filter((x): x is string => !!x))];
 
   return (
     <div className="page">
@@ -43,7 +45,7 @@ export function Lab() {
           <span className="muted small">Pick up to four</span>
         </div>
         <div className="pane-body run-picker" role="group" aria-label="Runs to compare">
-          {runs.map((r) => (
+          {runs.filter((r) => r.kind !== "ablation" || r.pr.length > 0).map((r) => (
             <label key={r.id} className="field-inline">
               <input type="checkbox" checked={picked.includes(r.id)} onChange={() => toggle(r.id)} disabled={!picked.includes(r.id) && picked.length >= 4} />
               <span style={{ color: "var(--ink)" }}>{r.name}</span>
@@ -93,6 +95,7 @@ export function Lab() {
                   <th scope="col" className="num">95% CI</th>
                   <th scope="col" className="num">Recall at 1% FPR</th>
                   <th scope="col" className="num">Cost</th>
+                  {hasSteps && <th scope="col" className="num">Step vs previous rung (Holm p)</th>}
                 </tr>
               </thead>
               <tbody>
@@ -105,12 +108,24 @@ export function Lab() {
                       <td className="num">{r.ciLow.toFixed(3)} to {r.ciHigh.toFixed(3)}</td>
                       <td className="num">{fmtPct(r.recallAt1)}</td>
                       <td className="num">{fmtMoney(r.cost)}</td>
+                      {hasSteps && (
+                        <td className="num">
+                          {a.stepDiff == null
+                            ? "–"
+                            : `${a.stepDiff >= 0 ? "+" : ""}${a.stepDiff.toFixed(4)} [${a.stepCiLow!.toFixed(4)}, ${a.stepCiHigh!.toFixed(4)}] (${a.stepPHolm!.toFixed(3)}) ${a.stepSupported ? "H1 supported" : "H1 not supported"}`}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
+          {ablationSources.length > 0 && (
+            <p className="muted xs pane-body" data-testid="ablation-source">
+              Stage-2 ablation ladder (D121), F4 stacking, test period. Source: {ablationSources.join(", ")}.
+            </p>
+          )}
         </section>
         <section className="pane">
           <div className="pane-head"><h2>Fusion: F1–F7 vs MVAF <span className="muted small">{NUMBERS}</span></h2></div>

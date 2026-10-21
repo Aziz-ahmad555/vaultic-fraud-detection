@@ -191,7 +191,10 @@ def test_day_summary_alerts_queues_history_network(server):
 
 def test_drift_lab_score_thresholds_feedback_audit(server):
     d = _get(server, f"/api/drift?time={AS_OF}")
-    assert d["alarms"] == [] and d["retrains"] == []
+    # D220: alarms and retraining come from the EXP-310 simulation, never after the as-of day
+    assert all(x["day"] <= AS_OF // DAY for x in d["alarms"] + d["retrains"])
+    assert d["simulation"]["label"] == "EXP-310 simulation on test period"
+    assert d["injected"] == []
     assert "147-150" in d["reference"]
     assert {f["feature"] for f in d["featurePsi"]} <= {
         "fused risk score",
@@ -634,3 +637,56 @@ def test_a_percent_encoded_analyst_name_is_decoded(tmp_path):
         who = {"X-Vaultic-Analyst": "Zo%C3%AB", "X-Vaultic-Role": "analyst"}
         assert _send(base, "/api/feedback/1000", {"label": "fraud"}, "POST", who)[0] == 200
         assert _get(base, "/api/audit")[0]["analyst"] == "Zoë"
+
+
+# ---- D220: Model lab ablation from the stage-2 ladder, Drift monitor from EXP-310 events --------
+def test_ladder_ablation_rows_come_from_the_committed_ladder_files(tmp_path):
+    mod = _load_module()
+    runs, rows = mod.ladder_ablation()
+    assert [r["step"] for r in rows] == list(mod.RUNG_NAMES.values())
+    assert all(r["source"] == "research/tables/stage2/ladder_metrics.json" for r in rows)
+    assert {r["id"] for r in runs} == {r["runId"] for r in rows} and all(
+        r["kind"] == "ablation" for r in runs
+    )
+    by = {r["step"]: r for r in rows}
+    assert "stepDiff" not in by["Rung 1: tabular (F4)"]  # no previous rung
+    assert by["Rung 2: + behavioral (E3)"]["stepSupported"] is True
+    assert by["Rung 5: + anomaly, all five views (E8)"]["stepSupported"] is False
+    assert mod.ladder_ablation(tmp_path) == ([], [])  # files missing: empty, never invented
+
+
+def test_exp310_drift_filters_seed_delay_policy_and_the_as_of_day():
+    mod = _load_module()
+    ev = {"label": "EXP-310 simulation on test period", "source_run_id": "run-x", "events": {"30": [
+        {"policy": "P3", "day": 152, "seed": 0, "kind": "alarm", "detector": "ADWIN"},
+        {"policy": "P3", "day": 160, "seed": 0, "kind": "alarm", "detector": "ADWIN"},
+        {"policy": "P3", "day": 152, "seed": 1, "kind": "alarm", "detector": "ADWIN"},
+        {"policy": "P1", "day": 156, "seed": 0, "kind": "attempt", "accepted": True, "reason": "accepted",
+         "gain": 0.02, "ci_low": 0.01, "ci_high": 0.03, "cost_champion": 10.0, "cost_challenger": 9.0},
+        {"policy": "P3", "day": 156, "seed": 0, "kind": "attempt", "accepted": False,
+         "reason": "insufficient evidence"},
+        {"policy": "P1_ungated", "day": 156, "seed": 0, "kind": "attempt", "accepted": True},
+    ]}}  # fmt: skip
+    out = mod.exp310_drift(ev, 30, 157)
+    assert [(a["day"], a["detector"]) for a in out["alarms"]] == [(152, "ADWIN")]
+    assert [(r["policy"], r["trigger"], r["accepted"]) for r in out["retrains"]] == [
+        ("P1", "schedule", True), ("P3", "alarm", False)]  # fmt: skip
+    assert out["retrains"][0]["gainCiLow"] == 0.01 and out["retrains"][1]["gain"] is None
+    assert out["simulation"]["sourceRun"] == "run-x" and out["simulation"]["delay"] == 30
+    assert mod.exp310_drift(ev, 7, 157) == {"alarms": [], "retrains": [], "simulation": None}
+    assert mod.exp310_drift(None, 30, 157)["simulation"] is None
+
+
+def test_drift_and_lab_without_the_committed_files(tmp_path):
+    mod = _load_module()
+    from vaultic.audit.store import SQLiteAuditStore
+
+    bundle = _bundle(tmp_path)
+    runs = bundle.parent / "runs"
+    _mark(bundle, runs)
+    app = mod.create_app(bundle, runs_dir=runs, audit_store=SQLiteAuditStore(tmp_path / "a.sqlite"),
+                         events_path=tmp_path / "none.json", ladder_dir=tmp_path)  # fmt: skip
+    with _serve(app) as base:
+        d = _get(base, f"/api/drift?time={AS_OF + 20 * DAY}")
+        assert d["alarms"] == [] and d["retrains"] == [] and d["simulation"] is None
+        assert _get(base, "/api/lab")["ablation"] == []

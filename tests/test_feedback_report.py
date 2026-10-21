@@ -109,3 +109,32 @@ def test_structural_lines_explain_a_null_delay():
     assert "d - L > 120" in lines[0]
     assert "L=30: P1 gate decisions on 1 of 2 slots per seed (177); 5 of 10" in lines[4]
     assert "177 minus 60 is 117" in lines[5]
+
+
+# ---- D220: the events file is generated from the run folder and checkable against it ----------
+def test_events_payload_records_the_run_and_hashes_and_detects_changes(tmp_path):
+    import hashlib
+    import json
+
+    from vaultic.reports.feedback_report import DELAYS, EVENTS_LABEL, check_events, events_payload
+
+    run = tmp_path / "EXP-310-final" / "20261020-174032-191246"
+    for L in DELAYS:
+        (run / f"delay_L{L}").mkdir(parents=True)
+        rows = [{"policy": "P3", "day": 152, "delay": L, "seed": 0, "kind": "alarm", "detector": "ADWIN",
+                 "champion": "champion_s0", "gate_rows": 5}]  # fmt: skip
+        (run / f"delay_L{L}" / "events.json").write_text(json.dumps(rows))
+    p = events_payload(run)
+    assert p["label"] == EVENTS_LABEL and p["source_run_id"] == run.name
+    assert p["source_run"] == f"experiments/runs/EXP-310-final/{run.name}"
+    raw = (run / "delay_L30" / "events.json").read_bytes()
+    assert p["sources"]["30"] == {
+        "file": "delay_L30/events.json",
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "events": 1,
+    }
+    assert "gate_rows" not in p["events"]["30"][0] and p["events"]["30"][0]["detector"] == "ADWIN"
+    assert check_events(p, run) == []
+    (run / "delay_L7" / "events.json").write_text("[]")  # the run changed
+    assert any("delay_L7" in x for x in check_events(p, run))
+    assert any("source run" in x for x in check_events({**p, "source_run_id": "other"}, run))

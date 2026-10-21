@@ -201,3 +201,105 @@ def test_parity_key_changes_with_the_stored_predictions_and_final_results(tmp_pa
     final.write_text('{"meta": 1}')
     k3 = cache_key(None, [pred, final])
     assert len({k1, k2, k3}) == 3
+
+
+# ---- D220: fast start (line-ending-proof key, input check, store cache, warm-up) --------------
+def test_parity_key_ignores_line_endings_but_not_content(tmp_path):
+    from vaultic.live.parity import cache_key, content_digest
+
+    lf, crlf = tmp_path / "a" / "frozen_stage2.md", tmp_path / "b" / "frozen_stage2.md"
+    lf.parent.mkdir()
+    crlf.parent.mkdir()
+    lf.write_bytes(b"line one\nline two\n")
+    crlf.write_bytes(b"line one\r\nline two\r\n")
+    assert content_digest(lf) == content_digest(crlf)
+    assert cache_key(None, [lf]) == cache_key(None, [crlf])
+    crlf.write_bytes(b"line one\r\nline 2\r\n")
+    assert cache_key(None, [lf]) != cache_key(None, [crlf])
+
+
+def test_a_missing_input_refuses_the_start_with_its_path(tmp_path):
+    from vaultic.live.parity import cache_key, missing_inputs, require_inputs
+
+    here, gone = tmp_path / "final_results.json", tmp_path / "predictions.parquet"
+    here.write_text("{}")
+    assert missing_inputs([here, gone]) == [gone]
+    with pytest.raises(FileNotFoundError, match="predictions.parquet"):
+        require_inputs([here, gone])
+    with pytest.raises(FileNotFoundError, match="cannot start"):
+        cache_key(None, [here, gone])  # never keyed on "missing"
+    require_inputs([here])
+
+
+def test_store_is_built_once_then_loaded_from_the_cache(monkeypatch, tmp_path):
+    import vaultic.eval.posthoc_guard as guard
+    import vaultic.live.store as st
+
+    monkeypatch.setattr(st, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(st, "store_key", lambda days=None: "k" * 64)
+    guards = []
+    monkeypatch.setattr(guard, "require_final_on_record", lambda: guards.append(1))
+    builds = []
+
+    def build(log, days):
+        builds.append(1)
+        return SimpleNamespace(info={"built_seconds": 1}, rows=[1, 2, 3])
+
+    first = st.cached_store(log=lambda m: None, build=build)
+    assert (
+        builds == [1]
+        and first.rows == [1, 2, 3]
+        and (tmp_path / f"store_{'k' * 16}.joblib").exists()
+    )
+    assert not list(tmp_path.glob("*.tmp"))
+    second = st.cached_store(log=lambda m: None, build=build)
+    assert builds == [1] and second.rows == [1, 2, 3] and "load_seconds" in second.info
+    assert guards == [1, 1]  # the post-hoc guard runs on every start, cached or not
+
+
+def test_store_key_follows_the_data_files_and_refuses_missing_ones(monkeypatch, tmp_path):
+    import os
+
+    import vaultic.stage2.final as s2
+    from vaultic.live.store import store_key
+
+    data = tmp_path / "merged.parquet"
+    data.write_bytes(b"rows")
+    monkeypatch.setattr(s2, "data_files", lambda: [data])
+    k1 = store_key()
+    data.write_bytes(b"rows, rebuilt")
+    os.utime(data, ns=(1, 1))
+    assert store_key() != k1
+    assert store_key(days=[151]) != store_key()
+    monkeypatch.setattr(s2, "data_files", lambda: [tmp_path / "gone.parquet"])
+    with pytest.raises(FileNotFoundError, match="gone.parquet"):
+        store_key()
+
+
+def test_warm_up_reports_each_step(monkeypatch):
+    from vaultic.live.warm import warm
+
+    engine = SimpleNamespace(
+        store=SimpleNamespace(info={"cache": "E:/x/store.joblib", "load_seconds": 3})
+    )
+    out = warm(log=lambda m: None, build=lambda log: engine,
+               parity=lambda e, p, log: {"passed": True, "cached": True})  # fmt: skip
+    assert out["parity_passed"] and out["parity_cached"]
+    assert out["store"] == {"cache": "E:/x/store.joblib", "load_seconds": 3}
+    assert set(out) >= {"engine_seconds", "parity_seconds", "total_seconds"}
+
+
+def test_service_status_shows_start_timings_and_missing_inputs():
+    from vaultic.live.service import TestLabService
+
+    svc = TestLabService()
+    svc.start(build=lambda log: SimpleNamespace(latency=SimpleNamespace(summary=lambda: {})),
+              parity=lambda e, p, log: {"passed": True}, log=lambda m: None)  # fmt: skip
+    assert svc.status()["state"] == "ready" and "start_seconds" in svc.status()["timings"]
+
+    def missing(log):
+        raise FileNotFoundError("the Test Lab cannot start, missing input(s): predictions.parquet")
+
+    bad = TestLabService()
+    bad.start(build=missing, log=lambda m: None)
+    assert bad.status()["state"] == "error" and "missing input" in bad.status()["message"]

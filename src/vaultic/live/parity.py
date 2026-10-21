@@ -9,7 +9,10 @@ which columns failed.
 
 The result is cached under a key made of the SHA-256 of the live and feature code, the stage-2
 freeze record (data hashes), the stored final-run predictions, final_results.json and the system
-cache, so it is recomputed only when one of them changes.
+cache, so it is recomputed only when one of them changes. Each file is hashed with its line
+endings normalised (CRLF -> LF, D220), so the same content in checkouts with different line
+endings gives the same key; the repository's own line endings are left alone (freeze hashes).
+A missing input refuses the start with a clear message instead of entering the key (D220).
 """
 
 from __future__ import annotations
@@ -43,16 +46,40 @@ def key_files() -> list[Path]:
             RESEARCH_DIR / "tables" / "final_results.json"]  # fmt: skip
 
 
+def content_digest(path: Path) -> bytes:
+    """SHA-256 of a file's content with line endings normalised (CRLF -> LF, D220)."""
+    return hashlib.sha256(Path(path).read_bytes().replace(b"\r\n", b"\n")).digest()
+
+
+def missing_inputs(files: list[Path] | None = None) -> list[Path]:
+    """Inputs the Test Lab needs that do not exist (D220)."""
+    return [f for f in (key_files() if files is None else files) if not Path(f).exists()]
+
+
+def require_inputs(files: list[Path] | None = None) -> None:
+    """Refuse to start, naming every missing input, rather than run a parity that must fail."""
+    missing = missing_inputs(files)
+    if missing:
+        raise FileNotFoundError(
+            "the Test Lab cannot start, missing input(s): "
+            + "; ".join(str(f) for f in missing)
+            + ". In a worktree, link experiments/runs to the main checkout's run folders; "
+            "the stored final-run predictions and the freeze record must be present."
+        )
+
+
 def cache_key(system_path: Path | None, files: list[Path] | None = None) -> str:
     from vaultic.paths import REPO_ROOT
 
+    files = key_files() if files is None else files
+    require_inputs(files)
     h = hashlib.sha256()
     src = REPO_ROOT / "src" / "vaultic"
     for rel in CODE:
-        h.update((src / rel).read_bytes())
-    for f in key_files() if files is None else files:
+        h.update(content_digest(src / rel))
+    for f in files:
         h.update(f.name.encode())
-        h.update(hashlib.sha256(f.read_bytes()).digest() if f.exists() else b"missing")
+        h.update(content_digest(f))
     if system_path is not None and system_path.exists():
         st = system_path.stat()
         h.update(f"{system_path}:{st.st_size}:{st.st_mtime_ns}".encode())

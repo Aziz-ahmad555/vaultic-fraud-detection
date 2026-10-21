@@ -36,6 +36,9 @@ Short summary of where Vaultic stands after PR #10. Details live in `research/de
 - Worktrees share `experiments/runs` through junctions to the main checkout's folder; remove a
   worktree's junctions (`rmdir`, not a recursive delete) before removing the worktree.
 
+- **Stage-1 verdicts** that were never written (H5, E11 per view; H1's roadmap test not
+  evaluated as written; H3 / H4 never run) are recorded in `research/stage1_verdicts.md` (D220).
+
 ## Next decision number
 
-D220.
+D221.

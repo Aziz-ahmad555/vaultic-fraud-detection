@@ -8,12 +8,16 @@ events.json), the design run's metrics.json / events.json and the git record (fr
 abort and re-run rows); nothing is recomputed from data. Every note that depends on the outcome
 (P2 = P0, P3 vs P1, the structural nulls, the threshold-slice overlap) is derived from the events
 and metrics by `facts`. Writes research/tables/feedback/exp310_report.md and
-exp310_gain_by_delay.json (chart data: P1 minus P0 PR-AUC by label delay, final and design run).
+exp310_gain_by_delay.json (chart data: P1 minus P0 PR-AUC by label delay, final and design run),
+and exp310_events.json (D220): every alarm and gate attempt of the run, per delay, generated from
+the run folder's delay_L<L>/events.json with the source run id and the SHA-256 of each source
+file, so it can be checked against the run (`check_events`). No hand edits.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -127,6 +131,55 @@ def gain_by_delay(per_delay: dict, dev: dict | None) -> list[dict]:
             row["design"] = {k: d[k] for k in ("diff", "ci_low", "ci_high", "p_value")}
         rows.append(row)
     return rows
+
+
+# ---- the events file (D220) ----------------------------------------------------------------
+EVENTS_LABEL = "EXP-310 simulation on test period"
+EVENT_FIELDS = ("policy", "day", "delay", "seed", "kind", "detector", "reason", "accepted", "gain",
+                "ci_low", "ci_high", "cost_champion", "cost_challenger", "champion", "challenger",
+                "alarm_dropped")  # fmt: skip
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def events_payload(run: Path) -> dict:
+    """Every alarm and gate attempt per delay, copied field by field from the run folder, with
+    the source run and each source file's SHA-256 (raw bytes)."""
+    run = Path(run)
+    sources, events = {}, {}
+    for L in DELAYS:
+        f = run / f"delay_L{L}" / "events.json"
+        rows = json.loads(f.read_text("utf-8"))
+        sources[str(L)] = {
+            "file": f"delay_L{L}/events.json",
+            "sha256": _sha256(f),
+            "events": len(rows),
+        }
+        events[str(L)] = [{k: e[k] for k in EVENT_FIELDS if k in e} for e in rows]
+    return {"label": EVENTS_LABEL, "generated_by": "python -m vaultic.reports.feedback_report",
+            "source_run_id": run.name, "source_run": f"experiments/runs/{run.parent.name}/{run.name}",
+            "sources": sources, "fields": list(EVENT_FIELDS), "events": events}  # fmt: skip
+
+
+def check_events(payload: dict, run: Path) -> list[str]:
+    """Differences between an events file and the run folder (empty = it matches the run)."""
+    run = Path(run)
+    bad = (
+        []
+        if payload.get("source_run_id") == run.name
+        else [f"source run {payload.get('source_run_id')} is not {run.name}"]
+    )
+    for src in payload.get("sources", {}).values():
+        f = run / src["file"]
+        if not f.exists():
+            bad.append(f"{src['file']} missing in the run folder")
+        elif _sha256(f) != src["sha256"]:
+            bad.append(f"{src['file']}: SHA-256 differs from the run folder")
+    if not bad and payload != events_payload(run):
+        bad.append("the events differ from a fresh export of the run folder")
+    return bad
 
 
 # ---- the record trail (git) -----------------------------------------------------------------
@@ -391,7 +444,12 @@ def main(argv=None) -> None:
              "final_days": list(TEST_DAYS), "design_days": [61, 120],
              "points": gain_by_delay(final["per_delay"], dev)}  # fmt: skip
     (a.out_dir / "exp310_gain_by_delay.json").write_text(json.dumps(chart, indent=1), "utf-8")
-    print(f"wrote {a.out_dir / 'exp310_report.md'} and exp310_gain_by_delay.json")
+    (a.out_dir / "exp310_events.json").write_text(
+        json.dumps(events_payload(a.run), indent=1), "utf-8"
+    )
+    print(
+        f"wrote {a.out_dir / 'exp310_report.md'}, exp310_gain_by_delay.json and exp310_events.json"
+    )
 
 
 if __name__ == "__main__":
