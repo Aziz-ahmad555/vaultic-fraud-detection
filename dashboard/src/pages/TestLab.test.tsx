@@ -94,6 +94,24 @@ describe("Test Lab page", () => {
     expect(screen.getByRole("button", { name: "Reveal truth" })).toBeDisabled();
   });
 
+  it("reveal never changes the sample filter the user picked", async () => {
+    const api = fakeApi(); // the revealed label is fraud
+    render(<TestLab api={api} pollMs={60000} />);
+    await screen.findByText(/Parity passed/);
+    const pressed = () => within(screen.getByRole("group", { name: "Which transactions" }))
+      .getAllByRole("button").filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.textContent);
+    for (const choice of ["Legitimate", "Cold start", "Any"]) {
+      fireEvent.click(screen.getByRole("button", { name: choice }));
+      fireEvent.click(screen.getByRole("button", { name: /Pick a random/ }));
+      fireEvent.click(await screen.findByRole("button", { name: "Score live" }));
+      await screen.findByTestId("frozen-match");
+      fireEvent.click(screen.getByRole("button", { name: "Reveal truth" }));
+      await screen.findByTestId("truth");
+      expect(pressed()).toEqual([choice]);
+    }
+    expect((api.sample as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0])).toEqual(["legit", "cold_start", "any"]);
+  });
+
   it("custom mode is labelled as having no ground truth", async () => {
     const api = fakeApi();
     render(<TestLab api={api} pollMs={60000} />);
