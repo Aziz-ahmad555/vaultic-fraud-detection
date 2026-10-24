@@ -36,8 +36,10 @@ class LLM(Protocol):
     def check(self) -> None:
         """Raise LLMUnavailable if the model cannot answer now."""
 
-    def stream(self, messages: list[dict], max_tokens: int) -> Iterator[str]:
-        """Yield the answer's text pieces in order."""
+    def stream(
+        self, messages: list[dict], max_tokens: int, schema: dict | None = None
+    ) -> Iterator[str]:
+        """Yield the answer's text pieces in order; schema: a JSON schema the output must follow."""
 
 
 def loopback_host(host: str) -> str:
@@ -72,9 +74,13 @@ class OllamaLLM:
             raise LLMUnavailable(f"The model {self.model} is not installed in Ollama "
                                  f"(installed: {', '.join(sorted(n for n in names if n)) or 'none'}).")  # fmt: skip
 
-    def stream(self, messages: list[dict], max_tokens: int) -> Iterator[str]:
+    def stream(
+        self, messages: list[dict], max_tokens: int, schema: dict | None = None
+    ) -> Iterator[str]:
         body = {"model": self.model, "messages": messages, "stream": True,
                 "options": {"temperature": 0, "num_predict": max_tokens, "num_ctx": 4096}}  # fmt: skip
+        if schema is not None:  # Ollama structured outputs (D224c)
+            body["format"] = schema
         try:
             with self._open("/api/chat", body) as r:
                 for line in r:
@@ -109,9 +115,11 @@ class ScriptedLLM:
         if not self.available:
             raise LLMUnavailable(f"The local language model is not running: {START_HINT}.")
 
-    def stream(self, messages: list[dict], max_tokens: int) -> Iterator[str]:
+    def stream(
+        self, messages: list[dict], max_tokens: int, schema: dict | None = None
+    ) -> Iterator[str]:
         self.check()
-        self.calls.append({"messages": messages, "max_tokens": max_tokens})
+        self.calls.append({"messages": messages, "max_tokens": max_tokens, "schema": schema})
         text = self.answer(messages) if callable(self.answer) else self.answer
         words = text.split(" ")
         for i, w in enumerate(words):

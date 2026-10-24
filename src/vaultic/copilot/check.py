@@ -14,6 +14,7 @@ Everything else is removed and counted with its reason; with nothing left the an
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 
@@ -139,31 +140,85 @@ def check(answer: str, evidence: dict[str, str]) -> CheckResult:
         if s.strip(" .").lower() == NOT_AVAILABLE.strip(" .").lower():
             continue  # the instructed phrase claims nothing: neither kept nor counted as removed
         cites = [h for c in _CITE.findall(s) for h in re.split(r"[,;\s]+", c) if h]
-        why = None
         if cites and not re.sub(r"<\s*E\d+\s*>|[\s.,;:]", "", _CITE.sub("", s)):
             why = "handles listed apart from their sentences"  # D224b: nothing to tie them to
-        elif not cites:
-            why = "no citation"
-        elif any(not _HANDLE.match(h) or h not in evidence for h in cites):
-            why = "cites evidence that was not given"
         else:
-            cited = " ".join(evidence[h] for h in dict.fromkeys(cites))
-            ev_nums = [_value(n)[0] for n in _numbers(cited)]
-            low = cited.lower()
-            if _CHANGE.search(s):
-                why = "claims a change (the copilot cannot change anything)"
-            elif bad := [n for n in _numbers(s) if not number_supported(n, ev_nums)]:
-                why = f"number not in the cited evidence: {bad[0]}"
-            elif bad := [t for t in _ids(s) if not id_supported(t, low)]:
-                why = f"id not in the cited evidence: {bad[0]}"
-            elif bad := [a for a in _actions(s) if a not in _actions(cited)]:
-                why = f"decision not in the cited evidence: {bad[0]}"
-            elif _LABEL_CLAIM.search(s) and KNOWN_LABEL not in low:
-                why = "claims an outcome label that the cited evidence does not state"
+            why = verdict(s, cites, evidence)
         if why:
             res.removed.append({"text": s, "why": why})
         else:
             res.kept.append({"text": s, "citations": list(dict.fromkeys(cites))})
+    if res.kept:
+        res.answer = " ".join(k["text"] for k in res.kept)
+    return res
+
+
+def verdict(s: str, cites: list[str], evidence: dict[str, str]) -> str | None:
+    """Why a sentence with these citations is removed, or None when it is kept."""
+    if not cites:
+        return "no citation"
+    if any(not _HANDLE.match(h) or h not in evidence for h in cites):
+        return "cites evidence that was not given"
+    cited = " ".join(evidence[h] for h in dict.fromkeys(cites))
+    ev_nums = [_value(n)[0] for n in _numbers(cited)]
+    low = cited.lower()
+    if _CHANGE.search(s):
+        return "claims a change (the copilot cannot change anything)"
+    if bad := [n for n in _numbers(s) if not number_supported(n, ev_nums)]:
+        return f"number not in the cited evidence: {bad[0]}"
+    if bad := [t for t in _ids(s) if not id_supported(t, low)]:
+        return f"id not in the cited evidence: {bad[0]}"
+    if bad := [a for a in _actions(s) if a not in _actions(cited)]:
+        return f"decision not in the cited evidence: {bad[0]}"
+    if _LABEL_CLAIM.search(s) and KNOWN_LABEL not in low:
+        return "claims an outcome label that the cited evidence does not state"
+    return None
+
+
+# ---- structured output (D224c) -------------------------------------------------------------------
+_ITEM = re.compile(
+    r'\{\s*"fact"\s*:\s*("(?:[^"\\]|\\.)*")\s*,\s*"evidence"\s*:\s*("(?:[^"\\]|\\.)*")\s*\}'
+)
+
+
+def parse_facts(draft: str) -> tuple[list[dict], bool]:
+    """The items of a structured answer and whether it was valid JSON. Invalid JSON (e.g. cut off
+    at the token limit) keeps only the complete items that can be read."""
+    try:
+        obj = json.loads(draft)
+        items = obj.get("facts") if isinstance(obj, dict) else obj
+        if not isinstance(items, list):
+            return [], False
+        return [{"fact": str(i.get("fact", "")), "evidence": str(i.get("evidence", ""))}
+                for i in items if isinstance(i, dict)], True  # fmt: skip
+    except (ValueError, AttributeError):
+        return [{"fact": json.loads(f), "evidence": json.loads(e)}
+                for f, e in _ITEM.findall(draft)], False  # fmt: skip
+
+
+def check_facts(draft: str, evidence: dict[str, str], max_facts: int = 5) -> CheckResult:
+    """Each fact is checked against its one cited line (handles written inside the fact text are
+    ignored); prose is rendered by code: '<fact> [Ek].' per kept fact. An empty list is
+    NOT_AVAILABLE; output with no readable item counts as one removed fact."""
+    res = CheckResult(answer=NOT_AVAILABLE)
+    items, valid = parse_facts(draft)
+    if not items and not valid:
+        res.removed.append({"text": draft[:300], "why": "answer not valid JSON"})
+        return res
+    for n, item in enumerate(items):
+        fact = " ".join(_CITE.sub(" ", item["fact"]).split()).rstrip(" .")
+        if not fact or fact.lower() == NOT_AVAILABLE.strip(" .").lower():
+            continue
+        text = f"{fact} [{item['evidence']}]."
+        why = (
+            "more facts than allowed"
+            if n >= max_facts
+            else verdict(text, [item["evidence"]], evidence)
+        )
+        if why:
+            res.removed.append({"text": text, "why": why})
+        else:
+            res.kept.append({"text": text, "citations": [item["evidence"]]})
     if res.kept:
         res.answer = " ".join(k["text"] for k in res.kept)
     return res

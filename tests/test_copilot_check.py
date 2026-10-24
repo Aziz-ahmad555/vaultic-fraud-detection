@@ -1,12 +1,14 @@
 """Copilot rules without a model (D224): the citation checker, the refusal rules, the router, the
 cleaning of strings from the data, and the similar-cases helper, on hand-made examples."""
 
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from vaultic.copilot import rules
-from vaultic.copilot.check import NOT_AVAILABLE, check, sentences
+from vaultic.copilot.check import NOT_AVAILABLE, check, check_facts, parse_facts, sentences
 from vaultic.copilot.similar import similar_cases
 
 EV = {
@@ -201,3 +203,88 @@ def test_handles_listed_apart_from_their_sentences_are_named_and_removed():
         "handles listed apart from their sentences",
     ]
     assert r.answer == NOT_AVAILABLE
+
+
+# ---- structured output (D224c) ---------------------------------------------------------------------
+def _facts(*pairs):
+    return json.dumps({"facts": [{"fact": f, "evidence": h} for f, h in pairs]})
+
+
+def test_structured_facts_are_checked_one_by_one_and_rendered_by_code():
+    r = check_facts(_facts(("The decision is step_up", "E1"), ("The probability is 0.95", "E1"),
+                           ("Customer 174322 has 12 earlier transactions [E9]", "E2"),
+                           ("The amount is 123.45", "E7")), EV)  # fmt: skip
+    assert [k["text"] for k in r.kept] == ["The decision is step_up [E1].",
+                                           "Customer 174322 has 12 earlier transactions [E2]."]  # fmt: skip
+    assert [x["why"] for x in r.removed] == ["number not in the cited evidence: 0.95",
+                                             "cites evidence that was not given"]  # fmt: skip
+    assert (
+        r.answer
+        == "The decision is step_up [E1]. Customer 174322 has 12 earlier transactions [E2]."
+    )
+
+
+def test_structured_change_label_and_decision_claims_are_removed():
+    r = check_facts(_facts(("The decision has been changed to allow", "E1"),
+                           ("This transaction is fraud", "E3"), ("The decision is hold", "E1")), EV)  # fmt: skip
+    assert [x["why"].split(" (")[0].split(":")[0] for x in r.removed] == [
+        "claims a change", "claims an outcome label that the cited evidence does not state",
+        "decision not in the cited evidence"]  # fmt: skip
+
+
+def test_an_empty_list_is_not_available_and_bad_json_is_one_removed_fact():
+    assert check_facts(_facts(), EV).summary() == {"kept": 0, "removed": 0}
+    assert check_facts(_facts(), EV).answer == NOT_AVAILABLE
+    r = check_facts("The decision is step_up [E1].", EV)  # prose, not JSON
+    assert (
+        r.summary() == {"kept": 0, "removed": 1} and r.removed[0]["why"] == "answer not valid JSON"
+    )
+
+
+def test_an_answer_cut_off_at_the_token_limit_keeps_its_complete_items():
+    full = _facts(("The decision is step_up", "E1"), ("The amount is 123.45", "E1"))
+    items, valid = parse_facts(full[:-30])
+    assert not valid and items == [{"fact": "The decision is step_up", "evidence": "E1"}]
+    assert check_facts(full[:-30], EV).summary() == {"kept": 1, "removed": 0}
+
+
+def test_more_facts_than_allowed_are_removed():
+    r = check_facts(_facts(*[("The decision is step_up", "E1")] * 5), EV, max_facts=4)
+    assert r.summary() == {"kept": 4, "removed": 1}
+    assert r.removed[0]["why"] == "more facts than allowed"
+
+
+def test_the_schema_constrains_handles_and_the_variants_differ_only_as_fixed_in_d224c():
+    s = rules.schema(["E1", "E2"], "V3")
+    facts = s["properties"]["facts"]
+    assert facts["maxItems"] == 4 and facts["items"]["required"] == ["fact", "evidence"]
+    assert facts["items"]["properties"]["evidence"]["enum"] == ["E1", "E2"]
+    assert rules.max_facts("V1") == rules.max_facts("V2") == 5
+    assert rules.system("V1") == rules.system("V3") == rules.BASE
+    assert rules.system("V2").startswith(rules.BASE) and "copy numbers exactly" in rules.system(
+        "V2"
+    )
+    assert len({rules.rules_digest(v) for v in rules.VARIANTS}) == 3
+
+
+def test_the_dev_selection_rule_is_rate_then_fewer_removed_then_faster():
+    from vaultic.copilot.dev_compare import EXTRA_DEV, choose, tally
+
+    rows = [{"kept": [1, 2], "removed": [{"why": "no citation"}], "seconds": 10.0},
+            {"kept": [], "removed": [{"why": "answer not valid JSON"}], "seconds": 5.0}]  # fmt: skip
+    t = tally(rows)
+    assert (t["written"], t["kept"], t["kept_rate"], t["not_available"], t["invalid_json"]) == (
+        4,
+        2,
+        0.5,
+        1,
+        1,
+    )
+    base = {"kept_rate": 0.5, "removed": 3, "seconds": 100.0}
+    assert choose({"V1": base, "V2": {**base, "kept_rate": 0.6}}) == "V2"
+    assert choose({"V1": base, "V2": {**base, "removed": 2}}) == "V2"
+    assert (
+        choose({"V1": base, "V2": {**base, "seconds": 90.0}, "V3": {**base, "seconds": 95.0}})
+        == "V2"
+    )
+    assert EXTRA_DEV == (3566631, 3555114, 3522679, 3542087, 3510484)

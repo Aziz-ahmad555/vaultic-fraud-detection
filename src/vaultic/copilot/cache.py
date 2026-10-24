@@ -63,28 +63,41 @@ def _demo_app(bundle: Path | None):
     return mod.create_app(bundle)
 
 
-def build(app, llm, L: int = 30, log=print) -> dict:
+NOTE = ("cached demo summaries (D224): local language model, evidence at the case's decision time, "
+        "Test Lab off; not a research number")  # fmt: skip
+
+
+def case_time(frame: pd.DataFrame, tid: int) -> float:
+    return float(frame.loc[frame["TransactionID"] == tid, "TransactionDT"].iloc[0])
+
+
+def summary_entry(cop, tid: int, t: float, L: int, rule: str) -> dict:
+    """One summary generated now, as a cache entry (the rules hash of the copilot's variant)."""
     from vaultic.copilot.rules import rules_digest
+
+    prep = cop.start("summary", tid, "", t, L)
+    final = cop.answer(prep)
+    return {"tid": tid, "rule": rule, "L": L, "as_of": t, "variant": cop.variant,
+            "evidence_hash": prep.evidence.digest, "rules_hash": rules_digest(cop.variant),
+            "evidence_tokens": prep.evidence.tokens, "model": cop.llm.model,
+            "generated_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
+            "answer": final["answer"], "kept": final["kept"], "removed": final["removed"],
+            "draft": final.get("draft"), "seconds": final["seconds"]}  # fmt: skip
+
+
+def build(app, llm, L: int = 30, log=print, variant: str | None = None) -> dict:
     from vaultic.copilot.service import Copilot
 
-    cop = Copilot(app.state.read, llm)  # no audit: an offline generation step, not an analyst
+    # no audit: an offline generation step, not an analyst
+    cop = Copilot(app.state.read, llm, variant=variant)
     frame = app.state.read.frame
     entries = []
     for rule, tid in pick_demo_cases(frame, app.state.read.actions):
-        t = float(frame.loc[frame["TransactionID"] == tid, "TransactionDT"].iloc[0])
-        prep = cop.start("summary", tid, "", t, L)
-        final = cop.answer(prep)
-        when = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
-        entries.append({"tid": tid, "rule": rule, "L": L, "as_of": t,
-                        "evidence_hash": prep.evidence.digest, "rules_hash": rules_digest(),"evidence_tokens": prep.evidence.tokens,
-                        "model": llm.model, "generated_at": when, "answer": final["answer"],
-                        "kept": final["kept"], "removed": final["removed"], "draft": final.get("draft"),
-                        "seconds": final["seconds"]})  # fmt: skip
-        log(f"{rule}: transaction {tid}, {final['seconds']} s, kept {len(final['kept'])}, "
-            f"removed {len(final['removed'])}")  # fmt: skip
-    return {"note": "cached demo summaries (D224): local language model, evidence at the case's "
-                    "decision time, Test Lab off; not a research number",
-            "entries": entries}  # fmt: skip
+        e = summary_entry(cop, tid, case_time(frame, tid), L, rule)
+        entries.append(e)
+        log(f"{rule}: transaction {tid}, {e['seconds']} s, kept {len(e['kept'])}, "
+            f"removed {len(e['removed'])}")  # fmt: skip
+    return {"note": NOTE, "entries": entries}
 
 
 def main(argv=None) -> None:
