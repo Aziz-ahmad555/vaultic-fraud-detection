@@ -190,3 +190,14 @@ def test_a_decision_word_absent_from_the_cited_line_is_removed():
     )
     assert [x["why"] for x in r.removed] == ["decision not in the cited evidence: hold"]
     assert r.summary()["kept"] == 2
+
+
+def test_handles_listed_apart_from_their_sentences_are_named_and_removed():
+    # seen with the real model (D224b): uncited sentences, then one line of handles
+    r = check("The decision is step_up. The customer is new.\n<E1> [E2] [E3]", EV)
+    assert [x["why"] for x in r.removed] == [
+        "no citation",
+        "no citation",
+        "handles listed apart from their sentences",
+    ]
+    assert r.answer == NOT_AVAILABLE

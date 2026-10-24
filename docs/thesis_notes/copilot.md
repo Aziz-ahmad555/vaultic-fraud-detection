@@ -1,4 +1,4 @@
-# Local-LLM investigation copilot: backend (D222-D224a)
+# Local-LLM investigation copilot: backend (D222-D224b)
 
 Stage 1 of Sprint 2 (roadmap Phase 15, our Phase C (c)): the backend only. The UI (chat panel,
 citation chips, rule-based next checks) waits for D226; the evaluation E20 waits for its own
@@ -68,15 +68,20 @@ Endpoints (mounted with `VAULTIC_COPILOT=1`): `GET /api/copilot/status`, `POST /
   estimated; `E:/dev-cache/copilot/demo_summaries.json`, not committed; not research numbers):
   77.7-124.7 s per summary; 4 of the 5 summaries kept 4-6 sentences with 0-1 removed; the fifth
   (the hold without a graph score) had no valid citations, so all 7 sentences were removed and it
-  reads "Not available from the case evidence." It is cached as it came out, not re-run until it
-  passes.
+  reads "Not available from the case evidence." Cause (D224b, from the stored drafts, no new run):
+  the evidence was complete and identical in all three generations, and the checker was right; the
+  model wrote the sentences without handles and then one line listing every handle, starting with
+  "<E1>", imitating the format line "Format: <one fact> [E2]." in the rules. The format line now
+  has no placeholder, a handle-only line is named as such, and a cached summary is served only under
+  the rules it was made with, so the five summaries above are generated live until the cache is
+  regenerated (with Aziz's go-ahead; the fix is not yet verified on the real model).
 - The first real-model runs changed the checker (D224a): the model cited ranges such as [E8]-[E10],
   added the "not available" sentence without a citation, and, after an example sentence ("The
   decision is hold [E1].") was added to the rules, copied it for two step-up cases. The checker now
   expands ranges, ignores the instructed phrase and removes a decision word that the cited lines do
   not contain; the rules carry a content-free format line instead of an example.
 - Tests (all with a scripted model, so CI never needs Ollama): `tests/test_copilot_check.py` and
-  `tests/test_copilot_api.py` (57 tests: checker reject cases, refusals, injection in a tool
+  `tests/test_copilot_api.py` (58 tests: checker reject cases, refusals, injection in a tool
   result, read-only guarantee, one audit entry per question, Test Lab off and on, model not
   running, evidence budget, cached summaries).
 
@@ -85,8 +90,9 @@ Endpoints (mounted with `VAULTIC_COPILOT=1`): `GET /api/copilot/status`, `POST /
   the meaning of a free-text sentence: a cited sentence without those can still misread its
   evidence (seen once: "the reasons source is unavailable" for a line saying feature reasons are not
   available). E20 measures this with human labels (D225).
-- The model's citation discipline varies between cases: one of five demo summaries lost every
-  sentence. The checker makes that visible ("not available") instead of showing uncited text.
+- The model's citation discipline varies between cases and prompt wordings: in each of the three
+  generations one of the five demo summaries lost every sentence (a different case in the first
+  and third), and the model imitates examples and placeholders in the rules. The checker makes that visible ("not available") instead of showing uncited text.
 - The router uses keywords; an unusual wording can pick the default tools (case + reasons).
 - Refusal rules are patterns; they are tested on the planned adversarial types, not on every possible
   wording.

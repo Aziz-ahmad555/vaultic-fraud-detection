@@ -162,7 +162,8 @@ class Copilot:
         prep.reasons_source = ctx.meta.get("reasons_source")
         if kind == "summary":
             prep.cached = next((e for e in self.cache if e.get("tid") == prep.tid and
-                                e.get("evidence_hash") == prep.evidence.digest), None)  # fmt: skip
+                                e.get("evidence_hash") == prep.evidence.digest and
+                                e.get("rules_hash") == rules.rules_digest()), None)  # fmt: skip
         if prep.cached is None:
             try:
                 self.llm.check()

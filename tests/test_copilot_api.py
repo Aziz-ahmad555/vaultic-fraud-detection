@@ -20,6 +20,7 @@ from test_demo_server import DAY, _app, _bundle, _load_module
 from vaultic.copilot.cache import pick_demo_cases
 from vaultic.copilot.check import NOT_AVAILABLE
 from vaultic.copilot.llm import LLMUnavailable, OllamaLLM, ScriptedLLM, loopback_host
+from vaultic.copilot.rules import rules_digest
 from vaultic.copilot.service import Copilot, CopilotError, cached_label
 from vaultic.copilot.tools import BUDGET, LIVE, VIEW_LEVEL
 
@@ -465,10 +466,15 @@ def test_bad_requests_are_refused(demo):
 def test_a_cached_summary_is_served_only_for_the_same_evidence_and_labelled(demo, tmp_path):
     probe = Copilot(demo.app.state.read, ScriptedLLM("x"))
     prep = probe.start("summary", demo.tid, "", AS_OF, 30)
-    entry = {"tid": demo.tid, "L": 30, "evidence_hash": prep.evidence.digest, "model": "qwen-test",
+    entry = {"tid": demo.tid, "L": 30, "evidence_hash": prep.evidence.digest,
+             "rules_hash": rules_digest(), "model": "qwen-test",
              "generated_at": "2026-10-24 21:00 UTC", "answer": "The decision is cached [E1].",
              "kept": [{"text": "The decision is cached [E1].", "citations": ["E1"]}], "removed": []}  # fmt: skip
     cache = tmp_path / "demo_summaries.json"
+    # a summary made under other rules is never served (D224b)
+    cache.write_text(json.dumps({"entries": [{**entry, "rules_hash": "older rules"}]}), "utf-8")
+    old = Copilot(demo.app.state.read, ScriptedLLM("x"), cache_path=cache)
+    assert old.start("summary", demo.tid, "", AS_OF, 30).cached is None
     cache.write_text(json.dumps({"entries": [entry]}), "utf-8")
     llm = ScriptedLLM(decision_answer, available=False)  # a cached summary needs no model
     client, _ = mount(demo, llm, cache=cache)

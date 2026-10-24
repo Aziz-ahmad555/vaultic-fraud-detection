@@ -140,7 +140,9 @@ def check(answer: str, evidence: dict[str, str]) -> CheckResult:
             continue  # the instructed phrase claims nothing: neither kept nor counted as removed
         cites = [h for c in _CITE.findall(s) for h in re.split(r"[,;\s]+", c) if h]
         why = None
-        if not cites:
+        if cites and not re.sub(r"<\s*E\d+\s*>|[\s.,;:]", "", _CITE.sub("", s)):
+            why = "handles listed apart from their sentences"  # D224b: nothing to tie them to
+        elif not cites:
             why = "no citation"
         elif any(not _HANDLE.match(h) or h not in evidence for h in cites):
             why = "cites evidence that was not given"

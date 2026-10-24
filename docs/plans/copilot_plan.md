@@ -246,10 +246,14 @@ pre-registration, D226 UI).
 Mistral removed on 2026-10-24 with Aziz's OK (`E:\ollama\models` 8.43 -> 4.36 GB); only Qwen remains.
 
 **Part 2 done (2026-10-25): copilot backend, branch `copilot`.**
-- D224 (design) and D224a (checker amendment after the first real-model run), each logged alone.
+- D224 (design), D224a (checker amendment after the first real-model run) and D224b (cause of the
+  3510090 summary without citations: the format line's placeholder was imitated), each logged alone.
 - `src/vaultic/copilot/` (llm, check, rules, tools, similar, service, cache), `services/api/copilot.py`
-  (mounted with `VAULTIC_COPILOT=1`), `app.state.read` in the demo server; 57 tests with a scripted
-  model. Cached demo summaries generated on drive E (4 of 5 kept 4-6 sentences; one is "not
-  available"). Thesis note `docs/thesis_notes/copilot.md`.
+  (mounted with `VAULTIC_COPILOT=1`), `app.state.read` in the demo server; 58 tests with a scripted
+  model. Cached demo summaries on drive E were made under D224a's rules (4 of 5 kept 4-6 sentences;
+  one is "not available"); after D224b they are no longer served and need regenerating (Aziz's
+  go-ahead). Thesis note `docs/thesis_notes/copilot.md`.
+- `experiments/runs` linked into the worktree (junction, as the other worktrees): full suite back to
+  the usual 5 skips.
 
 **Next:** D225 (E20 pre-registration, alone) and D226 (UI), on Aziz's go-ahead.

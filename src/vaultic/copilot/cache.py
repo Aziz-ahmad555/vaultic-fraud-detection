@@ -64,6 +64,7 @@ def _demo_app(bundle: Path | None):
 
 
 def build(app, llm, L: int = 30, log=print) -> dict:
+    from vaultic.copilot.rules import rules_digest
     from vaultic.copilot.service import Copilot
 
     cop = Copilot(app.state.read, llm)  # no audit: an offline generation step, not an analyst
@@ -75,7 +76,7 @@ def build(app, llm, L: int = 30, log=print) -> dict:
         final = cop.answer(prep)
         when = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
         entries.append({"tid": tid, "rule": rule, "L": L, "as_of": t,
-                        "evidence_hash": prep.evidence.digest, "evidence_tokens": prep.evidence.tokens,
+                        "evidence_hash": prep.evidence.digest, "rules_hash": rules_digest(),"evidence_tokens": prep.evidence.tokens,
                         "model": llm.model, "generated_at": when, "answer": final["answer"],
                         "kept": final["kept"], "removed": final["removed"], "draft": final.get("draft"),
                         "seconds": final["seconds"]})  # fmt: skip
