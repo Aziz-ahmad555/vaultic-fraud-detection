@@ -21,7 +21,9 @@ entry, no label); everything else is fail-open (audit = "failed" in the response
 POST /api/score is not available: the final-run models score recorded transactions only, so the
 dashboard's what-if simulator keeps its illustrative model (labelled "illustrative model, not the
 evaluated system"). With VAULTIC_TESTLAB=1 the Test Lab's endpoints are mounted as well
-(services/api/testlab.py): the frozen stage-2 system scoring one transaction live (D182).
+(services/api/testlab.py): the frozen stage-2 system scoring one transaction live (D182). With
+VAULTIC_COPILOT=1 the copilot's endpoints are mounted (services/api/copilot.py, D224): a local
+language model answering questions about one case from its evidence, read-only.
 
 What-if cost mode (D122, stateless since D128): a request that carries the what-if cost parameters
 (c_fp, c_rev, c_step, step_up_success_rate, legit_step_up_friction and optionally
@@ -41,6 +43,7 @@ import sys
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Annotated
 
 import numpy as np
@@ -811,10 +814,43 @@ def create_app(
         return {"ok": ok} if ok else {"ok": False, "audit": AUDIT_FAILED}
 
     app.state.audit = audit_log_store
+    # D224: read-only accessors for the copilot: the endpoints' own functions (as-of cut, label
+    # curtain) with the frozen E12 decisions only (never what-if), and the bundle for similar cases
+    app.state.read = SimpleNamespace(
+        transaction=lambda tid, time, L: get_transaction(tid, time, L, None),
+        history=lambda uid, time, L: history(uid, time, L, None),
+        network=lambda focus, time, L: network(time, L, None, focus),
+        frame=df,
+        actions=base_actions,
+    )
 
     if os.environ.get("VAULTIC_TESTLAB") == "1":  # D182: the Test Lab's live scoring endpoints
         mount_testlab(app)
+    if os.environ.get("VAULTIC_COPILOT") == "1":  # D224: the read-only copilot
+        mount_copilot(app)
     return app
+
+
+def mount_copilot(app: FastAPI, copilot=None):
+    """Add the copilot router (services/api/copilot.py). It reads through app.state.read and, when
+    the Test Lab is mounted and ready, its engine for live reasons; Ollama is needed only to answer.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "copilot_api", Path(__file__).with_name("copilot.py")
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod  # pydantic resolves the request model's annotations through it
+    spec.loader.exec_module(mod)
+    if copilot is None:
+        from vaultic.copilot.service import default_copilot
+
+        copilot = default_copilot(app.state.read, audit=getattr(app.state, "audit", None),
+                                  testlab=lambda: getattr(app.state, "testlab", None))  # fmt: skip
+    app.include_router(mod.make_router(copilot))
+    app.state.copilot = copilot
+    return copilot
 
 
 def mount_testlab(app: FastAPI, service=None, start: bool = True):

@@ -243,5 +243,13 @@ pre-registration, D226 UI).
   shorten it further.
 - Ollama stopped after the test (it holds about 5 GB of RAM while a model is loaded).
 
-**Next:** remove Mistral (4.4 GB) after Aziz's OK; then D224 (tool contract, citation checker,
-refusals, audit, mocked LLM) and the copilot code, with evidence trimmed per question.
+Mistral removed on 2026-10-24 with Aziz's OK (`E:\ollama\models` 8.43 -> 4.36 GB); only Qwen remains.
+
+**Part 2 done (2026-10-25): copilot backend, branch `copilot`.**
+- D224 (design) and D224a (checker amendment after the first real-model run), each logged alone.
+- `src/vaultic/copilot/` (llm, check, rules, tools, similar, service, cache), `services/api/copilot.py`
+  (mounted with `VAULTIC_COPILOT=1`), `app.state.read` in the demo server; 57 tests with a scripted
+  model. Cached demo summaries generated on drive E (4 of 5 kept 4-6 sentences; one is "not
+  available"). Thesis note `docs/thesis_notes/copilot.md`.
+
+**Next:** D225 (E20 pre-registration, alone) and D226 (UI), on Aziz's go-ahead.
