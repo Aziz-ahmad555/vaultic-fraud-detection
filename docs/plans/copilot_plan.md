@@ -1,6 +1,6 @@
 # Plan: local-LLM investigation copilot (roadmap Phase 15, our Phase C (c))
 
-Status: **plan only, nothing built or installed.** Written 2026-10-24 on branch `copilot-plan` from
+Status: **plan approved by Aziz on 2026-10-24 with the answers below; part 1 (install + speed test) next.** Written 2026-10-24 on branch `copilot-plan` from
 `phase0-1` (`4b60855`, after sprint 1). Scope note: the copilot is **COULD** in D31 (CLAUDE.md); this
 plan exists because Aziz asked for it as Sprint 2. Decisions are numbered from **D222**.
 
@@ -44,10 +44,11 @@ Candidates (open weights, instruct, tool calling supported by Ollama, Q4_K_M qua
 | model | why | licence (to check at install) |
 |---|---|---|
 | **Qwen2.5-7B-Instruct** (Q4_K_M) | strong instruction following and JSON / tool calls at 7B | Apache-2.0 |
-| **Llama-3.1-8B-Instruct** (Q4_K_M) | widely used, native tool-call format | Llama 3.1 Community License (accepting it is Aziz's decision) |
+| **Mistral-7B-Instruct-v0.3** (Q4_K_M) | strong 7B instruct model with function calling | Apache-2.0 |
 
-(A newer 7-8B release in the Ollama library may replace one of them at install time; the speed test
-below decides, and the choice is logged in D223 before any evaluation.)
+Permissive licences only (Aziz): each licence is verified on the model card before downloading and
+recorded in D223; the fallback is a small model with an MIT or Apache-2.0 licence. The speed test
+below decides, and the choice is logged in D223 before any evaluation.
 
 **Speed test plan** (before choosing; nothing from it is a research number):
 - Same machine state each time (Test Lab off, idle), Ollama default threads, 3 repeats per prompt,
@@ -130,22 +131,23 @@ Time: included in section 3 (+0.5 day).
 
 **Pre-registration first** (`research/preregistration_copilot.md`, logged as D225 and committed alone
 before any evaluation run; the model and prompts frozen with hashes as in the other final runs):
-- **Cases:** 50 alerts from the test period, sampled with a fixed seed, stratified by decision (step-up /
+- **Cases:** 30 alerts from the test period, sampled with a fixed seed, stratified by decision (step-up /
   hold) and by whether the graph view is available; the list is frozen before any answer is generated.
-- **Questions (4 per case, 200 items):** (Q1) why was this flagged? (Q2) which entities or customers is
+- **Questions (4 per case, 120 items):** (Q1) why was this flagged? (Q2) which entities or customers is
   this case linked to, and with what known fraud? (Q3) has this customer done something like this
   before? (Q4) what evidence is missing or uncertain for this case?
 - **Systems compared:** (a) LLM with tools and the checker; (b) the same LLM given the raw case text
   only (the same facts as a text block, no tools, asked to cite line numbers); (c) the Phase 9 template
   narrative (`narrative()` in Case.tsx / the backend equivalent) for Q1 and Q4.
 - **Reference answers:** written by Aziz from the tool outputs only, before seeing any system's answer.
-  The supervisor second-labels about 20% (10 cases, 40 items); Cohen's kappa on that subset.
-  Limitation stated: one primary labeller who also built the system; kappa on a small subset.
+  Optional: the supervisor second-labels about 20% (6 cases, 24 items); Cohen's kappa on that subset.
+  If that is not available, no kappa is reported and "single labeller (who also built the system)" is
+  stated as a limitation; otherwise the limitation is one primary labeller and kappa on a small subset.
 - **Metrics:** claim-level faithfulness (share of claims supported by the evidence), unsupported-claim
   rate, citation accuracy (cited result contains the claim), answer correctness against the reference
   (labelled correct / partly / wrong), "not available" correctness (says so when evidence is missing),
   refusal correctness on a separate set of 30 adversarial prompts (3 types x 10) and false-refusal rate
-  on the 200 normal items, latency per answer.
+  on the 120 normal items, latency per answer.
 - **Statistics:** paired comparisons over cases with a 1,000-sample bootstrap and Holm across the
   comparisons; results reported as found, labelled "copilot evaluation on IEEE-CIS test-period cases,
   not a fraud-detection result".
@@ -154,9 +156,9 @@ before any evaluation run; the model and prompts frozen with hashes as in the ot
 
 Files: `research/preregistration_copilot.md`, `experiments/configs/EXP-320.yaml` (frozen),
 `src/vaultic/copilot/eval.py`, `research/tables/copilot/`.
-Labelling effort for Aziz: 200 reference answers + judging 3 systems' answers (about 500 items); a
+Labelling effort for Aziz: 120 reference answers + judging the systems' answers (about 300 items); a
 labelling sheet with the evidence shown next to each item. Time: 1 day build + labelling time (Aziz)
-+ 0.5 day analysis; the run itself about (200 + 200 + 30) answers x the measured seconds per answer.
++ 0.5 day analysis; the run itself about (120 + 120 + 30) answers x the measured seconds per answer.
 
 ## 6. UI (D226)
 - `Case.tsx`: a chat panel (`components/CopilotPanel.tsx`): question box, answers with numbered citation
@@ -184,20 +186,33 @@ tests `CopilotPanel.test.tsx`. Time: 2 days.
 
 ## Time estimate (total)
 
-About 8-10 working days of building, plus Aziz's labelling time for E20 (about 500 items) and the
-supervisor's 40-item second labelling. The evaluation run time depends on the measured seconds per
+About 8-10 working days of building, plus Aziz's labelling time for E20 (about 300 items) and the optional
+supervisor's optional 24-item second labelling. The evaluation run time depends on the measured seconds per
 answer (section 2).
 
-## Open questions for Aziz
+## Aziz's answers (2026-10-24)
 
-1. Go-ahead to download and install Ollama (program on E:) and to set `OLLAMA_MODELS=E:\ollama\models`
-   as a user environment variable?
-2. Are you willing to accept the Llama 3.1 Community License, or should both candidates be
-   Apache-2.0 models?
-3. Is the copilot worth the time at COULD scope with three months left, compared with Paper 1's E6 or
-   the Paper 2 text (gap audit)? If yes, should E20 be a thesis section only or aim at a paper?
-4. Can the supervisor second-label 40 items, and by when?
-5. The four question types and the 30 adversarial prompts: keep as proposed, or change?
-6. Should the copilot need the Test Lab running (for live feature reasons), or answer with view-level
-   reasons only when it is off?
-7. Labelling load (about 500 items): acceptable, or reduce to 30 cases?
+1. **Install:** yes, with BOTH the program and the models on E: (check that the installer does not
+   default to C:, which has 8.9 GB free); `OLLAMA_MODELS=E:\ollama\models`; listening on 127.0.0.1
+   only. Ask before each download.
+2. **Licences:** permissive only. Compare Qwen2.5-7B-Instruct (Apache-2.0) and
+   Mistral-7B-Instruct-v0.3 (Apache-2.0), Q4. Fallback: a small model with an MIT or Apache-2.0
+   licence. Verify each licence on its model card before downloading; record it in the decision.
+3. **Scope:** build the copilot now; E6 / the Paper 2 text later.
+4. **Supervisor second-labelling:** planned but optional; if not available, no kappa, and "single
+   labeller" is stated as a limitation.
+5. **Questions:** keep the 4 question types and the 30 adversarial prompts.
+6. **Test Lab:** the copilot must work without it: view-level reasons when it is off (clearly
+   labelled), full frozen-system reasons when it is on.
+7. **E20 size:** 30 cases x 4 questions (120 items) + the 30 adversarial prompts.
+
+Additional requirements:
+- **Streaming:** answers stream token by token in the UI. The citation checker runs on the finished
+  answer; while streaming, the text is shown as "draft, not yet checked" and is replaced by the checked
+  answer (removed sentences counted) when the checker has run.
+- **Cached demo summaries:** pre-generated summaries for a fixed list of demo cases, stored with the
+  model id, the generation time and the checker result, shown as "cached, generated at <time> by
+  <model>"; never presented as live.
+
+Decisions are logged as each part starts (D222 install, D223 model choice, D224 design, D225 E20
+pre-registration, D226 UI).
