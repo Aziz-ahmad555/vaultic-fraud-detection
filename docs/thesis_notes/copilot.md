@@ -73,8 +73,16 @@ Endpoints (mounted with `VAULTIC_COPILOT=1`): `GET /api/copilot/status`, `POST /
   model wrote the sentences without handles and then one line listing every handle, starting with
   "<E1>", imitating the format line "Format: <one fact> [E2]." in the rules. The format line now
   has no placeholder, a handle-only line is named as such, and a cached summary is served only under
-  the rules it was made with, so the five summaries above are generated live until the cache is
-  regenerated (with Aziz's go-ahead; the fix is not yet verified on the real model).
+  the rules it was made with, so the five summaries above are no longer served.
+- Fourth generation, once, under the D224b rules (2026-10-25, Aziz's go-ahead, kept as it came out,
+  no re-run; `E:/dev-cache/copilot/demo_summaries.json`, earlier versions v1-v3 beside it):
+  63.3-119.9 s per summary; sentences written / kept / removed: highest-risk hold 8 / 0 / 8,
+  hold without a graph score 5 / 0 / 4 (plus the instructed "not available" sentence), cold-start
+  step-up 5 / 0 / 4 (plus the instructed sentence), uncertain step-up 10 / 1 / 9, highest-risk
+  step-up 8 / 0 / 8; every removal reason was "no citation". Four of the five demo summaries now
+  read "Not available from the case evidence." The placeholder-free format line fixed the
+  handle-dump but the model stopped citing almost entirely: the D224b wording did worse than D224a's
+  (4 of 5 usable). The checker held: no uncited sentence was shown.
 - The first real-model runs changed the checker (D224a): the model cited ranges such as [E8]-[E10],
   added the "not available" sentence without a citation, and, after an example sentence ("The
   decision is hold [E1].") was added to the rules, copied it for two step-up cases. The checker now
@@ -90,9 +98,11 @@ Endpoints (mounted with `VAULTIC_COPILOT=1`): `GET /api/copilot/status`, `POST /
   the meaning of a free-text sentence: a cited sentence without those can still misread its
   evidence (seen once: "the reasons source is unavailable" for a line saying feature reasons are not
   available). E20 measures this with human labels (D225).
-- The model's citation discipline varies between cases and prompt wordings: in each of the three
-  generations one of the five demo summaries lost every sentence (a different case in the first
-  and third), and the model imitates examples and placeholders in the rules. The checker makes that visible ("not available") instead of showing uncited text.
+- The model's citation discipline varies between cases and depends strongly on the prompt
+  wording: in the first three generations one of the five demo summaries lost every sentence (a
+  different case in the first and third); under the D224b wording four of five did. The model also
+  imitates examples and placeholders in the rules. Summaries (8-10 sentences) suffer more than
+  4-sentence answers would, but the questions have not been run on the real model yet. The checker makes that visible ("not available") instead of showing uncited text.
 - The router uses keywords; an unusual wording can pick the default tools (case + reasons).
 - Refusal rules are patterns; they are tested on the planned adversarial types, not on every possible
   wording.

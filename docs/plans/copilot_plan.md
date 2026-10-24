@@ -251,9 +251,15 @@ Mistral removed on 2026-10-24 with Aziz's OK (`E:\ollama\models` 8.43 -> 4.36 GB
 - `src/vaultic/copilot/` (llm, check, rules, tools, similar, service, cache), `services/api/copilot.py`
   (mounted with `VAULTIC_COPILOT=1`), `app.state.read` in the demo server; 58 tests with a scripted
   model. Cached demo summaries on drive E were made under D224a's rules (4 of 5 kept 4-6 sentences;
-  one is "not available"); after D224b they are no longer served and need regenerating (Aziz's
-  go-ahead). Thesis note `docs/thesis_notes/copilot.md`.
+  one is "not available"); after D224b they are no longer served. Regenerated once under D224b
+  (2026-10-25, kept as it came out): 1 sentence kept of 36 written across the five summaries, all
+  removals "no citation"; four of five read "not available". Earlier versions v1-v3 kept beside it.
+  Thesis note `docs/thesis_notes/copilot.md`.
 - `experiments/runs` linked into the worktree (junction, as the other worktrees): full suite back to
   the usual 5 skips.
+
+**Open (Aziz's decision):** the D224b prompt wording lost almost all citations on summaries; any
+further prompt change is a new logged decision and must be fixed before the D225 pre-registration
+freezes the prompts.
 
 **Next:** D225 (E20 pre-registration, alone) and D226 (UI), on Aziz's go-ahead.
