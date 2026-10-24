@@ -1,4 +1,4 @@
-# Local-LLM investigation copilot: backend (D222-D224b)
+# Local-LLM investigation copilot: backend (D222-D224c)
 
 Stage 1 of Sprint 2 (roadmap Phase 15, our Phase C (c)): the backend only. The UI (chat panel,
 citation chips, rule-based next checks) waits for D226; the evaluation E20 waits for its own
@@ -7,7 +7,7 @@ pre-registration (D225). The copilot is a COULD item (D31) taken up at Aziz's re
 ## What it is
 A question-answering helper for one case on the analyst's laptop. An analyst asks "why was this
 flagged?", "what is it linked to?", "has this customer done this before?" or "what evidence is
-missing?", and gets a short answer in which every sentence cites the case evidence it came from. A
+missing?", and gets a short list of facts, each citing the case evidence line it came from. A
 local open-weight model (Qwen2.5-7B-Instruct, Q4_K_M, Apache-2.0; D223) runs in Ollama on
 127.0.0.1; no case evidence leaves the laptop. The copilot is read-only: it cannot change a
 decision, a label, a threshold or a setting. Nothing it says is a research number, and it is
@@ -36,17 +36,19 @@ model help without letting it state anything the evidence does not support.
    Counterfactuals always say "not available" (E15 stores them per alert index without a
    transaction id).
 4. **Trimmed evidence.** Only the chosen tools' results are sent, as short lines with handles
-   [E1], [E2], ... (about 700 tokens at most per question, 1,000 for a summary; answers capped at 120
-   tokens). This keeps a first question under the 90-second rule (D223).
-5. **The model answers** from the evidence block, which the rules call data; strings from the data
-   are cleaned (no brackets or new lines, at most 60 characters) and a string that reads like an
-   instruction is withheld. While the answer streams, it is shown as "draft, not yet checked".
-6. **A deterministic citation checker** then keeps a sentence only if it cites handles given in this
-   turn and every number and id in it appears in the cited lines (rounding allowed; small integers
-   exact), and every decision word (allow, monitor, step-up, hold, block) appears in them (D224a).
-   Claims that something was changed are always removed; a claim that the case is fraud or
-   legitimate needs a cited known label. Removed sentences are counted with the reason; if nothing is
-   left, the answer is "Not available from the case evidence."
+   [E1], [E2], ... (about 700 tokens at most per question, 1,000 for a summary).
+5. **The model answers in structured output** (D224c): Ollama's JSON-schema mode forces a list of
+   at most 5 facts, each with exactly one handle chosen from the handles given in this turn; the
+   prose the analyst reads is rendered by code ("<fact> [Ek]."), not written by the model. The
+   evidence block is called data in the rules; strings from the data are cleaned (no brackets or
+   new lines, at most 60 characters) and a string that reads like an instruction is withheld. While
+   the answer streams, it is shown as "draft, not yet checked".
+6. **A deterministic citation checker** then keeps a fact only if every number and id in it appears
+   in its cited line (rounding allowed; small integers exact) and every decision word (allow,
+   monitor, step-up, hold, block) appears there too (D224a). Claims that something was changed are
+   always removed; a claim that the case is fraud or legitimate needs a cited known label. Removed
+   facts are counted with the reason; an empty list, or nothing kept, reads "Not available from the
+   case evidence."
 7. **One audit entry per question** (D208): model, route, evidence ids, kept and removed counts,
    refusal kind, outcome and seconds, written once whether the answer finishes, is refused, the model
    is not running, or the client disconnects (fail-open, D209).
@@ -88,8 +90,28 @@ Endpoints (mounted with `VAULTIC_COPILOT=1`): `GET /api/copilot/status`, `POST /
   decision is hold [E1].") was added to the rules, copied it for two step-up cases. The checker now
   expands ranges, ignores the instructed phrase and removes a decision word that the cited lines do
   not contain; the rules carry a content-free format line instead of an example.
+- **Structured output, dev-set comparison (D224c; 2026-10-25; one generation per variant and task,
+  no re-runs; `E:/dev-cache/copilot/dev_compare_20261025-040441.json`, not committed; design work on
+  10 dev cases excluded from E20, not research numbers).** Per case one summary and one "Why was this
+  transaction flagged?" (20 generations per variant):
+
+  | variant | facts written | kept | removed | kept-fact rate | generations with no kept fact | invalid JSON | total seconds |
+  |---|---|---|---|---|---|---|---|
+  | V1 schema only (at most 5) | 52 | 48 | 4 | 0.923 | 4 (3 empty lists) | 0 | 1,258.8 |
+  | **V2 schema + one instruction** | 55 | 52 | 3 | **0.945** | 2 (2 empty lists) | 0 | 1,255.8 |
+  | V3 schema, at most 4 facts | 44 | 41 | 3 | 0.932 | 4 (3 empty lists) | 0 | 646.4 |
+
+  V2 was chosen by the fixed rule and is the default; its five demo summaries are the cached ones
+  (44 of 47 summary facts kept across the 10 dev summaries; every demo summary has kept facts).
+  Removal reasons: a number not in the cited line (a points value or expected loss cited to the wrong
+  line, a transaction id with a dropped digit) and, under V1 and V3, a handle written inside the fact
+  text. All generations everywhere were valid JSON. Per-task timing for V2: summaries 83.9-128.9 s
+  (median 103.5 s), questions 4.0-25.9 s (median 22.6 s, few facts per answer). Under V1 and V3
+  three of ten "why flagged" answers were an empty list ("not available"), under V2 two.
+  Compared with the prose answers (1 sentence kept of 36 under D224b), structured output with an
+  enum of handles removes the citation problem; what remains is the meaning of a fact.
 - Tests (all with a scripted model, so CI never needs Ollama): `tests/test_copilot_check.py` and
-  `tests/test_copilot_api.py` (58 tests: checker reject cases, refusals, injection in a tool
+  `tests/test_copilot_api.py` (66 tests: checker reject cases, refusals, injection in a tool
   result, read-only guarantee, one audit entry per question, Test Lab off and on, model not
   running, evidence budget, cached summaries).
 
@@ -98,11 +120,13 @@ Endpoints (mounted with `VAULTIC_COPILOT=1`): `GET /api/copilot/status`, `POST /
   the meaning of a free-text sentence: a cited sentence without those can still misread its
   evidence (seen once: "the reasons source is unavailable" for a line saying feature reasons are not
   available). E20 measures this with human labels (D225).
-- The model's citation discipline varies between cases and depends strongly on the prompt
-  wording: in the first three generations one of the five demo summaries lost every sentence (a
-  different case in the first and third); under the D224b wording four of five did. The model also
-  imitates examples and placeholders in the rules. Summaries (8-10 sentences) suffer more than
-  4-sentence answers would, but the questions have not been run on the real model yet. The checker makes that visible ("not available") instead of showing uncited text.
+- With prose answers the model's citation discipline depended strongly on the prompt wording (one
+  of five demo summaries lost every sentence in the first three generations, four of five under
+  D224b) and it imitated examples and placeholders in the rules; structured output (D224c) fixed
+  this on the dev set, but the dev set is small (10 cases, one generation per variant).
+- Some kept facts are correct but unhelpful: a fact may copy a whole evidence line, or restate a line
+  loosely ("the reasons source is unavailable" for a line saying feature reasons are not
+  available); "why flagged" answers are short (0-2 facts), and two of ten were "not available".
 - The router uses keywords; an unusual wording can pick the default tools (case + reasons).
 - Refusal rules are patterns; they are tested on the planned adversarial types, not on every possible
   wording.

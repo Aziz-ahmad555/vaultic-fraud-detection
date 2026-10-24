@@ -258,8 +258,11 @@ Mistral removed on 2026-10-24 with Aziz's OK (`E:\ollama\models` 8.43 -> 4.36 GB
 - `experiments/runs` linked into the worktree (junction, as the other worktrees): full suite back to
   the usual 5 skips.
 
-**Open (Aziz's decision):** the D224b prompt wording lost almost all citations on summaries; any
-further prompt change is a new logged decision and must be fixed before the D225 pre-registration
-freezes the prompts.
+**Structured output (D224c, Aziz's decision, 2026-10-25):** answers and summaries are a JSON list of
+at most 5 facts, each with one handle from an enum; prose rendered by code. Dev-set comparison (10
+cases excluded from E20, one generation per variant): kept-fact rate V1 0.923 (48/52), V2 0.945
+(52/55), V3 0.932 (41/44); V2 chosen by the fixed rule and set as the default; its five demo
+summaries are the cached ones (all with kept facts). Full suite 733 passed / 5 skipped before the dev
+run.
 
 **Next:** D225 (E20 pre-registration, alone) and D226 (UI), on Aziz's go-ahead.

@@ -23,7 +23,7 @@ VARIANTS = {
                           "says; copy numbers exactly.", "max_facts": 5},
     "V3": {"instruction": "", "max_facts": 4},  # schema with at most 4 facts
 }  # fmt: skip
-VARIANT = "V1"  # the default until the D224c dev comparison picks one
+VARIANT = "V2"  # chosen by D224c's fixed rule on the dev set (kept-fact rate 52 / 55)
 
 
 def system(variant: str | None = None) -> str:

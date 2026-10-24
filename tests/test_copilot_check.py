@@ -288,3 +288,7 @@ def test_the_dev_selection_rule_is_rate_then_fewer_removed_then_faster():
         == "V2"
     )
     assert EXTRA_DEV == (3566631, 3555114, 3522679, 3542087, 3510484)
+
+
+def test_the_default_variant_is_the_one_the_dev_comparison_chose():
+    assert rules.VARIANT == "V2"  # D224c: highest kept-fact rate on the dev set
