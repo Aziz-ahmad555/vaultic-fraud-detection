@@ -216,3 +216,32 @@ Additional requirements:
 
 Decisions are logged as each part starts (D222 install, D223 model choice, D224 design, D225 E20
 pre-registration, D226 UI).
+
+## Progress (2026-10-24)
+
+**Part 1 done: install and speed test.**
+- D222 (`99699fe`): Ollama v0.40.10 from the standalone zip (SHA-256 verified) in `E:\Ollama`, models
+  in `E:\ollama\models`, started by `E:\ollama\start_ollama.cmd` (sets `OLLAMA_MODELS` and
+  `OLLAMA_HOST=127.0.0.1:11434` for its own process only; nothing persistent). Ollama created
+  `C:\Users\Aziz Ahmad\.ollama` (an identity key and an empty cache, 0.0 MB). Both candidate models
+  pulled (8.5 GB on E:); licences Apache-2.0, checked on the model cards.
+- D223 (`f8814ed`): Qwen2.5-7B-Instruct Q4_K_M chosen; the first test's cache flaw recorded; the
+  90-second rule amended (trimmed evidence, warm-up on case open, cached labelled demo summaries;
+  small-model fallback if a trimmed first question still takes more than 90 s).
+- Speed-test script fixed (`e240106`): a fresh run id and fresh evidence every repeat (no cache hits),
+  memory read from the `llama-server` runner.
+- **Re-run, Qwen only, every run uncached** (`E:/dev-cache/copilot/speed_test_20261024-224545.json`,
+  not committed; not a research number):
+
+  | evidence | tokens in / out | uncached first question (3 runs) | prompt reading | generation | runner memory |
+  |---|---|---|---|---|---|
+  | full | 1,883-1,884 / 160 | 184.8 / 186.5 / 186.9 s | 13.5-13.8 tokens/s | 3.35-3.42 tokens/s | 4.8-5.0 GB |
+  | trimmed | 523-527 / 160 | **76.1 / 77.1 / 78.6 s** | 13.9-14.4 tokens/s | 3.92-4.03 tokens/s | 5.1-5.2 GB |
+
+  A trimmed first question is under 90 s, so the fallback is not needed and Qwen is confirmed. About
+  half of the trimmed time is reading (~37 s) and half writing 160 tokens (~40 s); shorter answers
+  shorten it further.
+- Ollama stopped after the test (it holds about 5 GB of RAM while a model is loaded).
+
+**Next:** remove Mistral (4.4 GB) after Aziz's OK; then D224 (tool contract, citation checker,
+refusals, audit, mocked LLM) and the copilot code, with evidence trimmed per question.
