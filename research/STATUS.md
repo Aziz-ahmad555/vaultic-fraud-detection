@@ -41,4 +41,4 @@ Short summary of where Vaultic stands after PR #10. Details live in `research/de
 
 ## Next decision number
 
-D221.
+D222.

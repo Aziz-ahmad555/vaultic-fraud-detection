@@ -303,3 +303,95 @@ def test_service_status_shows_start_timings_and_missing_inputs():
     bad = TestLabService()
     bad.start(build=missing, log=lambda m: None)
     assert bad.status()["state"] == "error" and "missing input" in bad.status()["message"]
+
+
+# ---- D221: binary files hashed raw, every module in the store key, store key in the parity key --
+def test_line_endings_are_normalised_for_text_files_only(tmp_path):
+    from vaultic.live.parity import content_digest
+
+    for suffix, same in (
+        (".md", True),
+        (".json", True),
+        (".py", True),
+        (".parquet", False),
+        (".joblib", False),
+    ):
+        a, b = tmp_path / f"a{suffix}", tmp_path / f"b{suffix}"
+        a.write_bytes(b"one\ntwo\n")
+        b.write_bytes(b"one\r\ntwo\r\n")
+        assert (content_digest(a) == content_digest(b)) is same, suffix
+
+
+def _fake_repo(tmp_path, monkeypatch):
+    import vaultic.paths as paths
+    import vaultic.stage2.final as s2
+    from vaultic.live.store import STORE_CODE_DIRS
+
+    root = tmp_path / "repo"
+    for d in STORE_CODE_DIRS:
+        (root / "src" / "vaultic" / d).mkdir(parents=True)
+        (root / "src" / "vaultic" / d / "mod.py").write_text(f"X = '{d}'\n")
+    (root / "research").mkdir()
+    (root / "research" / "frozen_stage2.md").write_text("record\n")
+    data = tmp_path / "merged.parquet"
+    data.write_bytes(b"rows")
+    monkeypatch.setattr(paths, "REPO_ROOT", root)
+    monkeypatch.setattr(paths, "RESEARCH_DIR", root / "research")
+    monkeypatch.setattr(s2, "data_files", lambda: [data])
+    return root
+
+
+@pytest.mark.parametrize("module", ["data/uid.py", "data/load.py", "data/splits.py", "features/pit.py",
+                                    "features/sets.py", "fusion/dev_compare.py", "views/orchestrate.py"])  # fmt: skip
+def test_changing_any_module_the_build_can_reach_invalidates_the_store(
+    tmp_path, monkeypatch, module
+):
+    from vaultic.live.store import store_cache_path, store_key
+
+    root = _fake_repo(tmp_path, monkeypatch)
+    before = store_key()
+    f = root / "src" / "vaultic" / module
+    f.write_text("CHANGED = 1\n")
+    after = store_key()
+    assert after != before and store_cache_path(after) != store_cache_path(before)
+    f.write_bytes(b"CHANGED = 1\r\n")  # the same content with other line endings: same key
+    assert store_key() == after
+
+
+def test_parity_key_follows_the_store_key_so_a_data_change_forces_a_full_run(monkeypatch, tmp_path):
+    import vaultic.live.parity as par
+
+    final = tmp_path / "final_results.json"
+    final.write_text("{}")
+    assert par.cache_key(None, [final], store_key="a") != par.cache_key(
+        None, [final], store_key="b"
+    )
+    assert par.cache_key(None, [final], store_key="a") != par.cache_key(None, [final])
+    monkeypatch.setattr(par, "key_files", lambda: [final])
+    monkeypatch.setattr(par, "CACHE_DIR", tmp_path)
+    runs = []
+    monkeypatch.setattr(
+        par, "run_parity", lambda engine, log=None: runs.append(1) or {"passed": True}
+    )
+    engine = lambda key: SimpleNamespace(store=SimpleNamespace(info={"key": key}))  # noqa: E731
+    assert par.cached_parity(engine("data-v1"), None, log=None)["cached"] is False
+    assert par.cached_parity(engine("data-v1"), None, log=None)["cached"] is True
+    assert (
+        par.cached_parity(engine("data-v2"), None, log=None)["cached"] is False
+    )  # new data: full run
+    assert runs == [1, 1]
+
+
+EVENTS_RUN = (
+    Path(__file__).resolve().parents[1] / "experiments/runs/EXP-310-final/20261020-174032-191246"
+)
+
+
+@pytest.mark.skipif(
+    not (EVENTS_RUN / "delay_L0" / "events.json").exists(), reason="needs the EXP-310 run folder"
+)
+def test_committed_exp310_events_match_the_run_folder():
+    """D221: the committed events file is checked against the run whenever the run is present."""
+    from vaultic.reports.feedback_report import OUT_DIR, run_check
+
+    assert run_check(OUT_DIR / "exp310_events.json", EVENTS_RUN, log=lambda m: None) == 0

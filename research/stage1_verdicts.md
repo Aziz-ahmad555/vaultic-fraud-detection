@@ -23,12 +23,14 @@ Every recorded H5 test is positive with Holm p < 0.001 (`research/tables/final_e
 - B5, 4 tests (R3 - R1; B5 has no view disagreement, so no R4), e.g. K = 50: R3 - R1 +104,516
   [+77,512, +133,208].
 
-**Note.** In the recorded routing results R3 (expected loss + uncertainty bonus) catches exactly the
-same fraud value as R2 (expected loss only) at every K, for all three methods
-(`research/tables/final_results.json` `e12.<method>.routing.policies`). So H5 holds as D101 states
-it, but the whole gain over top-K risk comes from ranking by expected loss; the uncertainty bonus
-added nothing measurable. The roadmap's wording ("expected loss plus uncertainty") should be
-reported with this qualification.
+**Note (corrected by D221).** The uncertainty weight chosen on calibrate_fused was 0 at every K for
+MVAF, F3 and B5 (`research/tables/final_results.json` `e12.<method>.routing.lambdas`: R3 = [0, 0]
+everywhere), so R3 reduces to R2 (expected loss only) by construction, and the recorded R3 and R2
+results are identical at every K (`e12.<method>.routing.policies`). Likewise MVAF's R4 weights were
+[0, 0] at K = 50 and 500, so R4 = R3 there. H5 holds as D101 states it, but the whole gain over
+top-K risk comes from ranking by expected loss; no non-zero uncertainty bonus was selected, so the
+test says nothing about the value of an uncertainty bonus. The roadmap's wording ("expected loss
+plus uncertainty") must be reported with this qualification.
 
 ## E11 hypothesis (D101: "MVAF, trained with view dropout, degrades less than stacking")
 

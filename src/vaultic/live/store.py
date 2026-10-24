@@ -205,24 +205,24 @@ def build_store(log=print, days=None) -> HistoryStore:
 
 
 # ---- the store cache on drive E (D220) ------------------------------------------------------
-STORE_CODE = ("live/store.py", "features/behavioral.py", "features/graph.py",
-              "features/categories.py", "features/pipeline.py", "stage2/system.py")  # fmt: skip
+# D221: every module the build can reach, not a hand-picked list
+STORE_CODE_DIRS = ("data", "features", "fusion", "views", "stage2", "live")
 
 
 def store_key(days=None) -> str:
-    """SHA-256 of what the store is built from: its code and the feature code it calls (line
-    endings normalised), the stage-2 freeze record (data hashes) and the size and modification
-    time of every stage-2 data file, plus the snapshot days."""
+    """SHA-256 of what the store is built from: every .py file under src/vaultic/{data, features,
+    fusion, views, stage2, live} (line endings normalised, D221), the stage-2 freeze record (data
+    hashes) and the size and modification time of every stage-2 data file, plus the snapshot days.
+    """
     import hashlib
 
-    from vaultic.live.parity import content_digest
+    from vaultic.live.parity import code_digest, content_digest
     from vaultic.paths import REPO_ROOT, RESEARCH_DIR
     from vaultic.stage2.final import data_files
 
     h = hashlib.sha256()
     src = REPO_ROOT / "src" / "vaultic"
-    for rel in STORE_CODE:
-        h.update(content_digest(src / rel))
+    h.update(code_digest(src, STORE_CODE_DIRS))
     h.update(content_digest(RESEARCH_DIR / "frozen_stage2.md"))
     try:
         files = data_files()
@@ -251,11 +251,14 @@ def cached_store(log=print, days=None, build=None) -> HistoryStore:
     from vaultic.eval.posthoc_guard import require_final_on_record
 
     require_final_on_record()  # D144, also when the store comes from the cache
-    path = store_cache_path(store_key(days))
+    key = store_key(days)
+    path = store_cache_path(key)
     started = time.perf_counter()
     if path.exists():
         store = joblib.load(path)
-        store.info.update(cache=str(path), load_seconds=round(time.perf_counter() - started))
+        store.info.update(
+            key=key, cache=str(path), load_seconds=round(time.perf_counter() - started)
+        )
         log(f"history store from {path} ({store.info['load_seconds']} s)")
         return store
     store = (build or build_store)(log, days)
@@ -263,6 +266,6 @@ def cached_store(log=print, days=None, build=None) -> HistoryStore:
     tmp = path.with_name(path.name + ".tmp")
     joblib.dump(store, tmp)
     os.replace(tmp, path)
-    store.info.update(cache=str(path), saved_seconds=round(time.perf_counter() - started))
+    store.info.update(key=key, cache=str(path), saved_seconds=round(time.perf_counter() - started))
     log(f"history store saved to {path}")
     return store

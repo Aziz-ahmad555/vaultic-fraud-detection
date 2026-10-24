@@ -46,9 +46,27 @@ def key_files() -> list[Path]:
             RESEARCH_DIR / "tables" / "final_results.json"]  # fmt: skip
 
 
+TEXT_SUFFIXES = (".py", ".md", ".json", ".yaml", ".yml", ".txt")  # D221
+
+
 def content_digest(path: Path) -> bytes:
-    """SHA-256 of a file's content with line endings normalised (CRLF -> LF, D220)."""
-    return hashlib.sha256(Path(path).read_bytes().replace(b"\r\n", b"\n")).digest()
+    """SHA-256 of a file's content: text files with line endings normalised (CRLF -> LF, D220),
+    every other file (parquet, joblib, ...) as its raw bytes (D221)."""
+    data = Path(path).read_bytes()
+    if Path(path).suffix.lower() in TEXT_SUFFIXES:
+        data = data.replace(b"\r\n", b"\n")
+    return hashlib.sha256(data).digest()
+
+
+def code_digest(root: Path, dirs) -> bytes:
+    """SHA-256 over every .py file under root/<dir> for each dir (relative path + content),
+    in sorted order (D221)."""
+    h = hashlib.sha256()
+    for d in dirs:
+        for f in sorted((Path(root) / d).rglob("*.py")):
+            h.update(f.relative_to(root).as_posix().encode())
+            h.update(content_digest(f))
+    return h.digest()
 
 
 def missing_inputs(files: list[Path] | None = None) -> list[Path]:
@@ -68,7 +86,10 @@ def require_inputs(files: list[Path] | None = None) -> None:
         )
 
 
-def cache_key(system_path: Path | None, files: list[Path] | None = None) -> str:
+def cache_key(system_path: Path | None, files: list[Path] | None = None,
+              store_key: str | None = None) -> str:  # fmt: skip
+    """Key of a cached parity result; `store_key` (the history store's key: its code, the data
+    files' size and modification time, D221) makes a data change force a full parity run."""
     from vaultic.paths import REPO_ROOT
 
     files = key_files() if files is None else files
@@ -83,6 +104,8 @@ def cache_key(system_path: Path | None, files: list[Path] | None = None) -> str:
     if system_path is not None and system_path.exists():
         st = system_path.stat()
         h.update(f"{system_path}:{st.st_size}:{st.st_mtime_ns}".encode())
+    if store_key is not None:
+        h.update(f"store:{store_key}".encode())
     h.update(f"{N}:{SEED}:{FEATURE_TOLERANCE}:{SCORE_TOLERANCE}".encode())
     return h.hexdigest()
 
@@ -145,7 +168,8 @@ def run_parity(engine, n: int = N, seed: int = SEED, log=print, pool=None) -> di
 
 def cached_parity(engine, system_path: Path | None, log=print) -> dict:
     """The parity result for the current data, code and system, computed once per key."""
-    key = cache_key(system_path)
+    store = getattr(engine, "store", None)
+    key = cache_key(system_path, store_key=getattr(store, "info", {}).get("key"))
     path = CACHE_DIR / f"parity_{key[:16]}.json"
     if path.exists():
         out = json.loads(path.read_text("utf-8"))

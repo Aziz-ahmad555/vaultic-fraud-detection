@@ -415,13 +415,26 @@ def render(final: dict, events: dict[int, list], dev: dict | None, dev_events: l
     return "\n".join(out) + "\n"
 
 
-def main(argv=None) -> None:
+def run_check(events_file: Path, run: Path, log=print) -> int:
+    """D221: verify a committed events file against the run folder; 0 = it matches."""
+    bad = check_events(json.loads(Path(events_file).read_text("utf-8")), run)
+    for b in bad:
+        log(f"MISMATCH: {b}")
+    log("exp310_events.json matches the run folder" if not bad else f"{len(bad)} difference(s)")
+    return 1 if bad else 0
+
+
+def main(argv=None) -> int | None:
     p = argparse.ArgumentParser(description="EXP-310-final written report")
     p.add_argument("--final-json", type=Path, default=FINAL_JSON)
     p.add_argument("--run", type=Path, default=FINAL_RUN)
     p.add_argument("--dev-run", type=Path, default=DEV_RUN)
     p.add_argument("--out-dir", type=Path, default=OUT_DIR)
+    p.add_argument("--check", action="store_true",
+                   help="only verify the committed exp310_events.json against the run folder (D221)")  # fmt: skip
     a = p.parse_args(argv)
+    if a.check:
+        return run_check(a.out_dir / "exp310_events.json", a.run)
     final = json.loads(a.final_json.read_text("utf-8"))
     events = {
         L: json.loads((a.run / f"delay_L{L}" / "events.json").read_text("utf-8")) for L in DELAYS
@@ -453,4 +466,4 @@ def main(argv=None) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main() or 0)

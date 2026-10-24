@@ -274,6 +274,8 @@ export interface DriftSimulation {
   seed: number;
   delay: number;
   policies: string;
+  /** D221: the model EXP-310 retrains (the frozen B5), not the MVAF this page serves */
+  champion?: string;
 }
 export interface DriftReport {
   /** what today is compared with; never data after the as-of time (D130) */

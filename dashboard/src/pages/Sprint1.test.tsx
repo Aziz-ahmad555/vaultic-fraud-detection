@@ -33,7 +33,7 @@ const DRIFT: DriftReport = {
     { day: 156, trigger: "schedule", policy: "P1", seed: 0, accepted: true, reason: "accepted", gain: 0.02, gainCiLow: 0.011, gainCiHigh: 0.03, costChampion: 17539.65, costChallenger: 14024.89, prChampion: null, prChallenger: null },
     { day: 156, trigger: "alarm", policy: "P3", seed: 0, accepted: false, reason: "insufficient evidence", gain: null, gainCiLow: null, gainCiHigh: null, costChampion: null, costChallenger: null, prChampion: null, prChallenger: null },
   ],
-  simulation: { label: "EXP-310 simulation on test period", sourceRun: "20261020-174032-191246", sourceFile: "research/tables/feedback/exp310_events.json", seed: 0, delay: 30, policies: "P1: retrain every week (schedule); P3: retrain after an ADWIN alarm" },
+  simulation: { label: "EXP-310 simulation on test period", sourceRun: "20261020-174032-191246", sourceFile: "research/tables/feedback/exp310_events.json", seed: 0, delay: 30, champion: "frozen B5 (EXP-310), not the served MVAF", policies: "P1: retrain every week (schedule); P3: retrain after an ADWIN alarm" },
 };
 
 vi.mock("../api", async () => {
@@ -76,7 +76,7 @@ describe("sprint 1 (D220), http mode", () => {
   it("Drift monitor: EXP-310 alarms and retraining, labelled as the simulation, with honest blanks", async () => {
     at("/drift", "/drift", <Drift />);
     const notes = await screen.findAllByTestId("simulation-note");
-    expect(notes[0]).toHaveTextContent("EXP-310 simulation on test period: seed 0, label delay 30 days");
+    expect(notes[0]).toHaveTextContent("EXP-310 simulation on test period: seed 0, label delay 30 days, champion: frozen B5 (EXP-310), not the served MVAF");
     expect(notes[0]).toHaveTextContent("research/tables/feedback/exp310_events.json (run 20261020-174032-191246)");
     expect(screen.getByText("Rejected: insufficient evidence")).toBeInTheDocument();
     expect(screen.getByText("Replaced the champion")).toBeInTheDocument();

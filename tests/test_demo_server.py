@@ -192,7 +192,9 @@ def test_day_summary_alerts_queues_history_network(server):
 def test_drift_lab_score_thresholds_feedback_audit(server):
     d = _get(server, f"/api/drift?time={AS_OF}")
     # D220: alarms and retraining come from the EXP-310 simulation, never after the as-of day
-    assert all(x["day"] <= AS_OF // DAY for x in d["alarms"] + d["retrains"])
+    assert all(
+        x["day"] < AS_OF // DAY for x in d["alarms"] + d["retrains"]
+    )  # completed days (D221)
     assert d["simulation"]["label"] == "EXP-310 simulation on test period"
     assert d["injected"] == []
     assert "147-150" in d["reference"]
@@ -673,6 +675,10 @@ def test_exp310_drift_filters_seed_delay_policy_and_the_as_of_day():
         ("P1", "schedule", True), ("P3", "alarm", False)]  # fmt: skip
     assert out["retrains"][0]["gainCiLow"] == 0.01 and out["retrains"][1]["gain"] is None
     assert out["simulation"]["sourceRun"] == "run-x" and out["simulation"]["delay"] == 30
+    assert out["simulation"]["champion"] == "frozen B5 (EXP-310), not the served MVAF"  # D221
+    # D221: only completed days before the as-of day (events carry a day, not a time)
+    assert [a["day"] for a in mod.exp310_drift(ev, 30, 152)["alarms"]] == []
+    assert [r["day"] for r in mod.exp310_drift(ev, 30, 156)["retrains"]] == []
     assert mod.exp310_drift(ev, 7, 157) == {"alarms": [], "retrains": [], "simulation": None}
     assert mod.exp310_drift(None, 30, 157)["simulation"] is None
 

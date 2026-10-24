@@ -13,7 +13,7 @@ const num = (x: number | null) => (x == null ? "–" : x.toFixed(2));
 export function SimulationNote({ sim }: { sim: DriftSimulation }) {
   return (
     <p className="mock-note small" style={{ whiteSpace: "normal" }} data-testid="simulation-note">
-      {sim.label}: seed {sim.seed}, label delay {sim.delay} days. {sim.policies}. Source: {sim.sourceFile} (run {sim.sourceRun}). The Phase 10
+      {sim.label}: seed {sim.seed}, label delay {sim.delay} days, champion: {sim.champion ?? "frozen B5 (EXP-310), not the served MVAF"}. {sim.policies}. Source: {sim.sourceFile} (run {sim.sourceRun}). The Phase 10
       detector study (E13) was not run, so no other detectors are shown.
     </p>
   );

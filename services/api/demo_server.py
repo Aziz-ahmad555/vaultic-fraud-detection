@@ -111,11 +111,12 @@ def ladder_ablation(ladder_dir: Path = LADDER_DIR) -> tuple[list[dict], list[dic
 
 def exp310_drift(events: dict | None, delay: int, as_of_day: int, seed: int = 0) -> dict:
     """EXP-310 alarms and retraining attempts for the Drift monitor (D220): one seed at the
-    chosen label delay, P1 (weekly schedule) and P3 (ADWIN alarm), never after the as-of day."""
+    chosen label delay, P1 (weekly schedule) and P3 (ADWIN alarm), completed days before the as-of
+    day only (events carry a day, not a time; D221). The champion is the frozen B5, not MVAF."""
     if not events or str(delay) not in events.get("events", {}):
         return {"alarms": [], "retrains": [], "simulation": None}
     rows = [
-        e for e in events["events"][str(delay)] if e.get("seed") == seed and e["day"] <= as_of_day
+        e for e in events["events"][str(delay)] if e.get("seed") == seed and e["day"] < as_of_day
     ]
     alarms = [{"day": e["day"], "detector": e.get("detector", "ADWIN"), "policy": e["policy"],
                "seed": seed} for e in rows if e.get("kind") == "alarm" and e["policy"] == "P3"]  # fmt: skip
@@ -134,6 +135,7 @@ def exp310_drift(events: dict | None, delay: int, as_of_day: int, seed: int = 0)
             "simulation": {"label": events["label"], "sourceRun": events["source_run_id"],
                            "sourceFile": "research/tables/feedback/exp310_events.json",
                            "seed": seed, "delay": delay,
+                           "champion": "frozen B5 (EXP-310), not the served MVAF",
                            "policies": "P1: retrain every week (schedule); P3: retrain after an ADWIN alarm"}}  # fmt: skip
 
 
