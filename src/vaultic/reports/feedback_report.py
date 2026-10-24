@@ -8,12 +8,16 @@ events.json), the design run's metrics.json / events.json and the git record (fr
 abort and re-run rows); nothing is recomputed from data. Every note that depends on the outcome
 (P2 = P0, P3 vs P1, the structural nulls, the threshold-slice overlap) is derived from the events
 and metrics by `facts`. Writes research/tables/feedback/exp310_report.md and
-exp310_gain_by_delay.json (chart data: P1 minus P0 PR-AUC by label delay, final and design run).
+exp310_gain_by_delay.json (chart data: P1 minus P0 PR-AUC by label delay, final and design run),
+and exp310_events.json (D220): every alarm and gate attempt of the run, per delay, generated from
+the run folder's delay_L<L>/events.json with the source run id and the SHA-256 of each source
+file, so it can be checked against the run (`check_events`). No hand edits.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -127,6 +131,55 @@ def gain_by_delay(per_delay: dict, dev: dict | None) -> list[dict]:
             row["design"] = {k: d[k] for k in ("diff", "ci_low", "ci_high", "p_value")}
         rows.append(row)
     return rows
+
+
+# ---- the events file (D220) ----------------------------------------------------------------
+EVENTS_LABEL = "EXP-310 simulation on test period"
+EVENT_FIELDS = ("policy", "day", "delay", "seed", "kind", "detector", "reason", "accepted", "gain",
+                "ci_low", "ci_high", "cost_champion", "cost_challenger", "champion", "challenger",
+                "alarm_dropped")  # fmt: skip
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def events_payload(run: Path) -> dict:
+    """Every alarm and gate attempt per delay, copied field by field from the run folder, with
+    the source run and each source file's SHA-256 (raw bytes)."""
+    run = Path(run)
+    sources, events = {}, {}
+    for L in DELAYS:
+        f = run / f"delay_L{L}" / "events.json"
+        rows = json.loads(f.read_text("utf-8"))
+        sources[str(L)] = {
+            "file": f"delay_L{L}/events.json",
+            "sha256": _sha256(f),
+            "events": len(rows),
+        }
+        events[str(L)] = [{k: e[k] for k in EVENT_FIELDS if k in e} for e in rows]
+    return {"label": EVENTS_LABEL, "generated_by": "python -m vaultic.reports.feedback_report",
+            "source_run_id": run.name, "source_run": f"experiments/runs/{run.parent.name}/{run.name}",
+            "sources": sources, "fields": list(EVENT_FIELDS), "events": events}  # fmt: skip
+
+
+def check_events(payload: dict, run: Path) -> list[str]:
+    """Differences between an events file and the run folder (empty = it matches the run)."""
+    run = Path(run)
+    bad = (
+        []
+        if payload.get("source_run_id") == run.name
+        else [f"source run {payload.get('source_run_id')} is not {run.name}"]
+    )
+    for src in payload.get("sources", {}).values():
+        f = run / src["file"]
+        if not f.exists():
+            bad.append(f"{src['file']} missing in the run folder")
+        elif _sha256(f) != src["sha256"]:
+            bad.append(f"{src['file']}: SHA-256 differs from the run folder")
+    if not bad and payload != events_payload(run):
+        bad.append("the events differ from a fresh export of the run folder")
+    return bad
 
 
 # ---- the record trail (git) -----------------------------------------------------------------
@@ -362,13 +415,26 @@ def render(final: dict, events: dict[int, list], dev: dict | None, dev_events: l
     return "\n".join(out) + "\n"
 
 
-def main(argv=None) -> None:
+def run_check(events_file: Path, run: Path, log=print) -> int:
+    """D221: verify a committed events file against the run folder; 0 = it matches."""
+    bad = check_events(json.loads(Path(events_file).read_text("utf-8")), run)
+    for b in bad:
+        log(f"MISMATCH: {b}")
+    log("exp310_events.json matches the run folder" if not bad else f"{len(bad)} difference(s)")
+    return 1 if bad else 0
+
+
+def main(argv=None) -> int | None:
     p = argparse.ArgumentParser(description="EXP-310-final written report")
     p.add_argument("--final-json", type=Path, default=FINAL_JSON)
     p.add_argument("--run", type=Path, default=FINAL_RUN)
     p.add_argument("--dev-run", type=Path, default=DEV_RUN)
     p.add_argument("--out-dir", type=Path, default=OUT_DIR)
+    p.add_argument("--check", action="store_true",
+                   help="only verify the committed exp310_events.json against the run folder (D221)")  # fmt: skip
     a = p.parse_args(argv)
+    if a.check:
+        return run_check(a.out_dir / "exp310_events.json", a.run)
     final = json.loads(a.final_json.read_text("utf-8"))
     events = {
         L: json.loads((a.run / f"delay_L{L}" / "events.json").read_text("utf-8")) for L in DELAYS
@@ -391,8 +457,13 @@ def main(argv=None) -> None:
              "final_days": list(TEST_DAYS), "design_days": [61, 120],
              "points": gain_by_delay(final["per_delay"], dev)}  # fmt: skip
     (a.out_dir / "exp310_gain_by_delay.json").write_text(json.dumps(chart, indent=1), "utf-8")
-    print(f"wrote {a.out_dir / 'exp310_report.md'} and exp310_gain_by_delay.json")
+    (a.out_dir / "exp310_events.json").write_text(
+        json.dumps(events_payload(a.run), indent=1), "utf-8"
+    )
+    print(
+        f"wrote {a.out_dir / 'exp310_report.md'}, exp310_gain_by_delay.json and exp310_events.json"
+    )
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main() or 0)

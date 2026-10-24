@@ -5,6 +5,7 @@ import type { Feedback, ScoreInput, ScoreResult, Transaction } from "../api/type
 import { ACTION_LABEL, VIEWS, VIEW_LABEL } from "../api/types";
 import { DecisionBadge, LockIcon, RiskCell, WhatIfReportNote, labelText, setText } from "../components/Badges";
 import { Braid } from "../components/Braid";
+import { LiveReasons } from "../components/LiveReasons";
 import { NetworkGraph } from "../components/NetworkGraph";
 import { ReasonList } from "../components/Reasons";
 import { Empty, ErrorState, Loading } from "../components/States";
@@ -19,6 +20,8 @@ import { viewScores } from "./Live";
  * real counterfactual comes with E15): it stays out of the narrative and the printed report (D127).
  */
 export const ILLUSTRATIVE_CF = DATA_SOURCE === "http";
+/** D220: the what-if (counterfactual) label in http mode */
+export const WHATIF_LABEL = "Illustrative model, not the frozen system";
 
 /**
  * Plain-language case narrative from the same facts the page shows (no free text, D38).
@@ -349,6 +352,7 @@ export function Case() {
               <p className="muted xs" style={{ marginTop: 8 }}>
                 Points: +20 doubles the fraud odds. Masked features keep their masked names; their meaning is not published.
               </p>
+              {ILLUSTRATIVE_CF && <div className="no-print"><LiveReasons transactionId={t.row.TransactionID} /></div>}
             </div>
             <div className="section">
               <h2>Narrative</h2>
@@ -397,7 +401,7 @@ export function Case() {
             </div>
             <div className={ILLUSTRATIVE_CF ? "section no-print" : "section"}>
               <h2>Counterfactual</h2>
-              {ILLUSTRATIVE_CF && <p className="mock-note xs" style={{ display: "inline-block" }}>Illustrative model, not the evaluated system</p>}
+              {ILLUSTRATIVE_CF && <p className="mock-note xs" style={{ display: "inline-block" }} data-testid="whatif-label">{WHATIF_LABEL}</p>}
               <p className="muted xs">
                 What would change the decision. Card, address and history are locked: they describe who the customer is and what already happened.
                 {ILLUSTRATIVE_CF && " The final-run models score recorded transactions only, so this runs on the illustrative model and is compared with that model's score of the unchanged case; it is left out of the narrative and the printed report."}

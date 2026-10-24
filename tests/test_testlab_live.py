@@ -201,3 +201,197 @@ def test_parity_key_changes_with_the_stored_predictions_and_final_results(tmp_pa
     final.write_text('{"meta": 1}')
     k3 = cache_key(None, [pred, final])
     assert len({k1, k2, k3}) == 3
+
+
+# ---- D220: fast start (line-ending-proof key, input check, store cache, warm-up) --------------
+def test_parity_key_ignores_line_endings_but_not_content(tmp_path):
+    from vaultic.live.parity import cache_key, content_digest
+
+    lf, crlf = tmp_path / "a" / "frozen_stage2.md", tmp_path / "b" / "frozen_stage2.md"
+    lf.parent.mkdir()
+    crlf.parent.mkdir()
+    lf.write_bytes(b"line one\nline two\n")
+    crlf.write_bytes(b"line one\r\nline two\r\n")
+    assert content_digest(lf) == content_digest(crlf)
+    assert cache_key(None, [lf]) == cache_key(None, [crlf])
+    crlf.write_bytes(b"line one\r\nline 2\r\n")
+    assert cache_key(None, [lf]) != cache_key(None, [crlf])
+
+
+def test_a_missing_input_refuses_the_start_with_its_path(tmp_path):
+    from vaultic.live.parity import cache_key, missing_inputs, require_inputs
+
+    here, gone = tmp_path / "final_results.json", tmp_path / "predictions.parquet"
+    here.write_text("{}")
+    assert missing_inputs([here, gone]) == [gone]
+    with pytest.raises(FileNotFoundError, match="predictions.parquet"):
+        require_inputs([here, gone])
+    with pytest.raises(FileNotFoundError, match="cannot start"):
+        cache_key(None, [here, gone])  # never keyed on "missing"
+    require_inputs([here])
+
+
+def test_store_is_built_once_then_loaded_from_the_cache(monkeypatch, tmp_path):
+    import vaultic.eval.posthoc_guard as guard
+    import vaultic.live.store as st
+
+    monkeypatch.setattr(st, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(st, "store_key", lambda days=None: "k" * 64)
+    guards = []
+    monkeypatch.setattr(guard, "require_final_on_record", lambda: guards.append(1))
+    builds = []
+
+    def build(log, days):
+        builds.append(1)
+        return SimpleNamespace(info={"built_seconds": 1}, rows=[1, 2, 3])
+
+    first = st.cached_store(log=lambda m: None, build=build)
+    assert (
+        builds == [1]
+        and first.rows == [1, 2, 3]
+        and (tmp_path / f"store_{'k' * 16}.joblib").exists()
+    )
+    assert not list(tmp_path.glob("*.tmp"))
+    second = st.cached_store(log=lambda m: None, build=build)
+    assert builds == [1] and second.rows == [1, 2, 3] and "load_seconds" in second.info
+    assert guards == [1, 1]  # the post-hoc guard runs on every start, cached or not
+
+
+def test_store_key_follows_the_data_files_and_refuses_missing_ones(monkeypatch, tmp_path):
+    import os
+
+    import vaultic.stage2.final as s2
+    from vaultic.live.store import store_key
+
+    data = tmp_path / "merged.parquet"
+    data.write_bytes(b"rows")
+    monkeypatch.setattr(s2, "data_files", lambda: [data])
+    k1 = store_key()
+    data.write_bytes(b"rows, rebuilt")
+    os.utime(data, ns=(1, 1))
+    assert store_key() != k1
+    assert store_key(days=[151]) != store_key()
+    monkeypatch.setattr(s2, "data_files", lambda: [tmp_path / "gone.parquet"])
+    with pytest.raises(FileNotFoundError, match="gone.parquet"):
+        store_key()
+
+
+def test_warm_up_reports_each_step(monkeypatch):
+    from vaultic.live.warm import warm
+
+    engine = SimpleNamespace(
+        store=SimpleNamespace(info={"cache": "E:/x/store.joblib", "load_seconds": 3})
+    )
+    out = warm(log=lambda m: None, build=lambda log: engine,
+               parity=lambda e, p, log: {"passed": True, "cached": True})  # fmt: skip
+    assert out["parity_passed"] and out["parity_cached"]
+    assert out["store"] == {"cache": "E:/x/store.joblib", "load_seconds": 3}
+    assert set(out) >= {"engine_seconds", "parity_seconds", "total_seconds"}
+
+
+def test_service_status_shows_start_timings_and_missing_inputs():
+    from vaultic.live.service import TestLabService
+
+    svc = TestLabService()
+    svc.start(build=lambda log: SimpleNamespace(latency=SimpleNamespace(summary=lambda: {})),
+              parity=lambda e, p, log: {"passed": True}, log=lambda m: None)  # fmt: skip
+    assert svc.status()["state"] == "ready" and "start_seconds" in svc.status()["timings"]
+
+    def missing(log):
+        raise FileNotFoundError("the Test Lab cannot start, missing input(s): predictions.parquet")
+
+    bad = TestLabService()
+    bad.start(build=missing, log=lambda m: None)
+    assert bad.status()["state"] == "error" and "missing input" in bad.status()["message"]
+
+
+# ---- D221: binary files hashed raw, every module in the store key, store key in the parity key --
+def test_line_endings_are_normalised_for_text_files_only(tmp_path):
+    from vaultic.live.parity import content_digest
+
+    for suffix, same in (
+        (".md", True),
+        (".json", True),
+        (".py", True),
+        (".parquet", False),
+        (".joblib", False),
+    ):
+        a, b = tmp_path / f"a{suffix}", tmp_path / f"b{suffix}"
+        a.write_bytes(b"one\ntwo\n")
+        b.write_bytes(b"one\r\ntwo\r\n")
+        assert (content_digest(a) == content_digest(b)) is same, suffix
+
+
+def _fake_repo(tmp_path, monkeypatch):
+    import vaultic.paths as paths
+    import vaultic.stage2.final as s2
+    from vaultic.live.store import STORE_CODE_DIRS
+
+    root = tmp_path / "repo"
+    for d in STORE_CODE_DIRS:
+        (root / "src" / "vaultic" / d).mkdir(parents=True)
+        (root / "src" / "vaultic" / d / "mod.py").write_text(f"X = '{d}'\n")
+    (root / "research").mkdir()
+    (root / "research" / "frozen_stage2.md").write_text("record\n")
+    data = tmp_path / "merged.parquet"
+    data.write_bytes(b"rows")
+    monkeypatch.setattr(paths, "REPO_ROOT", root)
+    monkeypatch.setattr(paths, "RESEARCH_DIR", root / "research")
+    monkeypatch.setattr(s2, "data_files", lambda: [data])
+    return root
+
+
+@pytest.mark.parametrize("module", ["data/uid.py", "data/load.py", "data/splits.py", "features/pit.py",
+                                    "features/sets.py", "fusion/dev_compare.py", "views/orchestrate.py"])  # fmt: skip
+def test_changing_any_module_the_build_can_reach_invalidates_the_store(
+    tmp_path, monkeypatch, module
+):
+    from vaultic.live.store import store_cache_path, store_key
+
+    root = _fake_repo(tmp_path, monkeypatch)
+    before = store_key()
+    f = root / "src" / "vaultic" / module
+    f.write_text("CHANGED = 1\n")
+    after = store_key()
+    assert after != before and store_cache_path(after) != store_cache_path(before)
+    f.write_bytes(b"CHANGED = 1\r\n")  # the same content with other line endings: same key
+    assert store_key() == after
+
+
+def test_parity_key_follows_the_store_key_so_a_data_change_forces_a_full_run(monkeypatch, tmp_path):
+    import vaultic.live.parity as par
+
+    final = tmp_path / "final_results.json"
+    final.write_text("{}")
+    assert par.cache_key(None, [final], store_key="a") != par.cache_key(
+        None, [final], store_key="b"
+    )
+    assert par.cache_key(None, [final], store_key="a") != par.cache_key(None, [final])
+    monkeypatch.setattr(par, "key_files", lambda: [final])
+    monkeypatch.setattr(par, "CACHE_DIR", tmp_path)
+    runs = []
+    monkeypatch.setattr(
+        par, "run_parity", lambda engine, log=None: runs.append(1) or {"passed": True}
+    )
+    engine = lambda key: SimpleNamespace(store=SimpleNamespace(info={"key": key}))  # noqa: E731
+    assert par.cached_parity(engine("data-v1"), None, log=None)["cached"] is False
+    assert par.cached_parity(engine("data-v1"), None, log=None)["cached"] is True
+    assert (
+        par.cached_parity(engine("data-v2"), None, log=None)["cached"] is False
+    )  # new data: full run
+    assert runs == [1, 1]
+
+
+EVENTS_RUN = (
+    Path(__file__).resolve().parents[1] / "experiments/runs/EXP-310-final/20261020-174032-191246"
+)
+
+
+@pytest.mark.skipif(
+    not (EVENTS_RUN / "delay_L0" / "events.json").exists(), reason="needs the EXP-310 run folder"
+)
+def test_committed_exp310_events_match_the_run_folder():
+    """D221: the committed events file is checked against the run whenever the run is present."""
+    from vaultic.reports.feedback_report import OUT_DIR, run_check
+
+    assert run_check(OUT_DIR / "exp310_events.json", EVENTS_RUN, log=lambda m: None) == 0

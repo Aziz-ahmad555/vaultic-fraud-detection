@@ -152,13 +152,16 @@ def _num(x) -> float | None:
 
 
 def build_engine(log=print):
-    """System + store + the final run's stored test scores and E10 threshold."""
-    from vaultic.live.store import build_store
+    """System + store + the final run's stored test scores and E10 threshold. The inputs are
+    checked first and the history store comes from its cache on drive E when it matches (D220)."""
+    from vaultic.live.parity import require_inputs
+    from vaultic.live.store import cached_store
     from vaultic.paths import REPO_ROOT, RESEARCH_DIR
     from vaultic.stage2.final import E10_RUN
 
+    require_inputs()
     system = load_system(log)
-    store = build_store(log)
+    store = cached_store(log)
     stored = pd.read_parquet(REPO_ROOT / E10_RUN / "predictions.parquet").set_index("TransactionID")
     final = json.loads((RESEARCH_DIR / "tables" / "final_results.json").read_text("utf-8"))
     return LiveEngine(store, system, stored, float(final["meta"]["thresholds"]["MVAF"]))

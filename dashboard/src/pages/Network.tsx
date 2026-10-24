@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api } from "../api";
+import { api, DATA_SOURCE } from "../api";
 import type { NetworkNode } from "../api/types";
 import { WhatIfBadge } from "../components/Badges";
 import { NetworkGraph } from "../components/NetworkGraph";
@@ -9,6 +9,10 @@ import { fmtClock } from "../lib/format";
 import { useData } from "../lib/useData";
 import { asOfKey } from "../lib/whatIf";
 import { useApp } from "../state/app";
+
+/** D220: the final-run data has no ring module yet; say so instead of an empty rings panel. */
+export const RINGS_NOT_BUILT = "Ring detection: not yet built. The served final-run data has no ring module, so no rings are shown.";
+const NO_RINGS = DATA_SOURCE === "http";
 
 const TYPE_LABEL: Record<NetworkNode["type"], string> = {
   uid: "Customer",
@@ -43,12 +47,16 @@ export function Network() {
         {focus ? (
           <>
             <button type="button" className="btn" onClick={() => { setFocus(null); setSelected(null); }}>
-              Show all rings
+              {NO_RINGS ? "Back to today's holds and blocks" : "Show all rings"}
             </button>
             <span className="small">Showing two links around {focus.replace(":", " ")}</span>
           </>
         ) : (
-          <span className="small muted">Showing rings: linked customers with at least two confirmed frauds. Click an entity, then expand it.</span>
+          <span className="small muted">
+            {NO_RINGS
+              ? "Showing the entities of today's holds and blocks. Click an entity, then expand it."
+              : "Showing rings: linked customers with at least two confirmed frauds. Click an entity, then expand it."}
+          </span>
         )}
       </div>
       <div className="grid-network">
@@ -56,10 +64,14 @@ export function Network() {
           {net.loading && !net.data && <Loading what="the network" />}
           {net.error && <ErrorState what="the network" error={net.error} onRetry={net.reload} />}
           {net.data && net.data.nodes.length === 0 && (
-            <Empty title="No rings at this as-of time">
-              Rings need at least two confirmed frauds, and labels arrive {asOf.labelDelayDays} days late. Move the as-of date forward or shorten the label
-              delay.
-            </Empty>
+            NO_RINGS ? (
+              <Empty title="No holds or blocks at this as-of time">Move the as-of date forward.</Empty>
+            ) : (
+              <Empty title="No rings at this as-of time">
+                Rings need at least two confirmed frauds, and labels arrive {asOf.labelDelayDays} days late. Move the as-of date forward or shorten the label
+                delay.
+              </Empty>
+            )
           )}
           {net.data && net.data.nodes.length > 0 && (
             <NetworkGraph network={net.data} until={until} focus={focus} onSelect={setSelected} label={`Entity graph with ${net.data.nodes.length} entities and ${shownEdges} links`} />
@@ -84,7 +96,7 @@ export function Network() {
         </section>
         <aside className="pane" aria-label="Details">
           <div className="pane-head">
-            <h2>{node ? TYPE_LABEL[node.type] : "Rings"}</h2>
+            <h2>{node ? TYPE_LABEL[node.type] : NO_RINGS ? "Details" : "Rings"}</h2>
           </div>
           <div className="pane-body">
             {node ? (
@@ -97,17 +109,19 @@ export function Network() {
                   <dt>Confirmed frauds</dt>
                   <dd className="num">{node.knownFraud}</dd>
                   <dt>Ring</dt>
-                  <dd>{node.ring ? `Ring ${node.ring}` : "Not part of a ring"}</dd>
+                  <dd>{NO_RINGS ? "Ring detection: not yet built" : node.ring ? `Ring ${node.ring}` : "Not part of a ring"}</dd>
                 </dl>
                 <div className="actions" style={{ marginTop: 12 }}>
                   <button type="button" className="btn btn-primary" onClick={() => setFocus(node.id)}>
                     Expand this entity
                   </button>
                   <button type="button" className="btn" onClick={() => setSelected(null)}>
-                    Back to rings
+                    {NO_RINGS ? "Back" : "Back to rings"}
                   </button>
                 </div>
               </>
+            ) : NO_RINGS ? (
+              <p className="mock-note small" style={{ whiteSpace: "normal" }} data-testid="rings-not-built">{RINGS_NOT_BUILT}</p>
             ) : net.data && net.data.rings.length ? (
               <table className="data">
                 <caption className="visually-hidden">Rings with confirmed frauds</caption>

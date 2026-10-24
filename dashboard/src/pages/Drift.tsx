@@ -1,11 +1,23 @@
 import { api, DATA_SOURCE } from "../api";
-import { LABEL_DELAYS } from "../api/types";
+import { LABEL_DELAYS, type DriftSimulation } from "../api/types";
 import { HBars, Legend, Lines } from "../components/Charts";
 import { Empty, ErrorState, Loading } from "../components/States";
 import { fmtMoney } from "../lib/format";
 import { useData } from "../lib/useData";
 import { asOfKey } from "../lib/whatIf";
 import { useApp } from "../state/app";
+
+const num = (x: number | null) => (x == null ? "–" : x.toFixed(2));
+
+/** D220: alarms and retraining in http mode are the EXP-310 simulation, said so on the page. */
+export function SimulationNote({ sim }: { sim: DriftSimulation }) {
+  return (
+    <p className="mock-note small" style={{ whiteSpace: "normal" }} data-testid="simulation-note">
+      {sim.label}: seed {sim.seed}, label delay {sim.delay} days, champion: {sim.champion ?? "frozen B5 (EXP-310), not the served MVAF"}. {sim.policies}. Source: {sim.sourceFile} (run {sim.sourceRun}). The Phase 10
+      detector study (E13) was not run, so no other detectors are shown.
+    </p>
+  );
+}
 
 export function Drift() {
   const { asOf, setLabelDelay, range } = useApp();
@@ -79,7 +91,8 @@ export function Drift() {
               <span className="muted small">Up to day {today}</span>
             </div>
             <div className="pane-body">
-              <svg viewBox="0 0 900 96" width={900} height={96} style={{ maxWidth: "100%", height: "auto" }} role="img" aria-label={`Timeline: ${d.data.alarms.length} alarms, ${d.data.retrains.length} retraining attempts`} className="chart">
+              {d.data.simulation && <SimulationNote sim={d.data.simulation} />}
+              <svg viewBox="0 0 900 96" width={900} height={96} style={{ maxWidth: "100%", height: "auto" }} role="img" aria-label={`Timeline: ${d.data.alarms.filter((a) => a.day >= firstDay).length} alarms, ${d.data.retrains.filter((r) => r.day >= firstDay).length} retraining attempts`} className="chart">
                 {(() => {
                   const x = (day: number) => 20 + ((day - firstDay) / Math.max(lastDay - firstDay, 1)) * 860;
                   return (
@@ -94,8 +107,8 @@ export function Drift() {
                           <text x={x(i.day) + 6} y={16} className="chart-tick">{i.kind}</text>
                         </g>
                       ))}
-                      {d.data.alarms.map((a) => (
-                        <g key={`${a.detector}${a.day}`}>
+                      {d.data.alarms.filter((a) => a.day >= firstDay).map((a) => (
+                        <g key={`${a.detector}${a.policy ?? ""}${a.day}`}>
                           {a.detector === "PSI" || a.detector === "Disagreement" ? (
                             <circle cx={x(a.day)} cy={50} r={6} fill="var(--sheet)" stroke="var(--ink)" strokeWidth={2} />
                           ) : (
@@ -104,8 +117,8 @@ export function Drift() {
                           <text x={x(a.day)} y={a.detector === "PSI" || a.detector === "Disagreement" ? (a.detector === "PSI" ? 34 : 24) : a.detector === "ADWIN" ? 72 : 82} textAnchor="middle" className="chart-tick">{a.detector}</text>
                         </g>
                       ))}
-                      {d.data.retrains.map((r) => (
-                        <path key={`rt${r.day}`} d={`M${x(r.day)},58 l6,12 h-12 z`} fill={r.accepted ? "var(--ink)" : "var(--sheet)"} stroke="var(--ink)" />
+                      {d.data.retrains.filter((r) => r.day >= firstDay).map((r) => (
+                        <path key={`rt${r.policy ?? ""}${r.day}`} d={`M${x(r.day)},58 l6,12 h-12 z`} fill={r.accepted ? "var(--ink)" : "var(--sheet)"} stroke="var(--ink)" />
                       ))}
                     </>
                   );
@@ -124,11 +137,21 @@ export function Drift() {
               <h2>Champion–challenger history</h2>
               <span className="muted small">A challenger needs a significant PR-AUC gain (95% CI above 0) and no higher cost (D45)</span>
             </div>
+            {d.data.simulation && (
+              <div className="pane-body">
+                <SimulationNote sim={d.data.simulation} />
+                {d.data.retrains.some((r) => r.day < firstDay) && (
+                  <p className="muted xs">Days before {firstDay} are the simulation's warm-up (deployment from day 121); the timeline above shows the served days only.</p>
+                )}
+              </div>
+            )}
             {d.data.retrains.length === 0 ? (
               <Empty title="No retraining attempts yet">
-                {DATA_SOURCE === "http"
-                  ? "No drift detectors, injected drifts or retraining were run on the final run, so none are shown."
-                  : "They appear after a drift alarm. Move the as-of date past the injected drift on day 139."}
+                {d.data.simulation
+                  ? "No attempt of this seed and delay up to the as-of day. Move the as-of date forward."
+                  : DATA_SOURCE === "http"
+                    ? "No drift detectors, injected drifts or retraining were run on the final run, so none are shown."
+                    : "They appear after a drift alarm. Move the as-of date past the injected drift on day 139."}
               </Empty>
             ) : (
               <div className="table-wrap">
@@ -148,17 +171,20 @@ export function Drift() {
                   </thead>
                   <tbody>
                     {d.data.retrains.map((r) => (
-                      <tr key={r.day}>
+                      <tr key={`${r.policy ?? ""}${r.day}`}>
                         <td className="num">{r.day}</td>
-                        <td>{r.trigger === "alarm" ? "Drift alarm" : "Schedule"}</td>
-                        <td className="num">{r.prChampion.toFixed(2)}</td>
-                        <td className="num">{r.prChallenger.toFixed(2)}</td>
-                        <td className="num">
-                          {r.gainCiLow.toFixed(2)} to {r.gainCiHigh.toFixed(2)}
+                        <td>
+                          {r.trigger === "alarm" ? "Drift alarm" : "Schedule"}
+                          {r.policy && <span className="muted"> ({r.policy})</span>}
                         </td>
-                        <td className="num">{fmtMoney(r.costChampion)}</td>
-                        <td className="num">{fmtMoney(r.costChallenger)}</td>
-                        <td>{r.accepted ? "Replaced the champion" : "Rejected: gain not significant"}</td>
+                        <td className="num">{num(r.prChampion)}</td>
+                        <td className="num">{num(r.prChallenger)}</td>
+                        <td className="num">
+                          {r.gainCiLow == null || r.gainCiHigh == null ? "–" : `${r.gainCiLow.toFixed(3)} to ${r.gainCiHigh.toFixed(3)}`}
+                        </td>
+                        <td className="num">{r.costChampion == null ? "–" : fmtMoney(r.costChampion)}</td>
+                        <td className="num">{r.costChallenger == null ? "–" : fmtMoney(r.costChallenger)}</td>
+                        <td>{r.accepted ? "Replaced the champion" : `Rejected: ${r.reason ?? "gain not significant"}`}</td>
                       </tr>
                     ))}
                   </tbody>

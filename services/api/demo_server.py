@@ -67,6 +67,78 @@ WHATIF_NOTE = "What-if cost mode: illustrative, not the evaluated system"
 SRC = Path(__file__).resolve().parents[2] / "src"
 if str(SRC) not in sys.path:  # the research package (vaultic) for the audit log and the Test Lab
     sys.path.insert(0, str(SRC))
+REPO = SRC.parent
+EXP310_EVENTS = REPO / "research" / "tables" / "feedback" / "exp310_events.json"  # D220
+LADDER_DIR = REPO / "research" / "tables" / "stage2"  # D220: the stage-2 ablation ladder
+RUNG_NAMES = {"rung 1": "Rung 1: tabular (F4)", "rung 2": "Rung 2: + behavioral (E3)",
+              "rung 3": "Rung 3: + temporal (E4)", "rung 4": "Rung 4: + graph (E5)",
+              "rung 5": "Rung 5: + anomaly, all five views (E8)"}  # fmt: skip
+STEP_OF = {"rung 2": "E3 (+behavioral)", "rung 3": "E4 (+temporal)", "rung 4": "E5 (+graph)",
+           "rung 5": "E8 (+anomaly)"}  # fmt: skip
+
+
+def ladder_ablation(ladder_dir: Path = LADDER_DIR) -> tuple[list[dict], list[dict]]:
+    """Model-lab ablation rows from the committed stage-2 ladder (D121, D220): the five rungs as
+    runs (no curves stored) and one row per rung with its step vs the previous rung (PR-AUC,
+    paired bootstrap, Holm across the four steps). Empty when the files are not there."""
+    metrics_f, steps_f = ladder_dir / "ladder_metrics.json", ladder_dir / "ladder_steps.json"
+    if not (metrics_f.exists() and steps_f.exists()):
+        return [], []
+    metrics = {m["method"]: m for m in json.loads(metrics_f.read_text("utf-8"))}
+    steps = {
+        s_["step"]: s_ for s_ in json.loads(steps_f.read_text("utf-8")) if s_["metric"] == "pr_auc"
+    }
+    runs, ablation = [], []
+    for key, name in RUNG_NAMES.items():
+        m = metrics.get(key)
+        if m is None:
+            continue
+        run_id = "ladder-" + key.replace(" ", "-")
+        runs.append({"id": run_id, "name": name, "kind": "ablation", "prAuc": m["pr_auc"],
+                     "ciLow": m["pr_auc_ci_low"], "ciHigh": m["pr_auc_ci_high"],
+                     "recallAt1": m["recall_at_1pct_fpr"], "cost": m["cost"], "pr": [],
+                     "calibration": []})  # fmt: skip
+        st = steps.get(STEP_OF.get(key, ""))
+        row = {"step": name, "runId": run_id,
+               "source": "research/tables/stage2/ladder_metrics.json"}  # fmt: skip
+        if st is not None:
+            row.update(stepDiff=st["diff"], stepCiLow=st["ci_low"], stepCiHigh=st["ci_high"],
+                       stepPHolm=st["p_holm"], stepSupported=bool(st["h1_supported"]),
+                       stepSource="research/tables/stage2/ladder_steps.json")  # fmt: skip
+        ablation.append(row)
+    return runs, ablation
+
+
+def exp310_drift(events: dict | None, delay: int, as_of_day: int, seed: int = 0) -> dict:
+    """EXP-310 alarms and retraining attempts for the Drift monitor (D220): one seed at the
+    chosen label delay, P1 (weekly schedule) and P3 (ADWIN alarm), completed days before the as-of
+    day only (events carry a day, not a time; D221). The champion is the frozen B5, not MVAF."""
+    if not events or str(delay) not in events.get("events", {}):
+        return {"alarms": [], "retrains": [], "simulation": None}
+    rows = [
+        e for e in events["events"][str(delay)] if e.get("seed") == seed and e["day"] < as_of_day
+    ]
+    alarms = [{"day": e["day"], "detector": e.get("detector", "ADWIN"), "policy": e["policy"],
+               "seed": seed} for e in rows if e.get("kind") == "alarm" and e["policy"] == "P3"]  # fmt: skip
+    retrains = []
+    for e in rows:
+        if e.get("kind") != "attempt" or e["policy"] not in ("P1", "P3"):
+            continue
+        retrains.append({"day": e["day"], "trigger": "alarm" if e["policy"] == "P3" else "schedule",
+                         "policy": e["policy"], "seed": seed, "accepted": bool(e.get("accepted")),
+                         "reason": e.get("reason"), "gain": e.get("gain"),
+                         "gainCiLow": e.get("ci_low"), "gainCiHigh": e.get("ci_high"),
+                         "costChampion": e.get("cost_champion"),
+                         "costChallenger": e.get("cost_challenger"),
+                         "prChampion": None, "prChallenger": None})  # fmt: skip
+    return {"alarms": alarms, "retrains": retrains,
+            "simulation": {"label": events["label"], "sourceRun": events["source_run_id"],
+                           "sourceFile": "research/tables/feedback/exp310_events.json",
+                           "seed": seed, "delay": delay,
+                           "champion": "frozen B5 (EXP-310), not the served MVAF",
+                           "policies": "P1: retrain every week (schedule); P3: retrain after an ADWIN alarm"}}  # fmt: skip
+
+
 DEFAULT_BUNDLE = (
     Path(os.environ.get("VAULTIC_DATA_DIR", "data")) / "interim" / "demo_final_bundle.parquet"
 )
@@ -250,8 +322,9 @@ def check_bundle_marker(bundle_path: Path, runs_dir: Path = RUNS_DIR) -> dict:
 
 
 def create_app(
-    bundle_path: Path | None = None, runs_dir: Path = RUNS_DIR, audit_store=None
-) -> FastAPI:
+    bundle_path: Path | None = None, runs_dir: Path = RUNS_DIR, audit_store=None,
+    events_path: Path = EXP310_EVENTS, ladder_dir: Path = LADDER_DIR,
+) -> FastAPI:  # fmt: skip
     bundle_path = Path(bundle_path or os.environ.get("VAULTIC_DEMO_BUNDLE") or DEFAULT_BUNDLE)
     meta = json.loads(bundle_path.with_suffix(".json").read_text("utf-8"))
     check_bundle_marker(bundle_path, runs_dir)  # D154: before any test-period row is read
@@ -279,6 +352,8 @@ def create_app(
     cache_lock = threading.Lock()
     cal_path = bundle_path.with_name("demo_final_calibration.parquet")
     cal = pd.read_parquet(cal_path) if cal_path.exists() else None
+    exp310_events = json.loads(events_path.read_text("utf-8")) if events_path.exists() else None
+    ladder_runs, ladder_rows = ladder_ablation(ladder_dir)
     cost = {
         **meta["cost_model"],
         "hold_success_rate": meta["cost_model"].get("hold_success_rate", 1.0),
@@ -619,20 +694,24 @@ def create_app(
         feats = [{"feature": name, "psi": v} for name, col in inputs_
                  if (v := psi(cal[col].to_numpy(dtype=float), today[col].to_numpy(dtype=float)))
                  is not None]  # fmt: skip
-        # no drift detectors, injected drifts or retraining ran on the final run (Phase 10)
+        # no drift detectors or injected drifts ran on the final run (E13 not run); alarms and
+        # retraining come from the EXP-310 simulation on the test period (D220)
+        sim = exp310_drift(exp310_events, L, int(time // DAY))
         return {
             "reference": "calibration days 147-150 (before the test period)",
             "featurePsi": feats,
             "scorePsi": score_psi,
             "disagreement": dis,
-            "alarms": [],
+            "alarms": sim["alarms"],
             "injected": [],
-            "retrains": [],
+            "retrains": sim["retrains"],
+            "simulation": sim["simulation"],
         }
 
     @app.get("/api/lab")
     def lab():
-        return {"runs": meta["lab"], "ablation": [], "sensitivity": meta["sensitivity"]}
+        return {"runs": meta["lab"] + ladder_runs, "ablation": ladder_rows,
+                "sensitivity": meta["sensitivity"]}  # fmt: skip
 
     @app.post("/api/score")
     def score():

@@ -245,17 +245,37 @@ export interface DriftSeriesPoint {
 export interface DriftAlarm {
   day: number;
   detector: "ADWIN" | "Page-Hinkley" | "PSI" | "Disagreement";
+  /** EXP-310 simulation (D220): the policy and seed the alarm belongs to */
+  policy?: string;
+  seed?: number;
 }
 export interface RetrainEvent {
   day: number;
   trigger: "schedule" | "alarm";
-  prChampion: number;
-  prChallenger: number;
-  gainCiLow: number;
-  gainCiHigh: number;
-  costChampion: number;
-  costChallenger: number;
+  /** null where the source does not store it (EXP-310 stores the gain, not both PR-AUCs) */
+  prChampion: number | null;
+  prChallenger: number | null;
+  gainCiLow: number | null;
+  gainCiHigh: number | null;
+  costChampion: number | null;
+  costChallenger: number | null;
   accepted: boolean;
+  policy?: string;
+  seed?: number;
+  /** the gate's reason, e.g. "insufficient evidence" (EXP-310) */
+  reason?: string | null;
+  gain?: number | null;
+}
+/** Where the Drift monitor's alarms and retraining come from in http mode (D220). */
+export interface DriftSimulation {
+  label: string;
+  sourceRun: string;
+  sourceFile: string;
+  seed: number;
+  delay: number;
+  policies: string;
+  /** D221: the model EXP-310 retrains (the frozen B5), not the MVAF this page serves */
+  champion?: string;
 }
 export interface DriftReport {
   /** what today is compared with; never data after the as-of time (D130) */
@@ -266,6 +286,7 @@ export interface DriftReport {
   alarms: DriftAlarm[];
   injected: { day: number; kind: string }[];
   retrains: RetrainEvent[];
+  simulation?: DriftSimulation | null;
 }
 
 export interface Run {
@@ -285,9 +306,22 @@ export interface CostCell {
   step_up_success_rate: number;
   cost: number;
 }
+/** One ablation row; in http mode from the stage-2 ladder (D121, D220), with its source file. */
+export interface AblationRow {
+  step: string;
+  runId: string;
+  source?: string;
+  /** this rung minus the previous one (PR-AUC, paired bootstrap, Holm across four steps) */
+  stepDiff?: number;
+  stepCiLow?: number;
+  stepCiHigh?: number;
+  stepPHolm?: number;
+  stepSupported?: boolean;
+  stepSource?: string;
+}
 export interface Lab {
   runs: Run[];
-  ablation: { step: string; runId: string }[];
+  ablation: AblationRow[];
   sensitivity: CostCell[];
 }
 
