@@ -12,7 +12,9 @@ A sentence (or a structured fact, D224c) is kept only if
     dotted names) appears as a whole word of the cited lines;
   - a decision word in any form (allowed, held, stepped up, monitoring, blocked ...) cites the case's
     own decision line and matches its decision; about another transaction, it cites that
-    transaction's line, names its id and matches its decision;
+    transaction's line, names its id and matches its decision; about earlier transactions in
+    general, it may cite the customer-history summary line ("their decisions: hold 6") if the fact
+    gives the line's count for that decision, never for the case's own decision (D224e);
   - it does not claim that something was changed (first person or passive: updated, set to, marked,
     dismissed, escalated, closed, overridden ...);
   - a claim that the case is fraud or legitimate ("definitely fraud", "not legitimate", "not fraud"
@@ -28,7 +30,7 @@ import json
 import re
 from dataclasses import dataclass, field
 
-CHECKER_VERSION = "D224d"  # part of the cached-summary key (D224d (5))
+CHECKER_VERSION = "D224e"  # part of the cached-summary key (D224d (5))
 NOT_AVAILABLE = "Not available from the case evidence."
 KNOWN_LABEL = "outcome label: "  # get_case writes "outcome label: fraud (known ...)" when matured
 
@@ -54,6 +56,9 @@ _ACTION = re.compile(
 _ACTION_NAMES = ("allow", "block", "hold", "step_up", "monitor")
 _CASE_DECISION = re.compile(r"^transaction (\d+): .*?\bdecision (\w+)")
 _OTHER_DECISION = re.compile(r"\btransaction (\d+): .*?\bdecision (\w+)")
+_HISTORY_DECISIONS = re.compile(r"\btheir decisions: ([^;]+)")  # get_customer_history summary line
+_EARLIER = re.compile(r"\b(?:earlier|previous|prior|past|history|historical|before)\b", re.I)
+_THIS_CASE = re.compile(r"\b(?:this|the)\s+(?:case|transaction|payment)\b(?!'s)", re.I)
 
 _CHANGE = re.compile(
     r"\b(?:i|we|i've|we've|i'll|we'll|copilot|assistant)\b[^.]{0,30}?\b(?:changed|updated|set|marked|"
@@ -244,6 +249,12 @@ def decision_problem(s: str, cited: list[str]) -> str | None:
             o = _OTHER_DECISION.search(line)
             if not m and o and o.group(2) == a and o.group(1) in fact_ids:
                 ok = True
+            # D224e: the history summary line, for earlier transactions only, with the line's count
+            h = _HISTORY_DECISIONS.search(line)
+            if h and _EARLIER.search(s) and not _THIS_CASE.search(s):
+                counts = {act: n for act, n in re.findall(r"(\w+) (\d+)", h.group(1))}
+                if a in counts and counts[a] in fact_ids:
+                    ok = True
         if not ok:
             case = any(_CASE_DECISION.match(line) for line in cited)
             return (f"decision not in the cited evidence: {a}" if case else

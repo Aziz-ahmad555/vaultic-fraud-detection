@@ -20,7 +20,7 @@ from test_demo_server import DAY, _app, _bundle, _load_module
 from vaultic.copilot.cache import pick_demo_cases
 from vaultic.copilot.check import CHECKER_VERSION, NOT_AVAILABLE
 from vaultic.copilot.llm import LLMUnavailable, OllamaLLM, ScriptedLLM, loopback_host
-from vaultic.copilot.rules import rules_digest
+from vaultic.copilot.rules import max_facts, rules_digest
 from vaultic.copilot.service import Copilot, CopilotError, cached_label
 from vaultic.copilot.tools import BUDGET, LIVE, VIEW_LEVEL
 
@@ -97,7 +97,7 @@ def test_a_streamed_answer_is_a_draft_until_checked(demo):
     assert items["items"]["properties"]["evidence"]["enum"] == [
         x["handle"] for x in final["evidence"]
     ]
-    assert items["maxItems"] == 5
+    assert items["maxItems"] == max_facts()  # the default variant (D224f: V3, 4)
     assert final["answer"].endswith(f"[{final['kept'][0]['citations'][0]}].")
 
 

@@ -23,7 +23,9 @@ VARIANTS = {
                           "says; copy numbers exactly.", "max_facts": 5},
     "V3": {"instruction": "", "max_facts": 4},  # schema with at most 4 facts
 }  # fmt: skip
-VARIANT = "V2"  # chosen by D224c's fixed rule on the dev set (kept-fact rate 52 / 55)
+# D224c's fixed rule on the dev set, re-checked under D224e (D224f): V2 and V3 tie at 10/11 kept;
+# the tie-break (fewer removed facts: V3 4, V2 5) picks V3
+VARIANT = "V3"
 
 
 def system(variant: str | None = None) -> str:

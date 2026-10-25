@@ -271,7 +271,13 @@ field-bound numbers, digit ids and domains; similar cases as counts only; cached
 re-checked and keyed by the checker version; audit for invalid requests and tool errors; proxy-free
 client; OLLAMA_NO_CLOUD=1 in the launcher; refusal misses fixed; probe cases as tests. Stored dev
 drafts re-checked without a model: V1 0.904, V2 0.909, V3 0.909 (V2 and V3 tie at 10/11; the
-tie-break would pick V3). **Open (Aziz's decision):** keep V2 or switch to V3; the default stays V2
-until then.
+tie-break would pick V3).
+
+**D224e / D224f (2026-10-25):** the customer-history summary line supports decision words about earlier
+transactions with the line's count (decided on principle after seeing it touches the ranking). The
+fact it was meant to keep turned out not to be true (2 of 6 in the data, hold 2; D224f corrects the
+earlier "appears correct"), so the rates are unchanged: V1 0.904, V2 0.909, V3 0.909. D224c's rule
+as written picks V3 (tie, fewer removed facts); V3 is the default and its five demo summaries are the
+cache (4 facts each, none removed).
 
 **Next:** D225 (E20 pre-registration, alone) and D226 (UI), on Aziz's go-ahead.

@@ -1,4 +1,4 @@
-# Local-LLM investigation copilot: backend (D222-D224d)
+# Local-LLM investigation copilot: backend (D222-D224f)
 
 Stage 1 of Sprint 2 (roadmap Phase 15, our Phase C (c)): the backend only. The UI (chat panel,
 citation chips, rule-based next checks) waits for D226; the evaluation E20 waits for its own
@@ -50,7 +50,9 @@ model help without letting it state anything the evidence does not support.
      belongs to a field whose name shares a word with the fact, so a number cannot borrow another
      field's value; ids (digits, "_", "."), e-mail domains and other names appear there exactly;
    - a decision word in any form ("held", "stepped up", "monitoring") cites the case's own
-     decision line and matches it (about an earlier transaction: that transaction's line, by id);
+     decision line and matches it (about an earlier transaction: that transaction's line, by id;
+     about earlier transactions in general: the customer-history summary line, with its count,
+     e.g. "their decisions: hold 2" supports "2 earlier transactions were held", D224e);
    - a claim that the case is fraud or legitimate ("definitely fraud", "not legitimate") cites the
      case's own label line, which states a known label of the same polarity;
    - it does not claim that anything was changed (updated, set to, dismissed, escalated, closed ...).
@@ -122,15 +124,24 @@ Endpoints (mounted with `VAULTIC_COPILOT=1`): `GET /api/copilot/status`, `POST /
 - **Review fixes (D224d) re-checked on the stored dev drafts** (the same 60 generations, no model
   run; `E:/dev-cache/copilot/dev_recheck_D224d_20261025-223959.json`): kept-fact rate V1 0.923 ->
   0.904 (47/52), V2 0.945 -> 0.909 (50/55), V3 0.932 -> 0.909 (40/44). V2 and V3 now tie (10/11
-  each); D224c's tie-break (fewer removed facts) would pick V3. The default stays V2 until Aziz
-  decides. Newly removed: "the last transaction was allowed" citing the customer line (a correct
-  catch); "6 earlier transactions, all of which were held" citing the aggregate history line (V1,
-  V2: an aggregate line does not support a decision word under D224d; the fact itself appears
-  correct) and the same claim in V3 for a number whose field name does not match ("history of 6
-  transactions" vs "6 earlier transactions in total"). The five cached V2 demo summaries still keep
-  all their facts (4-5 each, none removed) and are stamped with the checker version.
+  each). Newly removed: "the last transaction was allowed" citing the customer line (a correct
+  catch), and "6 earlier transactions, all of which were held" citing the customer-history summary
+  line in V1 and V2 (V3: "history of 6 transactions", removed by the field binding).
+- **History summary lines (D224e) and a correction (D224f).** D224e lets the customer-history summary
+  line support decision words about earlier transactions when the fact gives the line's count;
+  it was decided after seeing that the rule touches the V2/V3 tie, on the principle that the checker
+  should not remove true facts. Reading the line then showed the "6 ... all held" fact is not true:
+  the line says "6 earlier transactions in total (all periods); 2 of them in the test-period data
+  shown here; their decisions: hold 2", so only 2 are known to be held (D224f corrects the earlier
+  "appears correct"). The count rule removes it, and the re-check under D224e
+  (`E:/dev-cache/copilot/dev_recheck_D224e_20261025-231757.json`) gives the same rates as under
+  D224d: V1 0.904 (47/52), V2 0.909 (50/55), V3 0.909 (40/44). Applying D224c's rule as written
+  (highest rate; ties: fewer removed, then faster): V2 and V3 tie, V3 has fewer removed facts (4 vs
+  5), so **V3 (schema, at most 4 facts) is the default**. Its five demo summaries from the dev run are
+  the cached ones (4 facts each, none removed, 31.6-60.8 s when generated); the V2 cache, re-checked
+  under D224e (4-5 facts each, none removed), is kept beside it.
 - Tests (all with a scripted model, so CI never needs Ollama): `tests/test_copilot_check.py` and
-  `tests/test_copilot_api.py` (111 tests: checker reject cases incl. the review's probe cases,
+  `tests/test_copilot_api.py` (119 tests: checker reject cases incl. the review's probe cases,
   refusals, injection in a tool result, read-only guarantee, one audit entry per request incl.
   invalid ones and tool errors, Test Lab off, loading and on, model not running, proxy-free
   client, evidence budget, cached summaries).

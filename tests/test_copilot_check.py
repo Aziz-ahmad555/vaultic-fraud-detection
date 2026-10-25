@@ -291,7 +291,7 @@ def test_the_dev_selection_rule_is_rate_then_fewer_removed_then_faster():
 
 
 def test_the_default_variant_is_the_one_the_dev_comparison_chose():
-    assert rules.VARIANT == "V2"  # D224c: highest kept-fact rate on the dev set
+    assert rules.VARIANT == "V3"  # D224c's rule on the dev drafts re-checked under D224e (D224f)
 
 
 # ---- the independent review's probe cases (slip.py, D224d) -------------------------------------------
@@ -392,3 +392,36 @@ def test_clock_digits_and_other_fields_never_support_a_number():
         ("id", "13926_100.0"),
         ("id", "151-155"),
     ]
+
+
+# ---- D224e: the customer-history summary line and decision words ------------------------------------
+HISTORY_EV = {
+    **PROBE_EV,
+    "E5": "customer 13926_100.0: 6 earlier transactions in total (all periods); 6 of them in the "
+    "test-period data shown here; their decisions: hold 6; known fraud among them: 0; median amount "
+    "1331.00.",
+}
+
+
+@pytest.mark.parametrize("fact,why", [
+    ("The customer has 6 earlier transactions, all held", None),
+    ("The customer has 6 earlier transactions, all of which were held", None),
+    # known limitation (field binding is word overlap): "previous" is not the line's "earlier"
+    ("The customer's 6 previous transactions were held",
+     "number belongs to another field of the cited evidence: 6"),
+    ("The customer has 6 earlier transactions, 4 of which were held",
+     "number not in the cited evidence: 4"),  # a count the line does not give
+    ("The customer's earlier transactions were held", "decision word must cite the case's own "
+     "decision line: hold"),  # no count
+    ("The customer's earlier transactions were allowed 6 times",
+     "decision word must cite the case's own decision line: allow"),  # wrong decision
+    ("This transaction was held, like the 6 earlier ones",
+     "decision word must cite the case's own decision line: hold"),  # the case's own decision
+    ("The case decision is hold", "decision word must cite the case's own decision line: hold"),
+])  # fmt: skip
+def test_the_history_summary_line_supports_decisions_of_earlier_transactions_only(fact, why):
+    r = check_facts(_facts((fact, "E5")), HISTORY_EV)
+    if why is None:
+        assert r.summary() == {"kept": 1, "removed": 0}, r.removed
+    else:
+        assert [x["why"] for x in r.removed] == [why]
