@@ -2,7 +2,8 @@
 with VAULTIC_COPILOT=1. Read-only: the copilot answers questions about one case from its evidence
 and never changes a decision, label, threshold or setting; one audit entry per request.
 
-  GET  /api/copilot/status    model, whether it is running, Test Lab state, cached summaries
+  GET  /api/copilot/status    model, whether it is running and loaded, Test Lab state, cached summaries
+  GET  /api/copilot/facts     ?case_id=&time=&L=: the case's key facts by code (no model, D226)
   POST /api/copilot/ask       {"case_id", "question", "time", "L" (default 30), "stream" (default
                               true)}: NDJSON events (start, token = draft not yet checked, final =
                               the checked answer, or refused / error); stream=false: the final JSON
@@ -66,6 +67,18 @@ def make_router(copilot) -> APIRouter:
     @router.get("/api/copilot/status")
     def status():
         return copilot.status()
+
+    @router.get("/api/copilot/facts")
+    def facts(case_id: int, time: float, L: int = 30):
+        """The case's key facts, by code from the copilot's tools; no model (D226)."""
+        if L not in LABEL_DELAYS:
+            raise HTTPException(
+                422, f"Label delay must be one of {', '.join(map(str, LABEL_DELAYS))} days."
+            )
+        try:
+            return copilot.facts(case_id, time, L)
+        except CopilotError as e:
+            raise HTTPException(e.status, e.message) from e
 
     @router.post("/api/copilot/ask")
     async def ask(request: Request):

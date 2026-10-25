@@ -138,9 +138,7 @@ def get_reasons(ctx: Ctx) -> list[Item]:
                             f"view contributions in points: {views}."))  # fmt: skip
         return out
     ctx.meta["reasons_source"] = "view-level"
-    state = getattr(ctx.testlab, "state", None)  # D224d: "loading" / "refused" / "error", not "off"
-    note = (VIEW_LEVEL.replace("is off", f"failed ({why_not})") if why_not is not None else
-            VIEW_LEVEL.replace("is off", f"is {state}") if ctx.testlab is not None else VIEW_LEVEL)  # fmt: skip
+    note = view_level_note(ctx, why_not)
     out = [Item(f"case:{tid}/reasons", "get_reasons", f"reasons source: {note}.")]
     w, row = ctx.case["weights"], ctx.case["row"]
     for r in ctx.case.get("reasons", []):
@@ -153,6 +151,28 @@ def get_reasons(ctx: Ctx) -> list[Item]:
                         f"points (gate weight {w[v]:.2f}, view probability "
                         f"{num(row.get(f'p_{v}'), '{:.3f}')})."))  # fmt: skip
     return out
+
+
+def view_level_note(ctx: Ctx, why_not: str | None) -> str:
+    state = getattr(ctx.testlab, "state", None)  # D224d: "loading" / "refused" / "error", not "off"
+    return (VIEW_LEVEL.replace("is off", f"failed ({why_not})") if why_not is not None else
+            VIEW_LEVEL.replace("is off", f"is {state}") if ctx.testlab is not None else VIEW_LEVEL)  # fmt: skip
+
+
+def reason_facts(ctx: Ctx, k: int = 5) -> tuple[str, list[dict]]:
+    """(source label, top reasons as {"text", "points"}) for the page's key facts (D226): the
+    same live / view-level choice as get_reasons, as data instead of evidence lines."""
+    try:
+        live, why_not = _live_reasons(ctx), None
+    except Exception as e:
+        live, why_not = None, f"{type(e).__name__}"
+    if live is not None:
+        rs = [{"text": clean(r["text"], None, 110), "points": float(r["points"])}
+              for r in live.get("reasons", [])[:k]]  # fmt: skip
+        return LIVE, rs
+    rs = [{"text": clean(r.get("text", ""), None, 110), "points": float(r["points"])}
+          for r in ctx.case.get("reasons", [])[:k]]  # fmt: skip
+    return view_level_note(ctx, why_not), rs
 
 
 def get_view_scores(ctx: Ctx) -> list[Item]:

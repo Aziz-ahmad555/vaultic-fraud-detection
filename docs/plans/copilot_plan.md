@@ -295,4 +295,11 @@ model: unchanged (V1 0.904, V2 0.909, V3 0.909); V3 stays the default; cache re-
 (104.50 -> 105). Review probes as tests; remaining limitations listed in the thesis note. Dev drafts
 re-checked without a model: unchanged (V1 0.904, V2 0.909, V3 0.909); V3 stays; cache re-checked.
 
-**Next:** D225 (E20 pre-registration, alone) and D226 (UI), on Aziz's go-ahead.
+**Part 3 done (2026-10-26): UI (D226).** Key facts card (by code, read-only facts endpoint), copilot
+panel (cached / live summary, suggested questions, streamed schema answers with citation chips and an
+evidence list, removed-facts note, not-available and refusal states), rule-based next checks, explicit
+states (not enabled, Ollama not running, model not loaded, Test Lab off / loading, errors), permanent
+read-only note, mock mode. Browser-checked against the real backend with Ollama on (cached and live)
+and off; screenshots in `docs/thesis_notes/img/`.
+
+**Next:** D225 (E20 pre-registration, alone), on Aziz's go-ahead.

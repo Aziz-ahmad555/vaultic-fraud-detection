@@ -1,8 +1,8 @@
-# Local-LLM investigation copilot: backend (D222-D224i)
+# Local-LLM investigation copilot: backend and UI (D222-D226)
 
-Stage 1 of Sprint 2 (roadmap Phase 15, our Phase C (c)): the backend only. The UI (chat panel,
-citation chips, rule-based next checks) waits for D226; the evaluation E20 waits for its own
-pre-registration (D225). The copilot is a COULD item (D31) taken up at Aziz's request.
+Sprint 2 (roadmap Phase 15, our Phase C (c)): the backend (D222-D224i) and the UI on the Cases
+page (D226). The evaluation E20 waits for its own pre-registration (D225, not started). The copilot
+is a COULD item (D31) taken up at Aziz's request.
 
 ## What it is
 A question-answering helper for one case on the analyst's laptop. An analyst asks "why was this
@@ -182,6 +182,65 @@ Endpoints (mounted with `VAULTIC_COPILOT=1`): `GET /api/copilot/status`, `POST /
   invalid ones and tool errors, Test Lab off, loading and on, model not running, proxy-free
   client, evidence budget, cached summaries).
 
+## The UI on the Cases page (D226)
+Right under the case header, three parts, and a permanent note:
+1. **Key facts** (always visible, rendered by code, never by the model): decision, calibrated fraud
+   probability, expected loss, conformal set, the top reasons with their source label (live
+   frozen-system reasons when the Test Lab is ready, otherwise view-level reasons with the Test
+   Lab's state: off, loading, refused), and the outcome label only once it has matured. The card
+   reads a read-only endpoint, `GET /api/copilot/facts`, that runs the copilot's own case and reasons
+   tools (same as-of cut and label curtain), with no model and no audit entry (a read, like opening
+   the case).
+2. **Copilot panel**: one-click *Case summary* (a cached one is labelled "cached, generated at
+   <time> by <model>" and is checked again by the current checker when shown; otherwise it is
+   generated live with a progress state); a question box with three suggested questions ("Why was
+   this flagged?", "What is unusual about this customer?", "Which views drove the score?"); the
+   answer streams as a draft (complete facts appear as they arrive, marked "draft, not yet checked")
+   and is replaced by the checked facts (at most 4, V3), each with clickable citation chips that
+   highlight and scroll to the cited line in an *Evidence* list; a removed-facts note with the reasons
+   ("1 fact removed: decision count not in the customer-history line"); a "Not available from the
+   case evidence" state; and a refusal state with the fixed message.
+3. **Suggested next checks**, labelled "rules, not AI": fixed rules on the case's own fields (graph
+   view missing, other missing views, uncertain conformal set, view disagreement of 0.3 or more,
+   cold start, new device, other customers on the card, label not known yet), each with its reason.
+4. **States**: copilot not enabled on the backend (start with `VAULTIC_COPILOT=1`), Ollama not
+   running (the backend's message with the start hint; questions are disabled, cached summaries
+   still work), model not loaded yet (the first answer loads it; the status gains a `loaded` field
+   from Ollama's `/api/ps`, read again after every answer), Test Lab off / loading / refused, and
+   errors (the backend's message).
+5. **Permanent note**: "Read-only assistant: it cannot change decisions, labels or settings. Every
+   fact is checked against the cited evidence; meaning is not checked automatically." with the model
+   id and "not the evaluated detection system".
+6. **Mock mode** (no backend, no Ollama): a scripted copilot built from the mock case, every answer
+   labelled "Mock: scripted answers, no language model".
+
+Code: `dashboard/src/api/copilot.ts` (NDJSON stream client and the mock),
+`dashboard/src/components/{KeyFacts,CopilotPanel,NextChecks}.tsx`, `dashboard/src/lib/nextChecks.ts`.
+
+### Browser check (2026-10-26, real backend, Test Lab off; not research numbers)
+Run against the demo backend with `VAULTIC_COPILOT=1` (audit entries to a separate check log on
+drive E, so the real audit log was not touched) and the dashboard built in http mode, at the as-of
+time day 151, 23:00, label delay 30 days:
+
+| case | what | result |
+|---|---|---|
+| 3485718 (cached demo case, highest-risk step-up) | Case summary | served from the cache, labelled "cached, generated at 2026-10-24 22:58 UTC by qwen2.5:7b-instruct-q4_K_M"; 4 checked facts, 0 removed; chip E14 highlighted its evidence line |
+| 3485759 (not cached) | "Why was this flagged?" | live, 74 s including the model load; 1 checked fact (it copies the whole decision line: correct but not helpful) |
+| 3485763 (not cached) | Case summary | live, 86.7 s; draft facts appeared while streaming; 4 checked facts, 0 removed |
+| 3485718, Ollama stopped | page and Case summary | "not running" with the start hint, questions disabled; the cached summary still served |
+| 3485759, Ollama stopped | Case summary | the backend's 503 message with the start hint |
+
+The check log held exactly one audit entry per request (7 entries, chain verified). Two UI fixes came
+out of the check: a cached answer no longer shows "(0 s)" (it says the facts were checked again
+now), and the "model not loaded yet" note is cleared once an answer has loaded the model.
+
+Screenshots (`docs/thesis_notes/img/`): `copilot_1_key_facts.jpg`, `copilot_2_cached_summary.jpg`,
+`copilot_3_live_summary_streaming.jpg`, `copilot_4_live_summary_checked.jpg`,
+`copilot_5_ollama_off_cached_still_served.jpg`, `copilot_6_ollama_off_live_503.jpg`.
+
+Tests: 24 new dashboard tests (every panel state, key facts and the label curtain, next checks, the
+stream client), 106 dashboard tests in all; type check and build pass.
+
 ## Limitations
 Remaining limitations of the checker (D224i), all measured by E20 rather than fixed by more rules:
 - **Negation** is not checked ("6 earlier transactions were not held", "The device was not seen
@@ -222,5 +281,7 @@ Remaining limitations of the checker (D224i), all measured by E20 rather than fi
   wording.
 - Cached summaries are of the evidence at the case's decision time with the Test Lab off; with the
   Test Lab on, the evidence differs and the summary is generated live.
+- The UI shows what the checker kept, so a correct but unhelpful fact (a copy of a whole evidence line)
+  is shown as it is; the Key facts card, rendered by code, is the reference on every case.
 - A 7B model on this CPU is slow (about 1-1.5 minutes for a first question); summaries of other
   cases take longer.

@@ -331,7 +331,7 @@ def test_the_copilot_reads_only_through_the_read_accessor_and_changes_nothing(de
     paths = demo.app.openapi()["paths"]
     routes = {(p, m.upper()) for p, ms in paths.items() if p.startswith("/api/copilot") for m in ms}
     assert routes == {("/api/copilot/status", "GET"), ("/api/copilot/ask", "POST"),
-                      ("/api/copilot/summary", "POST")}  # fmt: skip
+                      ("/api/copilot/summary", "POST"), ("/api/copilot/facts", "GET")}  # fmt: skip
 
 
 def test_the_copilot_is_mounted_only_when_asked(demo, monkeypatch):
@@ -596,3 +596,40 @@ def test_the_ollama_client_ignores_proxy_settings(monkeypatch):
         OllamaLLM(model="m:1", host=f"http://127.0.0.1:{srv.server_address[1]}").check()
     finally:
         srv.shutdown()
+
+
+# ---- D226: key facts by code, model loaded or not ---------------------------------------------------
+def test_key_facts_are_rendered_by_code_with_the_label_curtain_and_the_reasons_source(demo):
+    client, _ = mount(demo, ScriptedLLM("unused"))
+    n = len(audit_entries(demo))
+    f = client.get(
+        "/api/copilot/facts", params={"case_id": demo.tid, "time": AS_OF, "L": 30}
+    ).json()
+    row = demo.df.set_index("TransactionID").loc[demo.tid]
+    assert f["decision"] == row["action"] and f["p"] == pytest.approx(row["p"])
+    assert f["label"] is None and f["label_delay_days"] == 30  # not matured at noon of its own day
+    assert f["reasons_source"] == VIEW_LEVEL and f["reasons"][0]["points"] == 12.0
+    assert "no language model" in f["source"]
+    late = client.get("/api/copilot/facts", params={"case_id": demo.tid, "time": 190 * DAY}).json()
+    assert late["label"] == int(row["label"])  # matured with L = 30
+    assert (
+        client.get(
+            "/api/copilot/facts", params={"case_id": demo.tid, "time": AS_OF, "L": 14}
+        ).status_code
+        == 422
+    )
+    late_case = int(demo.df.loc[demo.df["TransactionDT"] > AS_OF, "TransactionID"].iloc[0])
+    assert (
+        client.get("/api/copilot/facts", params={"case_id": late_case, "time": AS_OF}).status_code
+        == 404
+    )
+    assert len(audit_entries(demo)) == n  # a read, not a question: not audited
+
+
+def test_status_says_whether_the_model_is_loaded(demo):
+    client, _ = mount(demo, ScriptedLLM("x"))
+    s = client.get("/api/copilot/status").json()
+    assert s["llm"] == "ready" and s["loaded"] is True and s["variant"] == "V3"
+    down = Copilot(demo.app.state.read, OllamaLLM(host=f"http://127.0.0.1:{free_port()}"))
+    s = down.status()
+    assert "not running" in s["llm"] and s["loaded"] is None

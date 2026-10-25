@@ -76,6 +76,16 @@ class OllamaLLM:
             raise LLMUnavailable(f"The model {self.model} is not installed in Ollama "
                                  f"(installed: {', '.join(sorted(n for n in names if n)) or 'none'}).")  # fmt: skip
 
+    def loaded(self) -> bool | None:
+        """Whether the model is in memory now (Ollama's /api/ps); None when that cannot be read.
+        The first answer after a start loads it (about 20 s on this laptop, D223)."""
+        try:
+            with self._open("/api/ps", timeout=5) as r:
+                names = {m.get("name") for m in json.loads(r.read()).get("models", [])}
+        except (urllib.error.URLError, OSError, ValueError):
+            return None
+        return self.model in names
+
     def stream(
         self, messages: list[dict], max_tokens: int, schema: dict | None = None
     ) -> Iterator[str]:
@@ -116,6 +126,9 @@ class ScriptedLLM:
     def check(self) -> None:
         if not self.available:
             raise LLMUnavailable(f"The local language model is not running: {START_HINT}.")
+
+    def loaded(self) -> bool | None:
+        return self.available
 
     def stream(
         self, messages: list[dict], max_tokens: int, schema: dict | None = None

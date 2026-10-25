@@ -5,6 +5,9 @@ import type { Feedback, ScoreInput, ScoreResult, Transaction } from "../api/type
 import { ACTION_LABEL, VIEWS, VIEW_LABEL } from "../api/types";
 import { DecisionBadge, LockIcon, RiskCell, WhatIfReportNote, labelText, setText } from "../components/Badges";
 import { Braid } from "../components/Braid";
+import { CopilotPanel } from "../components/CopilotPanel";
+import { KeyFacts } from "../components/KeyFacts";
+import { NextChecks } from "../components/NextChecks";
 import { LiveReasons } from "../components/LiveReasons";
 import { NetworkGraph } from "../components/NetworkGraph";
 import { ReasonList } from "../components/Reasons";
@@ -342,6 +345,10 @@ export function Case() {
                 </div>
               </dl>
             </header>
+            {/* D226: key facts by code, the read-only copilot, and rule-based next checks */}
+            <KeyFacts t={t} asOf={asOf} />
+            <CopilotPanel t={t} asOf={asOf} />
+            <NextChecks t={t} asOf={asOf} />
             <div className="section">
               <h2>Evidence braid</h2>
               <Braid size="large" weights={t.weights} scores={viewScores(t)} reasons={t.reasons} risk={t.decision.p} />

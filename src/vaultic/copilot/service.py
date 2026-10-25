@@ -32,7 +32,7 @@ from typing import Any
 from vaultic.copilot import rules
 from vaultic.copilot.check import CHECKER_VERSION, check_facts
 from vaultic.copilot.llm import LLM, LLMUnavailable
-from vaultic.copilot.tools import BUDGET, TOOLS, Ctx, Evidence, network_ids, render
+from vaultic.copilot.tools import BUDGET, TOOLS, Ctx, Evidence, network_ids, reason_facts, render
 
 ACTIONS = {"question": "Copilot question", "summary": "Copilot summary"}
 MAX_TOKENS = {"question": 260, "summary": 260}  # the JSON carries keys and whitespace (D224c)
@@ -102,11 +102,31 @@ class Copilot:
         except LLMUnavailable as e:
             llm = str(e)
         svc = self.testlab()
-        return {"model": self.llm.model, "llm": llm,
+        loaded = getattr(self.llm, "loaded", lambda: None)() if llm == "ready" else None
+        return {"model": self.llm.model, "llm": llm, "loaded": loaded, "variant": self.variant,
                 "testlab": "not mounted" if svc is None else getattr(svc, "state", "unknown"),
                 "reasons": "live frozen-system reasons" if svc is not None and
                            getattr(svc, "state", None) == "ready" else "view-level reasons",
                 "cached_summaries": len(self.cache), "note": NOTE.format(model=self.llm.model)}  # fmt: skip
+
+    # ---- key facts (D226) --------------------------------------------------------------------
+    def facts(self, tid: int, time: float, L: int) -> dict:
+        """The case's key facts for the page's Key facts card, by code from the copilot's own
+        tools (same as-of cut, label curtain and live / view-level choice): no model. A read like
+        opening the case page, so it is not audited."""
+        case = self.read.transaction(int(tid), float(time), int(L))
+        if case is None:
+            raise CopilotError(404, f"Transaction {tid} is not a case at this time.")
+        ctx = Ctx(self.read, int(tid), float(time), int(L), case, self.testlab(), [])
+        source, reasons = reason_facts(ctx)
+        d, svc = case["decision"], self.testlab()
+        return {"case": int(tid), "amount": case["amount"], "product": case["product"],
+                "decision": d["action"], "p": d["p"], "expected_loss": d["expected_loss"],
+                "conformal_set": d["conformal_set"], "disagreement": d["disagreement"],
+                "label": case["row"].get("label"), "label_delay_days": int(L),
+                "reasons_source": source, "reasons": reasons,
+                "testlab": "not mounted" if svc is None else getattr(svc, "state", "unknown"),
+                "source": "rendered by code from the case evidence; no language model"}  # fmt: skip
 
     # ---- audit -------------------------------------------------------------------------------
     def _audit(self, prep: Prepared, outcome: str, result: dict | None = None,
