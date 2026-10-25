@@ -285,4 +285,9 @@ case claims; the history line only for words whose own clause names the earlier 
 rule with its own reason). Dev drafts re-checked without a model: unchanged (V1 0.904, V2 0.909, V3
 0.909); V3 stays the default; cache re-checked (4 facts each, none removed).
 
+**D224h (2026-10-26):** conservative decision rule instead of clause parsing (any case reference ->
+only the case's own decision line; otherwise the history line only for "<N> earlier transactions ...
+<decision>" with N equal to the line's count). Review probes as tests. Dev drafts re-checked without a
+model: unchanged (V1 0.904, V2 0.909, V3 0.909); V3 stays the default; cache re-checked.
+
 **Next:** D225 (E20 pre-registration, alone) and D226 (UI), on Aziz's go-ahead.

@@ -1,4 +1,4 @@
-# Local-LLM investigation copilot: backend (D222-D224g)
+# Local-LLM investigation copilot: backend (D222-D224h)
 
 Stage 1 of Sprint 2 (roadmap Phase 15, our Phase C (c)): the backend only. The UI (chat panel,
 citation chips, rule-based next checks) waits for D226; the evaluation E20 waits for its own
@@ -52,10 +52,13 @@ model help without letting it state anything the evidence does not support.
    - a decision word in any form ("held", "stepped up", "monitoring") cites the case's own
      decision line and matches it (about an earlier transaction: that transaction's line, by id;
      about earlier transactions in general: the customer-history summary line, with its count,
-     e.g. "their decisions: hold 2" supports "2 earlier transactions were held", D224e). Words
-     are attributed clause by clause (D224g): only a word whose own clause names the earlier
-     transactions may use that line; "It was held, like the 6 earlier transactions" is a claim
-     about the case and needs the case's own decision line;
+     e.g. "their decisions: hold 2" supports "2 earlier transactions were held", D224e). The rule
+     is conservative (D224h): a fact with any case reference ("it", "this", "that one", "the
+     case", "the transaction", or "both", "too", "also", "as well", "as was", "so was", "like",
+     "unlike", "same as", "similar to", "following", "after", "given", "with") gets no support
+     from the history line for any decision word, only from the case's own decision line; without
+     one, the history line supports a decision word only in "<N> earlier transactions ...
+     <decision>", N directly attached to "earlier transactions" and equal to the line's count;
    - a claim that the case is fraud or legitimate ("definitely fraud", "not legitimate") cites the
      case's own label line, which states a known label of the same polarity;
    - it does not claim that anything was changed (updated, set to, dismissed, escalated, closed ...).
@@ -149,13 +152,28 @@ Endpoints (mounted with `VAULTIC_COPILOT=1`): `GET /api/copilot/status`, `POST /
   (`E:/dev-cache/copilot/dev_recheck_D224g_20261026-004333.json`, no model): unchanged, V1 0.904
   (47/52), V2 0.909 (50/55), V3 0.909 (40/44); D224c's rule still picks V3. The cached V3 summaries
   keep all their facts (4 each) under checker version D224g.
+- **Conservative decision rule (D224h)**, after a further narrow review in which D224g's clause
+  parsing still kept 12 of the reviewer's case claims ("After 6 earlier transactions it was held",
+  "The case and the 6 earlier transactions were held", "6 earlier transactions over 2 periods were
+  held" against "hold 2" ...). Rule-based clause parsing cannot cover all English phrasings, and a
+  false removal is harmless (the case page's key facts show the truth) while a false keep is harmful,
+  so any case reference now rules out the history line. All probes of the review (probe_d224g.py,
+  probe_prior.py) are tests. Re-check of the stored dev drafts
+  (`E:/dev-cache/copilot/dev_recheck_D224h_20261026-013611.json`, no model): unchanged, V1 0.904
+  (47/52), V2 0.909 (50/55), V3 0.909 (40/44), no fact newly removed; D224c's rule still picks V3;
+  the cached V3 summaries keep all their facts (4 each) under checker version D224h.
 - Tests (all with a scripted model, so CI never needs Ollama): `tests/test_copilot_check.py` and
-  `tests/test_copilot_api.py` (119 tests: checker reject cases incl. the review's probe cases,
+  `tests/test_copilot_api.py` (181 tests: checker reject cases incl. the review's probe cases,
   refusals, injection in a tool result, read-only guarantee, one audit entry per request incl.
   invalid ones and tool errors, Test Lab off, loading and on, model not running, proxy-free
   client, evidence budget, cached summaries).
 
 ## Limitations
+- **Decision claims are checked by a conservative rule, not by understanding** (D224h). Over-strict
+  removals are accepted: a true history fact is removed when it also contains a case-reference word
+  ("6 earlier transactions, all held, with a median amount of 1331.00") or gives its count another
+  way ("6 earlier transactions in total, 2 of them held"). Unusual phrasings may still slip through:
+  the checker is rule-based, and E20 measures what it misses.
 - **Not checked: negation, comparisons and numbers written as words.** "The device was not seen
   before" citing a line that says "device seen before yes" is kept, and so is "over one thousand
   dollars"; a comparison ("higher than usual") is not verified. E20 measures these with human labels

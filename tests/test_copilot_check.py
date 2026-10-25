@@ -474,3 +474,111 @@ def test_the_count_rule_removes_a_history_claim_whose_count_the_line_does_not_gi
         "decision count not in the customer-history line: hold"
     ]
     assert check_facts(_facts(("The 2 earlier transactions in the data were held", "E5")), ev).kept
+
+
+# ---- D224h: the conservative decision rule; the review's probe_d224g.py and probe_prior.py ---------
+D224G_EV = {
+    **STEP_UP_EV,  # E1: the case, decision step_up; E5: "... their decisions: hold 6 ..."
+    "E7": "customer 164178: 6 earlier transactions in total (all periods); 2 of them in the "
+    "test-period data shown here; their decisions: hold 2; known fraud among them: 0; median amount "
+    "1331.00.",
+}
+CASE_HOLD = "decision word must cite the case's own decision line: hold"
+COUNT_HOLD = "decision count not in the customer-history line: hold"
+PROBE_D224G = [  # (fact, handle, expected reason; None = kept)
+    # a case reference anywhere: the history line supports no decision word
+    ("After 6 earlier transactions it was held", "E5", CASE_HOLD),
+    ("With 6 earlier transactions this one was held", "E5", CASE_HOLD),
+    ("Given the 6 earlier transactions that were held, this one was held too", "E5", CASE_HOLD),
+    ("Following 6 earlier transactions this case was held", "E5", CASE_HOLD),
+    ("Both it and the 6 earlier transactions were held", "E5", CASE_HOLD),
+    ("The case and the 6 earlier transactions were held", "E5", CASE_HOLD),
+    ("This transaction and the 6 earlier transactions were held", "E5", CASE_HOLD),
+    ("The 6 earlier transactions were held, as was this one", "E5", CASE_HOLD),
+    ("The 6 earlier transactions were held, like this one", "E5", CASE_HOLD),
+    ("The 6 earlier transactions were held, and so was it", "E5", CASE_HOLD),
+    ("The 6 earlier transactions were held, the same as this case", "E5", CASE_HOLD),
+    ("It, like the 6 earlier transactions, was held", "E5", CASE_HOLD),
+    ("Like the 6 earlier transactions, it was held", "E5", CASE_HOLD),
+    ("Similar to the 6 earlier transactions, it was held", "E5", CASE_HOLD),
+    ("Held just like the 6 earlier transactions", "E5", CASE_HOLD),
+    ("That one was held as well as the 6 earlier transactions", "E5", CASE_HOLD),
+    ("It came after 6 earlier transactions, all held", "E5", CASE_HOLD),
+    # "<N> earlier transactions ... <decision>" with the line's count (hold 6)
+    ("6 earlier transactions, all held", "E5", None),
+    ("6 earlier transactions, each held", "E5", None),
+    ("6 earlier transactions, every one held", "E5", None),
+    ("The 6 earlier transactions were held", "E5", None),
+    # counts against "6 earlier transactions in total ...; their decisions: hold 2"
+    ("All 6 earlier transactions were held", "E7", COUNT_HOLD),
+    ("The 6 earlier transactions were held", "E7", COUNT_HOLD),
+    ("The 2 earlier transactions in the data were held", "E7", None),
+    ("6 earlier transactions in total, 2 of them held", "E7",
+     "number belongs to another field of the cited evidence: 2"),
+    ("Of 6 earlier transactions, 2 were held", "E7",
+     "number belongs to another field of the cited evidence: 2"),
+    ("6 earlier transactions over 2 periods were held", "E7", COUNT_HOLD),  # N attached is 6
+    # the case's own line, with a history part it cannot support
+    ("It was stepped up, unlike the 6 earlier transactions that were held", "E1",
+     "number not in the cited evidence: 6"),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize("fact,handle,why", PROBE_D224G)
+def test_review_probe_d224g(fact, handle, why):
+    r = check_facts(_facts((fact, handle)), D224G_EV)
+    if why is None:
+        assert r.summary() == {"kept": 1, "removed": 0}, r.removed
+    else:
+        assert [x["why"] for x in r.removed] == [why]
+
+
+PRIOR_EV = {
+    "E1": STEP_UP_EV["E1"],
+    "E3": "outcome label: legit (known after the 30-day label delay)",
+    "E4": "outcome label not known yet (label delay 30 days)",
+    "E6": "earlier transaction 3400001: amount 20.00; decision allow; outcome label: fraud",
+    "E8": "card 13926: email domain gmail.com; device SM-G930V",
+}
+PROBE_PRIOR = [
+    ("It's fraud", "E3", "label claim disagrees with the cited label"),
+    ("The case is not legitimate", "E3", "label claim disagrees with the cited label"),
+    ("The case is legitimate", "E3", None),
+    ("The case is not fraud", "E4", "claims an outcome label that is not known yet"),
+    ("The case is definitely fraud", "E6", "a label claim must cite the case's own label line"),
+    ("Transaction 3400001 was fraud", "E6", None),
+    ("It was stepping up", "E1", None),
+    ("The transaction was allowed", "E1", "decision not in the cited evidence: allow"),
+    ("The decision was step up", "E1", None),
+    ("Transaction 3400001 was allowed", "E6", None),
+    ("The case was allowed", "E6", "decision word must cite the case's own decision line: allow"),
+    ("The decision has been overridden", "E1", "claims a change (the copilot cannot change anything)"),
+    ("I marked it for review", "E1", "claims a change (the copilot cannot change anything)"),
+    ("The decision is now allow", "E1", "claims a change (the copilot cannot change anything)"),
+    ("The fraud probability is 0.350", "E1",
+     "number belongs to another field of the cited evidence: 0.350"),
+    ("The fraud probability is 0.912", "E1", None),
+    ("The amount was 104", "E1", None),  # 104.50 rounded to the sentence's 0 decimals
+    ("It happened at 03:15 on day 153", "E1", None),
+    ("The amount was 15", "E1", "number not in the cited evidence: 15"),
+    ("The email domain is mail.com", "E8", "id not in the cited evidence: mail.com"),
+    ("The email domain is gmail.com", "E8", None),
+    ("The card is 1392", "E8", "number not in the cited evidence: 1392"),
+    ("Device SM-G930 was used", "E8", "id not in the cited evidence: SM-G930"),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize("fact,handle,why", PROBE_PRIOR)
+def test_review_probe_prior(fact, handle, why):
+    r = check_facts(_facts((fact, handle)), PRIOR_EV)
+    if why is None:
+        assert r.summary() == {"kept": 1, "removed": 0}, r.removed
+    else:
+        assert [x["why"] for x in r.removed] == [why]
+
+
+def test_a_history_fact_with_any_case_reference_is_removed_even_when_true():
+    # accepted cost of D224h: "with" is a case reference, so this true history fact is removed
+    r = check_facts(_facts(("6 earlier transactions, all held, with a median amount of 1331.00", "E5")),
+                    D224G_EV)  # fmt: skip
+    assert [x["why"] for x in r.removed] == [CASE_HOLD]

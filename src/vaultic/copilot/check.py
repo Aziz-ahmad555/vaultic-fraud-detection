@@ -14,10 +14,10 @@ A sentence (or a structured fact, D224c) is kept only if
     own decision line and matches its decision; about another transaction, it cites that
     transaction's line, names its id and matches its decision; about earlier transactions in
     general, it may cite the customer-history summary line ("their decisions: hold 6") if the fact
-    gives the line's count for that decision, never for the case's own decision (D224e); words are
-    attributed clause by clause: only a word whose own clause names the earlier transactions (or
-    "all / each ..." after a clause that does) may use that line; pronouns ("it was held"), bare
-    words and comparisons ("held, like the 6 earlier transactions") are case claims (D224g);
+    gives "<N> earlier transactions ... <decision>" with N equal to the line's count (D224e), and
+    only when the fact has no case reference at all ("it", "this", "the case", "like", "with" ...);
+    a fact with a case reference needs the case's own decision line for every decision word. This
+    is conservative on purpose: false removals are accepted, false keeps are not (D224h);
   - it does not claim that something was changed (first person or passive: updated, set to, marked,
     dismissed, escalated, closed, overridden ...);
   - a claim that the case is fraud or legitimate ("definitely fraud", "not legitimate", "not fraud"
@@ -33,7 +33,7 @@ import json
 import re
 from dataclasses import dataclass, field
 
-CHECKER_VERSION = "D224g"  # part of the cached-summary key (D224d (5))
+CHECKER_VERSION = "D224h"  # part of the cached-summary key (D224d (5))
 NOT_AVAILABLE = "Not available from the case evidence."
 KNOWN_LABEL = "outcome label: "  # get_case writes "outcome label: fraud (known ...)" when matured
 
@@ -60,12 +60,14 @@ _ACTION_NAMES = ("allow", "block", "hold", "step_up", "monitor")
 _CASE_DECISION = re.compile(r"^transaction (\d+): .*?\bdecision (\w+)")
 _OTHER_DECISION = re.compile(r"\btransaction (\d+): .*?\bdecision (\w+)")
 _HISTORY_DECISIONS = re.compile(r"\btheir decisions: ([^;]+)")  # get_customer_history summary line
-# D224g: clauses and the subject of a decision word
-_CLAUSE_SPLIT = re.compile(r"[,;]|\b(?:like|unlike|as|while|whereas|but|and|similar\s+to|"
-                           r"compared\s+(?:to|with))\b", re.I)  # fmt: skip
-_EARLIER_NOUN = re.compile(r"\b(?:earlier|previous|prior|past)\s+(?:\w+\s+)?(?:transactions?|"
-                           r"payments?)\b", re.I)  # fmt: skip
-_BACKREF = re.compile(r"^\s*(?:all|each|both|most|none)\b", re.I)
+# D224h: a conservative rule instead of clause parsing. Any case reference -> only the case's own
+# decision line; otherwise the history line only for "<N> earlier transactions ... <decision>"
+_CASE_REF = re.compile(
+    r"\b(?:it|it's|this|that\s+one|both|too|also|as\s+well|as\s+was|so\s+was|like|unlike|same\s+as|"
+    r"similar\s+to|following|after|given|with)\b|(?<!earlier\s)\bthe\s+(?:case|transaction|payment)\b",
+    re.I,
+)
+_N_EARLIER = re.compile(r"(?<![\w.])(\d+)\s+earlier\s+transactions\b", re.I)
 
 _CHANGE = re.compile(
     r"\b(?:i|we|i've|we've|i'll|we'll|copilot|assistant)\b[^.]{0,30}?\b(?:changed|updated|set|marked|"
@@ -236,55 +238,57 @@ def id_supported(token: str, cited_lower: str) -> bool:
 # ---- decisions and labels ------------------------------------------------------------------------
 def actions(text: str) -> set[str]:
     """The decision words of a text in any form, as the five action names."""
-    out = set()
+    return set(actions_in_order(text))
+
+
+def actions_in_order(text: str) -> list[str]:
+    """The decision words of a text as action names, in the order they appear (repeats dropped)."""
+    out: list[str] = []
     for m in _ACTION.finditer(_CITE.sub(" ", text)):
-        out.add(next(n for n, g in zip(_ACTION_NAMES, m.groups(), strict=True) if g))
+        a = next(n for n, g in zip(_ACTION_NAMES, m.groups(), strict=True) if g)
+        if a not in out:
+            out.append(a)
     return out
 
 
-def _earlier_subject(clauses: list[str], i: int) -> str | None:
-    """The text whose count applies when clause i's decision word belongs to the earlier
-    transactions (D224g): the clause names them before the word, or it starts with all / each /
-    both / most / none and the previous clause names them. None: a claim about the case."""
-    c = clauses[i]
-    first = _ACTION.search(c)
-    named = _EARLIER_NOUN.search(c)
-    if named and first and named.start() < first.start():
-        return c
-    if _BACKREF.match(c) and i > 0 and _EARLIER_NOUN.search(clauses[i - 1]):
-        return clauses[i - 1] + " " + c
-    return None
-
-
 def decision_problem(s: str, cited: list[str]) -> str | None:
-    """Every decision word is attributed to a subject clause by clause (D224d, D224e, D224g)."""
-    clauses = [c for c in _CLAUSE_SPLIT.split(_CITE.sub(" ", s)) if c and c.strip()]
+    """Decision words, conservatively (D224h; replaces D224e's and D224g's attribution):
+    - a fact with any case reference ("it", "this", "the case", "like", "with" ...): every decision
+      word needs the case's own decision line, cited and matching;
+    - otherwise a named transaction's own line supports its decision by id, and the
+      customer-history line supports a decision word only in "<N> earlier transactions ...
+      <decision>", N directly attached to "earlier transactions" and equal to the line's count.
+    False removals are accepted; false keeps are not."""
+    text = _CITE.sub(" ", s)
+    words = actions_in_order(text)
+    if not words:
+        return None
     case_cited = any(_CASE_DECISION.match(line) for line in cited)
-    for i, clause in enumerate(clauses):
-        for a in actions(clause):
-            nums = {v for k, v in values(clause) if k == "num"}
-            # a named transaction's own line (e.g. "earlier transaction 3400001 was stepped up")
+    case_ref = bool(_CASE_REF.search(text))
+    nums = {v for k, v in values(text) if k == "num"}
+    lines = [h for line in cited if (h := _HISTORY_DECISIONS.search(line))]
+    counts = {act: n for h in lines for act, n in re.findall(r"(\w+) (\d+)", h.group(1))}
+    for a in words:
+        if any((m := _CASE_DECISION.match(line)) and m.group(2) == a for line in cited):
+            continue  # the case's own decision line supports it
+        if not case_ref:
             if any((o := _OTHER_DECISION.search(line)) and not _CASE_DECISION.match(line)
                    and o.group(2) == a and o.group(1) in nums for line in cited):  # fmt: skip
-                continue
-            earlier = _earlier_subject(clauses, i)
-            if earlier is not None:  # the earlier transactions: the history line with its count
-                count_nums = {v for k, v in values(earlier) if k == "num"}
-                lines = [h for line in cited if (h := _HISTORY_DECISIONS.search(line))]
-                counts = {
-                    act: n for h in lines for act, n in re.findall(r"(\w+) (\d+)", h.group(1))
-                }
-                if a in counts and counts[a] in count_nums:
+                continue  # a named transaction's own line, by id
+            if lines:  # "<N> earlier transactions" before this decision word, N = the line's count
+                attached = [m for m in _N_EARLIER.finditer(text)
+                            if any(w.start() > m.end() and _action_name(w) == a
+                                   for w in _ACTION.finditer(text))]  # fmt: skip
+                if a in counts and any(m.group(1) == counts[a] for m in attached):
                     continue
-                if lines:
-                    return f"decision count not in the customer-history line: {a}"
-                return f"decision not in the cited evidence: {a}"
-            # a claim about the case (pronouns, bare words and comparisons included)
-            if any((m := _CASE_DECISION.match(line)) and m.group(2) == a for line in cited):
-                continue
-            return (f"decision not in the cited evidence: {a}" if case_cited else
-                    f"decision word must cite the case's own decision line: {a}")  # fmt: skip
+                return f"decision count not in the customer-history line: {a}"
+        return (f"decision not in the cited evidence: {a}" if case_cited else
+                f"decision word must cite the case's own decision line: {a}")  # fmt: skip
     return None
+
+
+def _action_name(m: re.Match) -> str:
+    return next(n for n, g in zip(_ACTION_NAMES, m.groups(), strict=True) if g)
 
 
 def label_problem(s: str, cited: list[str]) -> str | None:
