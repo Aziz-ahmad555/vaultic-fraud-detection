@@ -1,4 +1,4 @@
-# Local-LLM investigation copilot: backend (D222-D224h)
+# Local-LLM investigation copilot: backend (D222-D224i)
 
 Stage 1 of Sprint 2 (roadmap Phase 15, our Phase C (c)): the backend only. The UI (chat panel,
 citation chips, rule-based next checks) waits for D226; the evaluation E20 waits for its own
@@ -58,7 +58,12 @@ model help without letting it state anything the evidence does not support.
      "unlike", "same as", "similar to", "following", "after", "given", "with") gets no support
      from the history line for any decision word, only from the case's own decision line; without
      one, the history line supports a decision word only in "<N> earlier transactions ...
-     <decision>", N directly attached to "earlier transactions" and equal to the line's count;
+     <decision>", N directly attached to "earlier transactions" and equal to the line's count. A
+     fact that names earlier / previous / prior / past / other transactions or payments never uses
+     the case's own decision line (D224i), and the case-reference list also has "current",
+     "present", "new one", "this one", "the flagged", "here", "now", "is the current", "so is";
+   - numbers are rounded half-up from the evidence text (Decimal, D224i): 104.50 supports "105"
+     but not "104", 2.675 supports "2.68", 0.145 supports "15%";
    - a claim that the case is fraud or legitimate ("definitely fraud", "not legitimate") cites the
      case's own label line, which states a known label of the same polarity;
    - it does not claim that anything was changed (updated, set to, dismissed, escalated, closed ...).
@@ -162,13 +167,34 @@ Endpoints (mounted with `VAULTIC_COPILOT=1`): `GET /api/copilot/status`, `POST /
   (`E:/dev-cache/copilot/dev_recheck_D224h_20261026-013611.json`, no model): unchanged, V1 0.904
   (47/52), V2 0.909 (50/55), V3 0.909 (40/44), no fact newly removed; D224c's rule still picks V3;
   the cached V3 summaries keep all their facts (4 each) under checker version D224h.
+- **D224i**, after a further narrow review: a regression of D224h let the case's decision line
+  support "The earlier transactions were stepped up" (and the prose "6 earlier transactions were
+  stepped up [E1, E5]"); now a fact about earlier or other transactions cannot use the case line.
+  The case-reference list was extended (the review's 7 phrasings outside the old list are all
+  removed), and rounding uses Decimal half-up on the evidence text instead of float round() (the
+  earlier test "The amount was 104" for 104.50 is now removed and "105" kept). Re-check of the stored
+  dev drafts (`E:/dev-cache/copilot/dev_recheck_D224i_20261026-021137.json`, no model): unchanged,
+  V1 0.904 (47/52), V2 0.909 (50/55), V3 0.909 (40/44), no fact newly removed or kept; V3 stays;
+  the cached V3 summaries keep all their facts under checker version D224i.
 - Tests (all with a scripted model, so CI never needs Ollama): `tests/test_copilot_check.py` and
-  `tests/test_copilot_api.py` (181 tests: checker reject cases incl. the review's probe cases,
+  `tests/test_copilot_api.py` (206 tests: checker reject cases incl. the review's probe cases,
   refusals, injection in a tool result, read-only guarantee, one audit entry per request incl.
   invalid ones and tool errors, Test Lab off, loading and on, model not running, proxy-free
   client, evidence budget, cached summaries).
 
 ## Limitations
+Remaining limitations of the checker (D224i), all measured by E20 rather than fixed by more rules:
+- **Negation** is not checked ("6 earlier transactions were not held", "The device was not seen
+  before" are kept when the cited line says the opposite).
+- **Numbers written as words** are not checked ("over one thousand dollars").
+- **Phrasings outside the case-reference word list** can still slip through: the list is fixed,
+  not an understanding of the sentence.
+- **"earlier the payment"**: "... and earlier the payment was held" is not a case reference (the
+  spec exempts "the payment" after "earlier"), so a case claim written this way can be kept.
+- **Field binding is word overlap**: a number must sit in a field that shares a word with the fact,
+  so fields with near-identical names ("amount b", "amount c") cannot be told apart, and a correct
+  fact that names its field differently is removed.
+
 - **Decision claims are checked by a conservative rule, not by understanding** (D224h). Over-strict
   removals are accepted: a true history fact is removed when it also contains a case-reference word
   ("6 earlier transactions, all held, with a median amount of 1331.00") or gives its count another

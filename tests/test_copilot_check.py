@@ -441,14 +441,14 @@ STEP_UP_EV = {
 @pytest.mark.parametrize("fact,handle,why", [
     # a case claim with a pronoun or a comparison (the case is a step-up)
     ("It was held, like the 6 earlier transactions", "E5",
-     "decision word must cite the case's own decision line: hold"),
+     "mixes the case and earlier or other transactions: hold"),
     ("It was held, like the 6 earlier transactions", "E1",
      "number not in the cited evidence: 6"),
     ("That one was held too", "E5", "decision word must cite the case's own decision line: hold"),
     ("Held, like the customer history of 6 earlier transactions", "E5",
-     "decision word must cite the case's own decision line: hold"),
+     "mixes the case and earlier or other transactions: hold"),
     ("It was stepped up, unlike the 6 earlier transactions that were held", "E5",
-     "decision word must cite the case's own decision line: step_up"),
+     "mixes the case and earlier or other transactions: step_up"),
     # the earlier transactions themselves
     ("The 6 earlier transactions were held", "E5", None),
     ("The customer has 6 earlier transactions, all held", "E5", None),
@@ -484,26 +484,27 @@ D224G_EV = {
     "1331.00.",
 }
 CASE_HOLD = "decision word must cite the case's own decision line: hold"
+MIXED_HOLD = "mixes the case and earlier or other transactions: hold"  # D224i
 COUNT_HOLD = "decision count not in the customer-history line: hold"
 PROBE_D224G = [  # (fact, handle, expected reason; None = kept)
     # a case reference anywhere: the history line supports no decision word
-    ("After 6 earlier transactions it was held", "E5", CASE_HOLD),
-    ("With 6 earlier transactions this one was held", "E5", CASE_HOLD),
-    ("Given the 6 earlier transactions that were held, this one was held too", "E5", CASE_HOLD),
-    ("Following 6 earlier transactions this case was held", "E5", CASE_HOLD),
-    ("Both it and the 6 earlier transactions were held", "E5", CASE_HOLD),
-    ("The case and the 6 earlier transactions were held", "E5", CASE_HOLD),
-    ("This transaction and the 6 earlier transactions were held", "E5", CASE_HOLD),
-    ("The 6 earlier transactions were held, as was this one", "E5", CASE_HOLD),
-    ("The 6 earlier transactions were held, like this one", "E5", CASE_HOLD),
-    ("The 6 earlier transactions were held, and so was it", "E5", CASE_HOLD),
-    ("The 6 earlier transactions were held, the same as this case", "E5", CASE_HOLD),
-    ("It, like the 6 earlier transactions, was held", "E5", CASE_HOLD),
-    ("Like the 6 earlier transactions, it was held", "E5", CASE_HOLD),
-    ("Similar to the 6 earlier transactions, it was held", "E5", CASE_HOLD),
-    ("Held just like the 6 earlier transactions", "E5", CASE_HOLD),
-    ("That one was held as well as the 6 earlier transactions", "E5", CASE_HOLD),
-    ("It came after 6 earlier transactions, all held", "E5", CASE_HOLD),
+    ("After 6 earlier transactions it was held", "E5", MIXED_HOLD),
+    ("With 6 earlier transactions this one was held", "E5", MIXED_HOLD),
+    ("Given the 6 earlier transactions that were held, this one was held too", "E5", MIXED_HOLD),
+    ("Following 6 earlier transactions this case was held", "E5", MIXED_HOLD),
+    ("Both it and the 6 earlier transactions were held", "E5", MIXED_HOLD),
+    ("The case and the 6 earlier transactions were held", "E5", MIXED_HOLD),
+    ("This transaction and the 6 earlier transactions were held", "E5", MIXED_HOLD),
+    ("The 6 earlier transactions were held, as was this one", "E5", MIXED_HOLD),
+    ("The 6 earlier transactions were held, like this one", "E5", MIXED_HOLD),
+    ("The 6 earlier transactions were held, and so was it", "E5", MIXED_HOLD),
+    ("The 6 earlier transactions were held, the same as this case", "E5", MIXED_HOLD),
+    ("It, like the 6 earlier transactions, was held", "E5", MIXED_HOLD),
+    ("Like the 6 earlier transactions, it was held", "E5", MIXED_HOLD),
+    ("Similar to the 6 earlier transactions, it was held", "E5", MIXED_HOLD),
+    ("Held just like the 6 earlier transactions", "E5", MIXED_HOLD),
+    ("That one was held as well as the 6 earlier transactions", "E5", MIXED_HOLD),
+    ("It came after 6 earlier transactions, all held", "E5", MIXED_HOLD),
     # "<N> earlier transactions ... <decision>" with the line's count (hold 6)
     ("6 earlier transactions, all held", "E5", None),
     ("6 earlier transactions, each held", "E5", None),
@@ -558,7 +559,9 @@ PROBE_PRIOR = [
     ("The fraud probability is 0.350", "E1",
      "number belongs to another field of the cited evidence: 0.350"),
     ("The fraud probability is 0.912", "E1", None),
-    ("The amount was 104", "E1", None),  # 104.50 rounded to the sentence's 0 decimals
+    # D224i: Decimal half-up on the evidence text: 104.50 -> 105 (was kept as 104 before)
+    ("The amount was 104", "E1", "number not in the cited evidence: 104"),
+    ("The amount was 105", "E1", None),
     ("It happened at 03:15 on day 153", "E1", None),
     ("The amount was 15", "E1", "number not in the cited evidence: 15"),
     ("The email domain is mail.com", "E8", "id not in the cited evidence: mail.com"),
@@ -581,4 +584,68 @@ def test_a_history_fact_with_any_case_reference_is_removed_even_when_true():
     # accepted cost of D224h: "with" is a case reference, so this true history fact is removed
     r = check_facts(_facts(("6 earlier transactions, all held, with a median amount of 1331.00", "E5")),
                     D224G_EV)  # fmt: skip
-    assert [x["why"] for x in r.removed] == [CASE_HOLD]
+    assert [x["why"] for x in r.removed] == [MIXED_HOLD]
+
+
+# ---- D224i: the case line never supports a fact about other transactions; wider case references --
+OTHER_TX = "a decision about earlier or other transactions needs their own line: step_up"
+
+
+@pytest.mark.parametrize("fact", ["The earlier transactions were stepped up",
+                                  "The customer's other payments were stepped up",
+                                  "The customer's earlier transactions were all stepped up"])  # fmt: skip
+def test_the_case_decision_line_cannot_support_a_fact_about_other_transactions(fact):
+    r = check_facts(_facts((fact, "E1")), D224G_EV)  # E1: the case, decision step_up
+    assert [x["why"] for x in r.removed] == [OTHER_TX]
+
+
+def test_prose_citing_the_case_line_and_the_history_line_is_removed():
+    r = check("6 earlier transactions were stepped up [E1, E5].", D224G_EV)  # E5: "hold 6"
+    assert [x["why"] for x in r.removed] == [
+        "decision count not in the customer-history line: step_up"
+    ]
+
+
+PROBE_MINE_B = [  # the review's (b) probes: phrasings outside the D224h list, all removed now
+    "6 earlier transactions were held and so is the current one",
+    "6 earlier transactions were held, as is the current transaction",
+    "6 earlier transactions were held; the present payment was held",
+    "6 earlier transactions were held, as here",
+    "6 earlier transactions were held, the new one was held",
+    "6 earlier transactions were held, and so was the one under review",
+    "6 earlier transactions were held and the flagged transaction was held",
+]
+
+
+@pytest.mark.parametrize("fact", PROBE_MINE_B)
+def test_review_probe_mine_b(fact):
+    r = check_facts(_facts((fact, "E5")), D224G_EV)
+    assert [x["why"] for x in r.removed] == [MIXED_HOLD]
+
+
+def test_earlier_the_payment_is_a_documented_limitation():
+    # follows the spec as written: "the payment" preceded by "earlier" is not a case reference
+    r = check_facts(_facts(("6 earlier transactions were held and earlier the payment was held",
+                            "E5")), D224G_EV)  # fmt: skip
+    assert r.summary() == {"kept": 1, "removed": 0}
+
+
+# ---- D224i: Decimal ROUND_HALF_UP on the evidence text ---------------------------------------------
+ROUND_EV = {
+    "E1": "amount 104.50.",
+    "E2": "ratio 2.675.",
+    "E3": "calibrated fraud probability 0.145.",
+    "E4": "expected loss 0.125.",
+}
+
+
+@pytest.mark.parametrize("fact,handle,kept", [
+    ("The amount was 105", "E1", True), ("The amount was 104", "E1", False),
+    ("The amount was 104.5", "E1", True), ("The amount was 104.0", "E1", False),
+    ("The ratio was 2.68", "E2", True), ("The ratio was 2.67", "E2", False),
+    ("The fraud probability was 15%", "E3", True), ("The fraud probability was 14%", "E3", False),
+    ("The fraud probability was 14.5%", "E3", True), ("The fraud probability was 0.15", "E3", True),
+    ("The expected loss was 0.13", "E4", True), ("The expected loss was 0.12", "E4", False),
+])  # fmt: skip
+def test_numbers_are_rounded_half_up_from_the_evidence_text(fact, handle, kept):
+    assert bool(check_facts(_facts((fact, handle)), ROUND_EV).kept) is kept

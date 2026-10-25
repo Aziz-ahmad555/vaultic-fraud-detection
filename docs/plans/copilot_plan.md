@@ -290,4 +290,9 @@ only the case's own decision line; otherwise the history line only for "<N> earl
 <decision>" with N equal to the line's count). Review probes as tests. Dev drafts re-checked without a
 model: unchanged (V1 0.904, V2 0.909, V3 0.909); V3 stays the default; cache re-checked.
 
+**D224i (2026-10-26):** a fact about earlier / other transactions cannot use the case's decision line
+(regression fix); case-reference list extended; Decimal half-up rounding on the evidence text
+(104.50 -> 105). Review probes as tests; remaining limitations listed in the thesis note. Dev drafts
+re-checked without a model: unchanged (V1 0.904, V2 0.909, V3 0.909); V3 stays; cache re-checked.
+
 **Next:** D225 (E20 pre-registration, alone) and D226 (UI), on Aziz's go-ahead.

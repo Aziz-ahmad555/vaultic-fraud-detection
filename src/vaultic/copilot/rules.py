@@ -24,7 +24,7 @@ VARIANTS = {
     "V3": {"instruction": "", "max_facts": 4},  # schema with at most 4 facts
 }  # fmt: skip
 # Chosen by D224c's fixed rule on the dev set (one generation per variant), with the stored drafts
-# re-checked by the current checker (D224h, no model): kept V1 47/52, V2 50/55, V3 40/44; V2 and V3
+# re-checked by the current checker (D224i, no model): kept V1 47/52, V2 50/55, V3 40/44; V2 and V3
 # tie at 10/11 and the tie-break (fewer removed facts: V3 4, V2 5) picks V3 (D224f)
 VARIANT = "V3"
 

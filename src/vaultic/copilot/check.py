@@ -32,8 +32,9 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from decimal import ROUND_HALF_UP, Decimal
 
-CHECKER_VERSION = "D224h"  # part of the cached-summary key (D224d (5))
+CHECKER_VERSION = "D224i"  # part of the cached-summary key (D224d (5))
 NOT_AVAILABLE = "Not available from the case evidence."
 KNOWN_LABEL = "outcome label: "  # get_case writes "outcome label: fraud (known ...)" when matured
 
@@ -63,10 +64,15 @@ _HISTORY_DECISIONS = re.compile(r"\btheir decisions: ([^;]+)")  # get_customer_h
 # D224h: a conservative rule instead of clause parsing. Any case reference -> only the case's own
 # decision line; otherwise the history line only for "<N> earlier transactions ... <decision>"
 _CASE_REF = re.compile(
-    r"\b(?:it|it's|this|that\s+one|both|too|also|as\s+well|as\s+was|so\s+was|like|unlike|same\s+as|"
-    r"similar\s+to|following|after|given|with)\b|(?<!earlier\s)\bthe\s+(?:case|transaction|payment)\b",
+    r"\b(?:it|it's|this|this\s+one|that\s+one|both|too|also|as\s+well|as\s+was|so\s+was|so\s+is|"
+    r"is\s+the\s+current|like|unlike|same\s+as|similar\s+to|following|after|given|with|current|"
+    r"present|new\s+one|the\s+flagged|here|now)\b|"  # D224i: current ... now
+    r"(?<!earlier\s)\bthe\s+(?:case|transaction|payment)\b",
     re.I,
 )
+# D224i: a fact about earlier / other transactions cannot use the case's own decision line
+_OTHER_TX = re.compile(r"\b(?:earlier|previous|prior|past|other)\s+(?:\w+\s+)?(?:transactions?|"
+                       r"payments?)\b", re.I)  # fmt: skip
 _N_EARLIER = re.compile(r"(?<![\w.])(\d+)\s+earlier\s+transactions\b", re.I)
 
 _CHANGE = re.compile(
@@ -156,14 +162,24 @@ def _value(num: str) -> tuple[float, int, bool]:
     return float(core), decimals, pct
 
 
-def number_supported(num: str, evidence_numbers: list[float]) -> bool:
-    v, d, pct = _value(num)
-    for e in evidence_numbers:
-        if abs(e - v) < 1e-9:
+def _decimal(x) -> Decimal:
+    return Decimal(str(x).strip("$%").replace(",", ""))
+
+
+def number_supported(num: str, evidence_numbers: list) -> bool:
+    """The sentence's number against evidence values (their TEXT, D224i): exact, or the evidence
+    rounded half-up to the sentence's decimals (integers below 10 exact), or "x%" for a value
+    between 0 and 1 times 100, rounded half-up. Decimal, so 104.50 -> 105 and 2.675 -> 2.68."""
+    _, d, pct = _value(num)
+    v = _decimal(num)
+    step = Decimal(1).scaleb(-d)
+    for raw in evidence_numbers:
+        e = _decimal(raw)
+        if e == v:
             return True
-        if (d >= 1 or abs(e) >= 10) and round(e, d) == v:
+        if (d >= 1 or abs(e) >= 10) and e.quantize(step, ROUND_HALF_UP) == v:
             return True
-        if pct and 0 <= e <= 1 and round(e * 100, d) == v:
+        if pct and 0 <= e <= 1 and (e * 100).quantize(step, ROUND_HALF_UP) == v:
             return True
     return False
 
@@ -201,7 +217,7 @@ def number_problem(s: str, cited: list[str]) -> str | None:
             continue
         ok = False
         for seg_words, seg_values in segments:
-            nums = [_value(v)[0] for k, v in seg_values if k == "num"]
+            nums = [v for k, v in seg_values if k == "num"]  # the evidence text (D224i)
             if not number_supported(val, nums):
                 continue
             need = seg_words - _GENERIC
@@ -209,7 +225,7 @@ def number_problem(s: str, cited: list[str]) -> str | None:
                 ok = True
                 break
         if not ok:
-            found = any(number_supported(val, [_value(v)[0]]) for k, v in all_values if k == "num")
+            found = any(number_supported(val, [v]) for k, v in all_values if k == "num")
             return (f"number belongs to another field of the cited evidence: {val}" if found
                     else f"number not in the cited evidence: {val}")  # fmt: skip
     return None
@@ -258,6 +274,8 @@ def decision_problem(s: str, cited: list[str]) -> str | None:
     - otherwise a named transaction's own line supports its decision by id, and the
       customer-history line supports a decision word only in "<N> earlier transactions ...
       <decision>", N directly attached to "earlier transactions" and equal to the line's count.
+    - a fact that names earlier / previous / prior / past / other transactions or payments never
+      uses the case's own decision line (D224i).
     False removals are accepted; false keeps are not."""
     text = _CITE.sub(" ", s)
     words = actions_in_order(text)
@@ -268,8 +286,11 @@ def decision_problem(s: str, cited: list[str]) -> str | None:
     nums = {v for k, v in values(text) if k == "num"}
     lines = [h for line in cited if (h := _HISTORY_DECISIONS.search(line))]
     counts = {act: n for h in lines for act, n in re.findall(r"(\w+) (\d+)", h.group(1))}
+    other_tx = bool(_OTHER_TX.search(text))  # D224i: about earlier / other transactions
     for a in words:
-        if any((m := _CASE_DECISION.match(line)) and m.group(2) == a for line in cited):
+        if not other_tx and any(
+            (m := _CASE_DECISION.match(line)) and m.group(2) == a for line in cited
+        ):
             continue  # the case's own decision line supports it
         if not case_ref:
             if any((o := _OTHER_DECISION.search(line)) and not _CASE_DECISION.match(line)
@@ -282,6 +303,10 @@ def decision_problem(s: str, cited: list[str]) -> str | None:
                 if a in counts and any(m.group(1) == counts[a] for m in attached):
                     continue
                 return f"decision count not in the customer-history line: {a}"
+        if other_tx and case_ref:
+            return f"mixes the case and earlier or other transactions: {a}"
+        if other_tx:
+            return f"a decision about earlier or other transactions needs their own line: {a}"
         return (f"decision not in the cited evidence: {a}" if case_cited else
                 f"decision word must cite the case's own decision line: {a}")  # fmt: skip
     return None
