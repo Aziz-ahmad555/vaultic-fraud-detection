@@ -411,10 +411,10 @@ HISTORY_EV = {
      "number belongs to another field of the cited evidence: 6"),
     ("The customer has 6 earlier transactions, 4 of which were held",
      "number not in the cited evidence: 4"),  # a count the line does not give
-    ("The customer's earlier transactions were held", "decision word must cite the case's own "
-     "decision line: hold"),  # no count
+    ("The customer's earlier transactions were held",
+     "decision count not in the customer-history line: hold"),  # no count
     ("The customer's earlier transactions were allowed 6 times",
-     "decision word must cite the case's own decision line: allow"),  # wrong decision
+     "decision count not in the customer-history line: allow"),  # wrong decision
     ("This transaction was held, like the 6 earlier ones",
      "decision word must cite the case's own decision line: hold"),  # the case's own decision
     ("The case decision is hold", "decision word must cite the case's own decision line: hold"),
@@ -425,3 +425,52 @@ def test_the_history_summary_line_supports_decisions_of_earlier_transactions_onl
         assert r.summary() == {"kept": 1, "removed": 0}, r.removed
     else:
         assert [x["why"] for x in r.removed] == [why]
+
+
+# ---- D224g: decision words are attributed clause by clause --------------------------------------------
+STEP_UP_EV = {
+    "E1": "transaction 3510090: amount 104.50, product W, day 153 at 03:15; decision step_up (frozen "
+    "cost rule); calibrated fraud probability 0.912; expected loss 95.30; conformal set {1}; view "
+    "disagreement 0.350.",
+    "E5": HISTORY_EV[
+        "E5"
+    ],  # "... 6 earlier transactions in total ...; their decisions: hold 6; ..."
+}
+
+
+@pytest.mark.parametrize("fact,handle,why", [
+    # a case claim with a pronoun or a comparison (the case is a step-up)
+    ("It was held, like the 6 earlier transactions", "E5",
+     "decision word must cite the case's own decision line: hold"),
+    ("It was held, like the 6 earlier transactions", "E1",
+     "number not in the cited evidence: 6"),
+    ("That one was held too", "E5", "decision word must cite the case's own decision line: hold"),
+    ("Held, like the customer history of 6 earlier transactions", "E5",
+     "decision word must cite the case's own decision line: hold"),
+    ("It was stepped up, unlike the 6 earlier transactions that were held", "E5",
+     "decision word must cite the case's own decision line: step_up"),
+    # the earlier transactions themselves
+    ("The 6 earlier transactions were held", "E5", None),
+    ("The customer has 6 earlier transactions, all held", "E5", None),
+    # the case claim alone, citing the case's own decision line
+    ("It was stepped up", "E1", None),
+    ("It was held", "E1", "decision not in the cited evidence: hold"),
+])  # fmt: skip
+def test_decision_words_are_attributed_to_the_case_or_the_earlier_transactions(fact, handle, why):
+    r = check_facts(_facts((fact, handle)), STEP_UP_EV)
+    if why is None:
+        assert r.summary() == {"kept": 1, "removed": 0}, r.removed
+    else:
+        assert [x["why"] for x in r.removed] == [why]
+
+
+def test_the_count_rule_removes_a_history_claim_whose_count_the_line_does_not_give():
+    ev = {"E5": "customer 164178: 6 earlier transactions in total (all periods); 2 of them in the "
+                "test-period data shown here; their decisions: hold 2; known fraud among them: 0; "
+                "median amount 1331.00."}  # fmt: skip
+    r = check_facts(_facts(("All 6 earlier transactions were held", "E5")), ev)
+    # 6 is a whole value of a matching field (the number rule passes); the COUNT rule removes it
+    assert [x["why"] for x in r.removed] == [
+        "decision count not in the customer-history line: hold"
+    ]
+    assert check_facts(_facts(("The 2 earlier transactions in the data were held", "E5")), ev).kept

@@ -1,4 +1,4 @@
-# Local-LLM investigation copilot: backend (D222-D224f)
+# Local-LLM investigation copilot: backend (D222-D224g)
 
 Stage 1 of Sprint 2 (roadmap Phase 15, our Phase C (c)): the backend only. The UI (chat panel,
 citation chips, rule-based next checks) waits for D226; the evaluation E20 waits for its own
@@ -52,7 +52,10 @@ model help without letting it state anything the evidence does not support.
    - a decision word in any form ("held", "stepped up", "monitoring") cites the case's own
      decision line and matches it (about an earlier transaction: that transaction's line, by id;
      about earlier transactions in general: the customer-history summary line, with its count,
-     e.g. "their decisions: hold 2" supports "2 earlier transactions were held", D224e);
+     e.g. "their decisions: hold 2" supports "2 earlier transactions were held", D224e). Words
+     are attributed clause by clause (D224g): only a word whose own clause names the earlier
+     transactions may use that line; "It was held, like the 6 earlier transactions" is a claim
+     about the case and needs the case's own decision line;
    - a claim that the case is fraud or legitimate ("definitely fraud", "not legitimate") cites the
      case's own label line, which states a known label of the same polarity;
    - it does not claim that anything was changed (updated, set to, dismissed, escalated, closed ...).
@@ -140,6 +143,12 @@ Endpoints (mounted with `VAULTIC_COPILOT=1`): `GET /api/copilot/status`, `POST /
   5), so **V3 (schema, at most 4 facts) is the default**. Its five demo summaries from the dev run are
   the cached ones (4 facts each, none removed, 31.6-60.8 s when generated); the V2 cache, re-checked
   under D224e (4-5 facts each, none removed), is kept beside it.
+- **Clause-by-clause attribution (D224g)**, after a narrow review: pronoun and comparison claims
+  ("It was held, like the 6 earlier transactions") are case claims; a wrong history count is removed
+  by the count rule with its own reason. Re-check of the stored dev drafts
+  (`E:/dev-cache/copilot/dev_recheck_D224g_20261026-004333.json`, no model): unchanged, V1 0.904
+  (47/52), V2 0.909 (50/55), V3 0.909 (40/44); D224c's rule still picks V3. The cached V3 summaries
+  keep all their facts (4 each) under checker version D224g.
 - Tests (all with a scripted model, so CI never needs Ollama): `tests/test_copilot_check.py` and
   `tests/test_copilot_api.py` (119 tests: checker reject cases incl. the review's probe cases,
   refusals, injection in a tool result, read-only guarantee, one audit entry per request incl.

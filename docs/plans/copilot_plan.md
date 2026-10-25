@@ -280,4 +280,9 @@ earlier "appears correct"), so the rates are unchanged: V1 0.904, V2 0.909, V3 0
 as written picks V3 (tie, fewer removed facts); V3 is the default and its five demo summaries are the
 cache (4 facts each, none removed).
 
+**D224g (2026-10-26):** decision words attributed clause by clause (pronoun and comparison claims are
+case claims; the history line only for words whose own clause names the earlier transactions; count
+rule with its own reason). Dev drafts re-checked without a model: unchanged (V1 0.904, V2 0.909, V3
+0.909); V3 stays the default; cache re-checked (4 facts each, none removed).
+
 **Next:** D225 (E20 pre-registration, alone) and D226 (UI), on Aziz's go-ahead.
