@@ -265,4 +265,13 @@ cases excluded from E20, one generation per variant): kept-fact rate V1 0.923 (4
 summaries are the cached ones (all with kept facts). Full suite 733 passed / 5 skipped before the dev
 run.
 
+**Review fixes (D224d, 2026-10-25):** label claims must agree with the case's own label line;
+decision words in all forms tied to the case decision line; wider change claims; whole-value,
+field-bound numbers, digit ids and domains; similar cases as counts only; cached summaries
+re-checked and keyed by the checker version; audit for invalid requests and tool errors; proxy-free
+client; OLLAMA_NO_CLOUD=1 in the launcher; refusal misses fixed; probe cases as tests. Stored dev
+drafts re-checked without a model: V1 0.904, V2 0.909, V3 0.909 (V2 and V3 tie at 10/11; the
+tie-break would pick V3). **Open (Aziz's decision):** keep V2 or switch to V3; the default stays V2
+until then.
+
 **Next:** D225 (E20 pre-registration, alone) and D226 (UI), on Aziz's go-ahead.

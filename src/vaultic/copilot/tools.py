@@ -138,7 +138,9 @@ def get_reasons(ctx: Ctx) -> list[Item]:
                             f"view contributions in points: {views}."))  # fmt: skip
         return out
     ctx.meta["reasons_source"] = "view-level"
-    note = VIEW_LEVEL if why_not is None else VIEW_LEVEL.replace("is off", f"failed ({why_not})")
+    state = getattr(ctx.testlab, "state", None)  # D224d: "loading" / "refused" / "error", not "off"
+    note = (VIEW_LEVEL.replace("is off", f"failed ({why_not})") if why_not is not None else
+            VIEW_LEVEL.replace("is off", f"is {state}") if ctx.testlab is not None else VIEW_LEVEL)  # fmt: skip
     out = [Item(f"case:{tid}/reasons", "get_reasons", f"reasons source: {note}.")]
     w, row = ctx.case["weights"], ctx.case["row"]
     for r in ctx.case.get("reasons", []):
@@ -229,22 +231,19 @@ def get_customer_history(ctx: Ctx, n: int = 5) -> list[Item]:
     return out
 
 
-def get_similar_cases(ctx: Ctx, k: int = 3) -> list[Item]:
+def get_similar_cases(ctx: Ctx, k: int = 5) -> list[Item]:
+    """Aggregate counts only (D224d (4)): no other customer's transaction id or per-case label."""
     frame, actions = ctx.read.frame, ctx.read.actions
     ids = frame["TransactionID"].to_numpy()
     pos = int(np.flatnonzero(ids == ctx.tid)[0])
     found = similar_cases(frame, actions, pos, min(ctx.case_time, ctx.time), k)
     act = ctx.case["decision"]["action"]
-    out = [Item(f"case:{ctx.tid}/similar", "get_similar_cases",
-                f"similar earlier cases: by calibrated view scores with the same frozen decision "
-                f"{act}, not by investigation outcome; {len(found)} shown.")]  # fmt: skip
-    for p, dist in found:
-        r = ctx.read.transaction(int(ids[p]), ctx.time, ctx.L)
-        t = int(ids[p])
-        out.append(Item(f"tx:{t}", "get_similar_cases",
-                        f"similar case {t}: {clock(r['row']['TransactionDT'])}, amount "
-                        f"{r['amount']:.2f}, score distance {dist:.3f}, {label_text(r, ctx.L)}."))  # fmt: skip
-    return out
+    labels = Counter(ctx.read.transaction(int(ids[p]), ctx.time, ctx.L)["row"].get("label")
+                     for p, _ in found)  # fmt: skip
+    return [Item(f"case:{ctx.tid}/similar", "get_similar_cases",
+                 f"similar earlier cases (by calibrated view scores, same frozen decision {act}; "
+                 f"not by investigation outcome): {len(found)} found; matured labels only: "
+                 f"{labels[1]} fraud, {labels[0]} legit, {labels[None]} not known yet.")]  # fmt: skip
 
 
 def get_counterfactual(ctx: Ctx) -> list[Item]:

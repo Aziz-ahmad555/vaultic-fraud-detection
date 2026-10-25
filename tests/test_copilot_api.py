@@ -18,7 +18,7 @@ import pytest
 from test_demo_server import DAY, _app, _bundle, _load_module
 
 from vaultic.copilot.cache import pick_demo_cases
-from vaultic.copilot.check import NOT_AVAILABLE
+from vaultic.copilot.check import CHECKER_VERSION, NOT_AVAILABLE
 from vaultic.copilot.llm import LLMUnavailable, OllamaLLM, ScriptedLLM, loopback_host
 from vaultic.copilot.rules import rules_digest
 from vaultic.copilot.service import Copilot, CopilotError, cached_label
@@ -131,10 +131,14 @@ def test_tools_use_only_what_is_known_at_the_as_of_time(demo):
     text = " ".join(x["text"] for x in hist.evidence.lines)
     assert "outcome label: " not in text  # no day-151 label has matured at noon of day 151 (L = 30)
     sim = cop.start("question", demo.tid, "Show similar cases", AS_OF, 30)
-    similar = [x for x in sim.evidence.lines if x["evidence_id"].startswith("tx:")]
-    assert similar
-    for x in similar:
-        assert times[int(x["evidence_id"][3:])] < t_case
+    # D224d (4): similar cases are counts only, never other customers' transaction ids or labels
+    assert [x["tool"] for x in sim.evidence.lines if x["tool"] == "get_similar_cases"] == [
+        "get_similar_cases"
+    ]
+    line = next(x["text"] for x in sim.evidence.lines if x["tool"] == "get_similar_cases")
+    assert "matured labels only" in line and "not by investigation outcome" in line
+    others = set(demo.df["TransactionID"].astype(str)) - {str(demo.tid)}
+    assert not any(t in line for t in others)
     cf = cop.start("question", demo.tid, "What would change the decision?", AS_OF, 30)
     assert "counterfactual for this case: not available" in cf.evidence.block
     # a case after the as-of time is not visible, and that question is audited too
@@ -341,11 +345,12 @@ def test_the_copilot_is_mounted_only_when_asked(demo, monkeypatch):
 
 # ---- Test Lab off and on ------------------------------------------------------------------------------
 def test_with_the_test_lab_off_the_reasons_are_view_level_and_labelled(demo):
-    for testlab in (None, SimpleNamespace(state="loading")):
+    for testlab, said in ((None, "is off"), (SimpleNamespace(state="loading"), "is loading"),
+                          (SimpleNamespace(state="refused"), "is refused")):  # fmt: skip
         client, cop = mount(demo, ScriptedLLM("Nothing."), testlab=testlab)
         prep = cop.start("question", demo.tid, WHY, AS_OF, 30)
         assert prep.reasons_source == "view-level"
-        assert f"reasons source: {VIEW_LEVEL}." in prep.evidence.block
+        assert f"reasons source: {VIEW_LEVEL.replace('is off', said)}." in prep.evidence.block
         assert "tabular view raises the risk by 12.0 points" in prep.evidence.block
     assert client.get("/api/copilot/status").json()["reasons"] == "view-level reasons"
 
@@ -478,22 +483,30 @@ def test_bad_requests_are_refused(demo):
 def test_a_cached_summary_is_served_only_for_the_same_evidence_and_labelled(demo, tmp_path):
     probe = Copilot(demo.app.state.read, ScriptedLLM("x"))
     prep = probe.start("summary", demo.tid, "", AS_OF, 30)
+    action = demo.df.set_index("TransactionID").at[demo.tid, "action"]
+    # a stored draft with one good fact and one the current checker removes (D224d (5))
+    draft = facts((f"The decision is {action}", "E1"), ("The case is definitely fraud", "E1"))
     entry = {"tid": demo.tid, "L": 30, "evidence_hash": prep.evidence.digest,
-             "rules_hash": rules_digest(), "model": "qwen-test",
-             "generated_at": "2026-10-24 21:00 UTC", "answer": "The decision is cached [E1].",
-             "kept": [{"text": "The decision is cached [E1].", "citations": ["E1"]}], "removed": []}  # fmt: skip
+             "rules_hash": rules_digest(), "checker": CHECKER_VERSION, "model": "qwen-test",
+             "generated_at": "2026-10-24 21:00 UTC", "draft": draft,
+             "answer": "stale stored answer", "kept": [], "removed": []}  # fmt: skip
     cache = tmp_path / "demo_summaries.json"
     # a summary made under other rules is never served (D224b)
-    cache.write_text(json.dumps({"entries": [{**entry, "rules_hash": "older rules"}]}), "utf-8")
-    old = Copilot(demo.app.state.read, ScriptedLLM("x"), cache_path=cache)
-    assert old.start("summary", demo.tid, "", AS_OF, 30).cached is None
+    for stale in ({"rules_hash": "older rules"}, {"checker": "D224c"}):  # other rules or checker
+        cache.write_text(json.dumps({"entries": [{**entry, **stale}]}), "utf-8")
+        old = Copilot(demo.app.state.read, ScriptedLLM("x"), cache_path=cache)
+        assert old.start("summary", demo.tid, "", AS_OF, 30).cached is None
     cache.write_text(json.dumps({"entries": [entry]}), "utf-8")
     llm = ScriptedLLM(decision_answer, available=False)  # a cached summary needs no model
     client, _ = mount(demo, llm, cache=cache)
     code, final = ask(client, demo.tid, path="summary")
     assert code == 200 and llm.calls == []
     assert final["cached"]["label"] == "cached, generated at 2026-10-24 21:00 UTC by qwen-test"
-    assert final["answer"] == entry["answer"] and cached_label(entry) == final["cached"]["label"]
+    assert cached_label(entry) == final["cached"]["label"]
+    assert final["answer"] == f"The decision is {action} [E1]."  # re-checked, not the stored text
+    assert [r["why"] for r in final["removed"]] == [
+        "a label claim must cite the case's own label line"
+    ]
     # a later as-of gives the same summary (it is of the decision time) ...
     assert ask(client, demo.tid, path="summary", time=AS_OF + 3600)[1]["cached"] is not None
     # ... but other evidence (no label delay: the label is known) is never served from the cache
@@ -516,3 +529,70 @@ def test_demo_cases_are_picked_by_fixed_rules():
     assert pick_demo_cases(frame, actions) == [
         ("highest-risk hold", 1), ("hold without a graph score", 2), ("cold-start step-up", 3),
         ("step-up, uncertain set, highest disagreement", 4), ("highest-risk step-up", 5)]  # fmt: skip
+
+
+# ---- D224d: audit for invalid requests and errors, proxy-free client --------------------------------
+def test_invalid_requests_and_tool_errors_each_leave_one_audit_entry(demo):
+    client, cop = mount(demo, ScriptedLLM(decision_answer))
+    n = len(audit_entries(demo))
+    assert ask(client, demo.tid, L=14)[0] == 422
+    assert client.post("/api/copilot/ask", content=b"not json").status_code == 422
+    assert client.post("/api/copilot/ask", json={"question": "why?"}).status_code == 422
+    assert client.post("/api/copilot/summary", json={"case_id": "x", "time": 1}).status_code == 422
+    new = audit_entries(demo)[: len(audit_entries(demo)) - n][::-1]
+    assert [json.loads(e["after"])["outcome"] for e in new] == [
+        "invalid request: label delay 14", "invalid request: body", "invalid request: body",
+        "invalid request: body"]  # fmt: skip
+    assert [e["action"] for e in new] == ["Copilot question"] * 3 + ["Copilot summary"]
+
+    def broken(ctx):
+        raise KeyError("view scores gone")
+
+    from vaultic.copilot import tools
+
+    real = tools.TOOLS["reasons"]
+    tools.TOOLS["reasons"] = broken
+    try:
+        n = len(audit_entries(demo))
+        code, body = ask(client, demo.tid)
+    finally:
+        tools.TOOLS["reasons"] = real
+    assert code == 500 and "KeyError" in body["detail"]
+    assert len(audit_entries(demo)) == n + 1
+    assert json.loads(audit_entries(demo)[0]["after"])["outcome"] == "error: KeyError"
+
+
+def test_a_stream_error_other_than_a_missing_model_is_an_error(demo):
+    class Broken(ScriptedLLM):
+        def stream(self, messages, max_tokens, schema=None):
+            yield "{"
+            raise RuntimeError("socket reset")
+
+    cop = Copilot(demo.app.state.read, Broken(), audit=demo.app.state.audit)
+    n = len(audit_entries(demo))
+    events = list(cop.run(cop.start("question", demo.tid, WHY, AS_OF, 30)))
+    assert events[-1]["type"] == "error" and "RuntimeError" in events[-1]["message"]
+    assert len(audit_entries(demo)) == n + 1
+    assert json.loads(audit_entries(demo)[0]["after"])["outcome"] == "error: RuntimeError"
+
+
+def test_the_ollama_client_ignores_proxy_settings(monkeypatch):
+    class Tags(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(json.dumps({"models": [{"name": "m:1"}]}).encode())
+
+    for var in ("HTTP_PROXY", "http_proxy"):  # a proxy that does not exist
+        monkeypatch.setenv(var, "http://127.0.0.1:9")
+    for var in ("NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(var, raising=False)
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), Tags)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:  # reached directly: through the proxy the call would fail
+        OllamaLLM(model="m:1", host=f"http://127.0.0.1:{srv.server_address[1]}").check()
+    finally:
+        srv.shutdown()

@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from vaultic.copilot import rules
-from vaultic.copilot.check import check_facts
+from vaultic.copilot.check import CHECKER_VERSION, check_facts
 from vaultic.copilot.llm import LLM, LLMUnavailable
 from vaultic.copilot.tools import BUDGET, TOOLS, Ctx, Evidence, network_ids, render
 
@@ -133,6 +133,16 @@ class Copilot:
             prep.audit_ok = False
         return prep.audit_ok
 
+    def reject(self, kind: str, case_id, question, actor: tuple, reason: str) -> bool:
+        """The one audit entry of a request refused before start (invalid label delay or body)."""
+        try:
+            tid = int(case_id)
+        except (TypeError, ValueError):
+            tid = "unknown"
+        q = rules.SUMMARY_QUESTION if kind == "summary" else str(question or "")
+        prep = Prepared(kind, tid, q, 0.0, 0, actor, self.clock())
+        return self._audit(prep, f"invalid request: {reason}"[:200])
+
     # ---- start -------------------------------------------------------------------------------
     def start(self, kind: str, tid: int, question: str, time: float, L: int,
               actor: tuple = (None, None)) -> Prepared:  # fmt: skip
@@ -152,21 +162,27 @@ class Copilot:
             as_of = float(case["row"]["TransactionDT"])
             case = self.read.transaction(prep.tid, as_of, prep.L)
         ctx = Ctx(self.read, prep.tid, as_of, prep.L, case, self.testlab(), prep.flags)
-        if kind == "question":
-            allowed = network_ids(ctx) if rules.needs_ids(question) else None
-            prep.refused = rules.refusal(question, allowed)
-            if prep.refused:
-                prep.route = "refused"
-                return prep
-            prep.route, names = rules.route(question)
-        else:
-            prep.route, names = rules.SUMMARY_ROUTE
-        prep.evidence = render([TOOLS[n](ctx) for n in names], BUDGET[kind])
+        try:  # D224d (6): a tool exception is audited and reported, never a silent 500
+            if kind == "question":
+                allowed = network_ids(ctx) if rules.needs_ids(question) else None
+                prep.refused = rules.refusal(question, allowed)
+                if prep.refused:
+                    prep.route = "refused"
+                    return prep
+                prep.route, names = rules.route(question)
+            else:
+                prep.route, names = rules.SUMMARY_ROUTE
+            prep.evidence = render([TOOLS[n](ctx) for n in names], BUDGET[kind])
+        except Exception as e:
+            log.exception("copilot tool failed")
+            self._audit(prep, f"error: {type(e).__name__}")
+            raise CopilotError(500, f"A copilot tool failed ({type(e).__name__}).") from e
         prep.reasons_source = ctx.meta.get("reasons_source")
         if kind == "summary":
             prep.cached = next((e for e in self.cache if e.get("tid") == prep.tid and
                                 e.get("evidence_hash") == prep.evidence.digest and
-                                e.get("rules_hash") == rules.rules_digest(self.variant)), None)  # fmt: skip
+                                e.get("rules_hash") == rules.rules_digest(self.variant) and
+                                e.get("checker") == CHECKER_VERSION), None)  # fmt: skip
         if prep.cached is None:
             try:
                 self.llm.check()
@@ -207,9 +223,11 @@ class Copilot:
                                   {"answer": msg, "refused": prep.refused, "kept": [], "removed": []})  # fmt: skip
                 return
             if prep.cached is not None:
-                c = prep.cached
+                c = prep.cached  # D224d (5): the current checker runs again on the stored draft
+                res = check_facts(c.get("draft") or "", prep.evidence.by_handle,
+                                  rules.max_facts(self.variant))  # fmt: skip
                 yield self._final(prep, "cached summary",
-                                  {"answer": c["answer"], "kept": c["kept"], "removed": c["removed"],
+                                  {"answer": res.answer, "kept": res.kept, "removed": res.removed,
                                    "draft": c.get("draft"), "cached": {"label": cached_label(c),
                                    "generated_at": c["generated_at"], "model": c["model"]}})  # fmt: skip
                 return
@@ -220,11 +238,19 @@ class Copilot:
                 for piece in self.llm.stream(self.messages(prep), MAX_TOKENS[prep.kind], schema):
                     pieces.append(piece)
                     yield {"type": "token", "text": piece, "status": DRAFT}
-            except LLMUnavailable as e:
-                self._audit(prep, "model failed", seconds=self.clock() - prep.started)
+            except Exception as e:  # LLMUnavailable: "model failed"; anything else: "error" (D224d)
+                if isinstance(e, LLMUnavailable):
+                    outcome, msg = "model failed", str(e)
+                else:
+                    log.exception("copilot stream failed")
+                    outcome, msg = (
+                        f"error: {type(e).__name__}",
+                        f"The copilot failed ({type(e).__name__}).",
+                    )
+                self._audit(prep, outcome, seconds=self.clock() - prep.started)
                 yield {
                     "type": "error",
-                    "message": str(e),
+                    "message": msg,
                     "audit": "ok" if prep.audit_ok else "failed",
                 }
                 return

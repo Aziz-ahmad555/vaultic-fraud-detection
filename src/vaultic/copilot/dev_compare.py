@@ -73,6 +73,52 @@ def run_variant(app, llm, variant: str, log=print) -> list[dict]:
     return rows
 
 
+def recheck_row(cop, row: dict) -> dict:
+    """The stored draft of one generation checked again with the current checker: the evidence is
+    rebuilt exactly as when it was generated (a summary's must match its stored evidence hash), and
+    no model is called (D224d)."""
+    from vaultic.copilot.check import check_facts
+    from vaultic.copilot.rules import max_facts
+
+    t = case_time(cop.read.frame, row["tid"])
+    kind, q = ("summary", "") if row["task"] == "summary" else ("question", WHY)
+    prep = cop.start(kind, row["tid"], q, t, L)
+    if row.get("evidence_hash") and row["evidence_hash"] != prep.evidence.digest:
+        raise RuntimeError(f"evidence of {row['tid']} ({row['task']}) differs from the stored hash")
+    res = check_facts(row.get("draft") or "", prep.evidence.by_handle, max_facts(row["variant"]))
+    return {**row, "answer": res.answer, "kept": res.kept, "removed": res.removed}
+
+
+def recheck(app, path: Path) -> dict:
+    """Re-check every stored dev-set draft (all variants) with the current checker."""
+    from vaultic.copilot.check import CHECKER_VERSION
+    from vaultic.copilot.llm import ScriptedLLM
+    from vaultic.copilot.service import Copilot
+
+    stored = json.loads(path.read_text("utf-8"))
+    rows = {v: [recheck_row(Copilot(app.state.read, ScriptedLLM(""), variant=v), r) for r in rs]
+            for v, rs in stored["rows"].items()}  # fmt: skip
+    summary = {v: tally(rs) for v, rs in rows.items()}
+    return {"rule": "D224c", "checker": CHECKER_VERSION, "source": path.name,
+            "model": stored["model"], "summary_before": stored["summary"], "summary": summary,
+            "chosen_before": stored["chosen"], "chosen": choose(summary), "rows": rows}  # fmt: skip
+
+
+def recheck_cache(app, path: Path) -> list[dict]:
+    """The cached demo summaries re-checked from their stored drafts and stamped with the checker
+    version (D224d (5)); the drafts, model and generation times are unchanged."""
+    from vaultic.copilot.check import CHECKER_VERSION
+    from vaultic.copilot.llm import ScriptedLLM
+    from vaultic.copilot.service import Copilot
+
+    out = []
+    for e in json.loads(path.read_text("utf-8"))["entries"]:
+        cop = Copilot(app.state.read, ScriptedLLM(""), variant=e["variant"])
+        r = recheck_row(cop, {**e, "task": "summary"})
+        out.append({k: v for k, v in r.items() if k != "task"} | {"checker": CHECKER_VERSION})
+    return out
+
+
 def main(argv=None) -> None:
     from vaultic.copilot.llm import OllamaLLM
     from vaultic.copilot.rules import VARIANTS
@@ -80,7 +126,26 @@ def main(argv=None) -> None:
 
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--bundle", type=Path, default=None)
+    p.add_argument("--recheck", type=Path, default=None,
+                   help="re-check a stored dev_compare_<stamp>.json and the cached demo summaries "
+                        "with the current checker (no model call)")  # fmt: skip
     a = p.parse_args(argv)
+    if a.recheck is not None:
+        app = _demo_app(a.bundle)
+        data = recheck(app, a.recheck)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        out = a.recheck.with_name(f"dev_recheck_{data['checker']}_{stamp}.json")
+        out.write_text(json.dumps(data, indent=1), "utf-8")
+        cache = cache_file()
+        entries = recheck_cache(app, cache)
+        cache.rename(cache.with_name(f"demo_summaries_before_{data['checker']}_{stamp}.json"))
+        cache.write_text(json.dumps({"note": NOTE, "entries": entries}, indent=1), "utf-8")
+        for v in data["summary"]:
+            print(v, "before", data["summary_before"][v], "\n   now", data["summary"][v])
+        print(
+            f"chosen before {data['chosen_before']}, now {data['chosen']}; wrote {out} and {cache}"
+        )
+        return
     llm = OllamaLLM()
     llm.check()
     app = _demo_app(a.bundle)

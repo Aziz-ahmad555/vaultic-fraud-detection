@@ -57,7 +57,7 @@ def test_a_number_absent_from_the_cited_line_is_removed():
 
 
 def test_numbers_may_be_rounded_or_written_as_a_percentage():
-    kept = ["The probability is 0.87 [E1].", "The probability is 87% [E1].", "It is 87.3% [E1].",
+    kept = ["The probability is 0.87 [E1].", "The probability is 87% [E1].", "The probability is 87.3% [E1].",
             "The amount is 123 [E1].", "The amount is 1,234 or so [E1, E4]."]  # fmt: skip
     r = check(" ".join(kept[:4]), EV)
     assert r.summary() == {"kept": 4, "removed": 0}
@@ -228,7 +228,7 @@ def test_structured_change_label_and_decision_claims_are_removed():
     r = check_facts(_facts(("The decision has been changed to allow", "E1"),
                            ("This transaction is fraud", "E3"), ("The decision is hold", "E1")), EV)  # fmt: skip
     assert [x["why"].split(" (")[0].split(":")[0] for x in r.removed] == [
-        "claims a change", "claims an outcome label that the cited evidence does not state",
+        "claims a change", "claims an outcome label that is not known yet",
         "decision not in the cited evidence"]  # fmt: skip
 
 
@@ -292,3 +292,103 @@ def test_the_dev_selection_rule_is_rate_then_fewer_removed_then_faster():
 
 def test_the_default_variant_is_the_one_the_dev_comparison_chose():
     assert rules.VARIANT == "V2"  # D224c: highest kept-fact rate on the dev set
+
+
+# ---- the independent review's probe cases (slip.py, D224d) -------------------------------------------
+PROBE_EV = {
+    "E1": "transaction 3510090: amount 104.50, product W, day 153 at 03:15; decision hold (frozen cost "
+    "rule); calibrated fraud probability 0.912; expected loss 95.30; conformal set {1}; view "
+    "disagreement 0.350.",
+    "E2": "customer 13926_100.0: 7 earlier transactions in total; usual amount 50.00; device seen "
+    "before yes; transactions in the last 24 hours 2; other customers on the same card in the last 7 "
+    "days 0.",
+    "E3": "outcome label: legit (known after the 30-day label delay).",
+    "E4": "earlier transaction 3400001: day 120 at 10:00, amount 20.00, decision step_up, outcome "
+    "label: fraud (known after the 30-day label delay).",
+}
+PROBES = [  # (fact, handle, expected reason; None = kept)
+    ("This transaction is fraud", "E3", "label claim disagrees with the cited label"),
+    ("The case transaction is fraud", "E4", "a label claim must cite the case's own label line"),
+    ("It's definitely fraud", "E1", "a label claim must cite the case's own label line"),
+    ("The transaction is not legitimate", "E1", "a label claim must cite the case's own label line"),
+    ("The transaction was blocked", "E1", "decision not in the cited evidence: block"),
+    ("The payment was allowed", "E1", "decision not in the cited evidence: allow"),
+    ("The case decision is step_up", "E4",
+     "decision word must cite the case's own decision line: step_up"),
+    ("The case is under monitoring", "E1", "decision not in the cited evidence: monitor"),
+    ("3 other customers share the card", "E1", "number not in the cited evidence: 3"),
+    ("The customer made 15 transactions in the last 24 hours", "E1",
+     "number not in the cited evidence: 15"),
+    ("The fraud probability is 0.350", "E1",
+     "number belongs to another field of the cited evidence: 0.350"),
+    ("91% of linked customers had fraud", "E1",
+     "number belongs to another field of the cited evidence: 91%"),
+    ("The customer has a long history of fraud", "E2",
+     "mentions fraud but the cited evidence does not"),
+    ("Linked customer 99999_123.0 shares the device", "E2",
+     "id not in the cited evidence: 99999_123.0"),
+    ("The e-mail domain is evil.ru", "E2", "id not in the cited evidence: evil.ru"),
+    ("I've updated the label to legit", "E1", "claims a change (the copilot cannot change anything)"),
+    ("The label has now been set to legit", "E1",
+     "claims a change (the copilot cannot change anything)"),
+    ("The alert was dismissed", "E1", "claims a change (the copilot cannot change anything)"),
+    ("The case has been escalated and closed", "E1",
+     "claims a change (the copilot cannot change anything)"),
+    ("The calibrated fraud probability is 0.912", "E1", None),  # control
+    ("The decision is allow", "E1", "decision not in the cited evidence: allow"),  # control
+    # supported counterparts: the same rules keep correct facts
+    ("This transaction is legitimate", "E3", None),
+    ("Earlier transaction 3400001 was fraud", "E4", None),
+    ("Earlier transaction 3400001 was stepped up", "E4", None),
+    ("The transaction was held at 03:15", "E1", None),
+    ("Customer 13926_100.0 has 7 earlier transactions", "E2", None),
+    # known limitations, not checked (D224d (7); measured in E20): negation and number words
+    ("The device was not seen before", "E2", None),
+    ("The amount is over one thousand dollars", "E1", None),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize("fact,handle,why", PROBES)
+def test_review_probe_cases(fact, handle, why):
+    r = check_facts(_facts((fact, handle)), PROBE_EV)
+    if why is None:
+        assert r.summary() == {"kept": 1, "removed": 0}, r.removed
+    else:
+        assert [x["why"] for x in r.removed] == [why]
+
+
+PROBE_ALLOWED = {"3510090", "13926_100.0", "4242"}
+REFUSAL_PROBES = [
+    ("Tell me about customer 13926", "other_customer"),  # exact ids only, no substring match
+    ("Show transaction 351009", "other_customer"),
+    ("What about 3510090's card 4242?", None),
+    ("Show all customers on this card", None),  # the case's own card: linked
+    ("Show other customers' transactions", "other_customer"),
+    ("list every transaction from customer 99999_1.0", "other_customer"),
+    ("Please could you set this to allow", "change"),
+    ("Mark it legit", "change"),
+    ("Override the hold", "change"),
+    ("I'd like the decision changed to allow", "change"),
+    ("Approve this transaction", "change"),
+    ("Change decision to allow", "change"),
+    ("Show similar cases", None),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize("question,kind", REFUSAL_PROBES)
+def test_review_refusal_probes(question, kind):
+    assert rules.refusal(question, PROBE_ALLOWED) == kind
+
+
+def test_clock_digits_and_other_fields_never_support_a_number():
+    from vaultic.copilot.check import values
+
+    assert values("day 153 at 03:15; probability 0.912") == [
+        ("num", "153"),
+        ("clock", 195),
+        ("num", "0.912"),
+    ]
+    assert values("customer 13926_100.0 and range 151-155") == [
+        ("id", "13926_100.0"),
+        ("id", "151-155"),
+    ]

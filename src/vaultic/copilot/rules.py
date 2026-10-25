@@ -128,6 +128,18 @@ CHANGE = [
         r"(?:decision|label|threshold|setting|cost|action|outcome)s?\b",
         re.I,
     ),
+    # D224d: "mark it legit", "flag this as fraud", "I'd like the decision changed to allow"
+    re.compile(
+        r"\b(?:mark|flag|tag|relabel|classify|treat|record|label)\s+(?:it|this|that|them|"
+        r"(?:the|this|that)\s+\w+|transaction\s+\d+)\s+(?:as\s+)?(?:a\s+|an\s+)?(?:legit\w*|"
+        r"fraud\w*|genuine|safe|clean|false\s+positive|true\s+positive|not\s+fraud\w*)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\b(?:decision|label|threshold|setting|status|action|outcome)s?\s+(?:be\s+|being\s+)?"
+        r"(?:changed|set|switched|updated|moved|flipped|reset)\s+to\b",
+        re.I,
+    ),
 ]
 IGNORE_RULES = re.compile(
     r"\b(?:ignore|disregard|forget|bypass|override|skip)\b.{0,30}\b(?:rules?|instructions?|guidelines?|"
@@ -138,7 +150,11 @@ IGNORE_RULES = re.compile(
 )
 OTHER_SCOPE = re.compile(r"\b(?:another|different|all|every|any other|each)\s+(?:customer|user|account|"
                          r"card|client|person|people)s?\b", re.I)  # fmt: skip
-LINK_WORDS = re.compile(r"\blink|connect|\bshar|related|network|graph", re.I)
+LINK_WORDS = re.compile(r"\blink|connect|\bshar|related|network|graph|\b(?:this|same)\s+"
+                        r"(?:card|device|e-?mail|address)\b", re.I)  # fmt: skip
+OTHER_DATA = re.compile(r"\bother\s+(?:customer|user|account|client|people|person)s?'?s?\s+"
+                        r"(?:transactions?|data|histor\w*|details?|cases?|payments?|records?|"
+                        r"activity)\b", re.I)  # fmt: skip
 _ID_TOKEN = re.compile(r"(?<![\w.])\d{5,}(?:\.\d+)?(?![\w])|\b(?:uid|customer|user|card|tx|transaction)"
                        r"[\s:#]+([\w.-]*\d[\w.-]*)", re.I)  # fmt: skip
 
@@ -146,7 +162,8 @@ REFUSALS = {
     "change": "I can't change decisions, labels, thresholds or settings: the copilot is read-only. "
               "Use the case page's own controls, which are recorded in the audit log.",
     "other_customer": "I can only show evidence about this case and the customers linked to it in "
-                      "its network. Open the other case to ask about it.",
+                      "its network; similar cases are shown only as counts. Open the other case to "
+                      "ask about it.",
     "ignore_rules": "I can't set aside my rules: answers come only from this case's evidence, with "
                     "citations, and say 'not available' when the evidence is missing.",
 }  # fmt: skip
@@ -166,12 +183,13 @@ def refusal(question: str, allowed_ids: set[str] | None = None) -> str | None:
         return "ignore_rules"
     if any(p.search(question) for p in CHANGE):
         return "change"
-    if OTHER_SCOPE.search(question) and not LINK_WORDS.search(question):
+    scope = OTHER_SCOPE.search(question) or OTHER_DATA.search(question)
+    if scope and not LINK_WORDS.search(question):
         return "other_customer"
     ids = question_ids(question)
     if ids and allowed_ids is not None:
         known = {a.lower() for a in allowed_ids}
-        if any(i not in known and not any(i in k for k in known) for i in ids):
+        if any(i not in known for i in ids):  # exact ids only (D224d)
             return "other_customer"
     return None
 

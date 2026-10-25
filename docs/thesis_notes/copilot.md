@@ -1,4 +1,4 @@
-# Local-LLM investigation copilot: backend (D222-D224c)
+# Local-LLM investigation copilot: backend (D222-D224d)
 
 Stage 1 of Sprint 2 (roadmap Phase 15, our Phase C (c)): the backend only. The UI (chat panel,
 citation chips, rule-based next checks) waits for D226; the evaluation E20 waits for its own
@@ -31,8 +31,10 @@ model help without letting it state anything the evidence does not support.
    case page sees: nothing after the as-of time, and a label only after its delay (label-delay
    curtain). Reasons are the frozen system's live top-5 feature reasons when the Test Lab is running
    (parity-gated), otherwise the stored view-level reasons, labelled "feature reasons not available:
-   the Test Lab is off". Similar cases are a new helper: earlier cases with the same decision,
-   nearest by the calibrated view scores, labelled "similar by scores, not by investigation outcome".
+   the Test Lab is off" (or "is loading" / "is refused" while it starts). Similar cases are a new
+   helper: earlier cases with the same decision, nearest by the calibrated view scores, labelled
+   "similar by scores, not by investigation outcome", shown only as counts (how many, how many with a
+   matured fraud or legit label), never other customers' transaction ids or labels (D224d).
    Counterfactuals always say "not available" (E15 stores them per alert index without a
    transaction id).
 4. **Trimmed evidence.** Only the chosen tools' results are sent, as short lines with handles
@@ -43,19 +45,26 @@ model help without letting it state anything the evidence does not support.
    evidence block is called data in the rules; strings from the data are cleaned (no brackets or
    new lines, at most 60 characters) and a string that reads like an instruction is withheld. While
    the answer streams, it is shown as "draft, not yet checked".
-6. **A deterministic citation checker** then keeps a fact only if every number and id in it appears
-   in its cited line (rounding allowed; small integers exact) and every decision word (allow,
-   monitor, step-up, hold, block) appears there too (D224a). Claims that something was changed are
-   always removed; a claim that the case is fraud or legitimate needs a cited known label. Removed
-   facts are counted with the reason; an empty list, or nothing kept, reads "Not available from the
-   case evidence."
+6. **A deterministic citation checker** then keeps a fact only if (D224a, D224d):
+   - every number is a whole value of its cited line (a time such as 03:15 is one value) and
+     belongs to a field whose name shares a word with the fact, so a number cannot borrow another
+     field's value; ids (digits, "_", "."), e-mail domains and other names appear there exactly;
+   - a decision word in any form ("held", "stepped up", "monitoring") cites the case's own
+     decision line and matches it (about an earlier transaction: that transaction's line, by id);
+   - a claim that the case is fraud or legitimate ("definitely fraud", "not legitimate") cites the
+     case's own label line, which states a known label of the same polarity;
+   - it does not claim that anything was changed (updated, set to, dismissed, escalated, closed ...).
+   Removed facts are counted with the reason; an empty list, or nothing kept, reads "Not available
+   from the case evidence."
 7. **One audit entry per question** (D208): model, route, evidence ids, kept and removed counts,
    refusal kind, outcome and seconds, written once whether the answer finishes, is refused, the model
    is not running, or the client disconnects (fail-open, D209).
 8. **Cached demo summaries.** Five demo cases picked by fixed rules (highest-risk hold, a hold
    without a graph score, a cold-start step-up, the most uncertain step-up, the highest-risk step-up)
-   are summarised once; a cached summary is served only when the evidence is identical and is
-   labelled "cached, generated at <time> by <model>".
+   are summarised once; a cached summary is served only when the evidence, the rules and the checker
+   version match, the current checker runs again on the stored draft, and it is labelled "cached,
+   generated at <time> by <model>". Requests with an invalid body or label delay and tool errors
+   are audited too (D224d).
 
 Endpoints (mounted with `VAULTIC_COPILOT=1`): `GET /api/copilot/status`, `POST /api/copilot/ask`
 (NDJSON token stream), `POST /api/copilot/summary`. Code: `src/vaultic/copilot/`,
@@ -110,16 +119,33 @@ Endpoints (mounted with `VAULTIC_COPILOT=1`): `GET /api/copilot/status`, `POST /
   three of ten "why flagged" answers were an empty list ("not available"), under V2 two.
   Compared with the prose answers (1 sentence kept of 36 under D224b), structured output with an
   enum of handles removes the citation problem; what remains is the meaning of a fact.
+- **Review fixes (D224d) re-checked on the stored dev drafts** (the same 60 generations, no model
+  run; `E:/dev-cache/copilot/dev_recheck_D224d_20261025-223959.json`): kept-fact rate V1 0.923 ->
+  0.904 (47/52), V2 0.945 -> 0.909 (50/55), V3 0.932 -> 0.909 (40/44). V2 and V3 now tie (10/11
+  each); D224c's tie-break (fewer removed facts) would pick V3. The default stays V2 until Aziz
+  decides. Newly removed: "the last transaction was allowed" citing the customer line (a correct
+  catch); "6 earlier transactions, all of which were held" citing the aggregate history line (V1,
+  V2: an aggregate line does not support a decision word under D224d; the fact itself appears
+  correct) and the same claim in V3 for a number whose field name does not match ("history of 6
+  transactions" vs "6 earlier transactions in total"). The five cached V2 demo summaries still keep
+  all their facts (4-5 each, none removed) and are stamped with the checker version.
 - Tests (all with a scripted model, so CI never needs Ollama): `tests/test_copilot_check.py` and
-  `tests/test_copilot_api.py` (66 tests: checker reject cases, refusals, injection in a tool
-  result, read-only guarantee, one audit entry per question, Test Lab off and on, model not
-  running, evidence budget, cached summaries).
+  `tests/test_copilot_api.py` (111 tests: checker reject cases incl. the review's probe cases,
+  refusals, injection in a tool result, read-only guarantee, one audit entry per request incl.
+  invalid ones and tool errors, Test Lab off, loading and on, model not running, proxy-free
+  client, evidence budget, cached summaries).
 
 ## Limitations
-- The checker verifies numbers, ids, handles, decision words, change claims and label claims, not
-  the meaning of a free-text sentence: a cited sentence without those can still misread its
-  evidence (seen once: "the reasons source is unavailable" for a line saying feature reasons are not
-  available). E20 measures this with human labels (D225).
+- **Not checked: negation, comparisons and numbers written as words.** "The device was not seen
+  before" citing a line that says "device seen before yes" is kept, and so is "over one thousand
+  dollars"; a comparison ("higher than usual") is not verified. E20 measures these with human labels
+  (D225).
+- More generally, the checker verifies numbers, ids, handles, decision words, change claims and
+  label claims, not the meaning of a free-text sentence: a cited sentence without those can still
+  misread its evidence (seen once: "the reasons source is unavailable" for a line saying feature
+  reasons are not available).
+- The field binding of numbers is word overlap: a correct fact that names a field differently
+  ("history of 6 transactions") is removed, and a wrong one that shares a word could be kept.
 - With prose answers the model's citation discipline depended strongly on the prompt wording (one
   of five demo summaries lost every sentence in the first three generations, four of five under
   D224b) and it imitated examples and placeholders in the rules; structured output (D224c) fixed

@@ -57,12 +57,14 @@ class OllamaLLM:
         self.model = model or os.environ.get("VAULTIC_COPILOT_MODEL") or DEFAULT_MODEL
         self.host = loopback_host(host or os.environ.get("VAULTIC_OLLAMA_HOST") or DEFAULT_HOST)
         self.timeout = timeout
+        # D224d: no proxy, ever: an HTTP(S)_PROXY setting can never route the loopback calls elsewhere
+        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
     def _open(self, path: str, body: dict | None = None, timeout: float | None = None):
         data = None if body is None else json.dumps(body).encode()
         req = urllib.request.Request(self.host + path, data=data,
                                      headers={"Content-Type": "application/json"})  # fmt: skip
-        return urllib.request.urlopen(req, timeout=timeout or self.timeout)
+        return self.opener.open(req, timeout=timeout or self.timeout)
 
     def check(self) -> None:
         try:
