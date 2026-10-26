@@ -310,3 +310,62 @@ facts card falls back to page data on 404. Dev drafts re-checked: V1 0.885, V2 0
 stays.
 
 **Next:** D225 (E20 pre-registration, alone), on Aziz's go-ahead.
+
+**Diagnosis of the "Not available" answers (2026-10-26, D224c DEV cases only, never E20 cases; nothing
+changed).** The D225c probe gave "Not available" on all 3 dev questions with the Test Lab on. The same
+3 questions were re-run with the Test Lab off (the E20 setup) and on, plus Q2-Q4 on 3 more dev cases
+(3542087, 3510484, 3485718) with it off: frozen copilot (V3, checker D224j, temperature 0), one
+generation each. Saved on drive E (`E:/dev-cache/copilot/diag/diag_off_20261026-191232.jsonl`,
+`diag_on_20261026-192002.jsonl`): the prompt messages, the evidence, the raw draft, the kept facts, and
+every removed fact with its text and reason. Temperature 0 repeated the probe's results exactly.
+
+| question | items | written | kept | removed | empty drafts |
+|---|---|---|---|---|---|
+| Q1 why flagged, Test Lab off | 1 | 1 | 1 | 0 | 0 |
+| Q1 why flagged, Test Lab on | 1 | 4 | 0 | 4 | 0 |
+| Q2 linked entities, off (4) / on (1) | 5 | 0 | 0 | 0 | 5 |
+| Q3 customer history, off (4) / on (1) | 5 | 0 | 0 | 0 | 5 |
+| Q4 missing / uncertain, off | 3 | 8 | 8 | 0 | 0 |
+
+Findings:
+1. **Q2 and Q3 come back empty every time (10 of 10).** The model writes `{"facts": []}` even when the
+   evidence clearly answers the question. Example: 3522679 Q3 has "13 earlier transactions in total"
+   and an earlier transaction 5 minutes before with the same amount and the same step-up decision.
+   The checker removes nothing: there is nothing to remove. Cause: the model and the prompt. The
+   system rule "If the evidence does not answer the question, return an empty list" is taken as the
+   default by the 7B model for questions it judges as not answered directly. The D224c dev set
+   tuned and compared the prompt variants on summaries and Q1 only, so Q2 / Q3 were never tried.
+2. **Q1 with the Test Lab on: 4 correct facts, all removed.** The 4 facts copy the live feature reasons
+   word for word, and their content is right (E5-E8: C14 +27.0, C13 +23.2, amount +16.5, C6 +12.4).
+   The model also writes the correct handle inside the fact text ("[E5] ..."). But the `evidence`
+   field says E1 for all four, so the checker finds 27.0 etc. not in E1 and removes them. Checked by
+   hand: each removed fact is true against the line named inside its text, and false against the
+   cited line. So the citation is wrong, not the content. The checker does what it was designed to do
+   (each fact is checked against its one cited line; handles inside the text are ignored). Cause: the
+   model, made likely by the schema's property order: `fact` is generated before `evidence`, and the
+   handle is then picked after the text is written.
+3. **When facts are kept, they are evidence lines copied word for word** (Q1 off: the whole E1 line; Q4:
+   the "view ...: missing" lines and the customer line). They are faithful, but they explain little.
+4. **The checker is not too strict on these items:** 0 of 9 facts were removed with the Test Lab off.
+   The 4 removals with it on are real citation errors. Nothing was removed for a true fact cited
+   correctly.
+
+For E20 as frozen (Test Lab off): system A would answer most Q2 and Q3 items with "Not available".
+Faithfulness per claim stays high, but coverage on Q2 / Q3 would be near zero, and A vs B on those
+items would mostly compare abstention with B's free text. That is a legitimate negative result, but
+it is caused by a prompt that was never tried on those question types.
+
+Proposed fix (NOT applied; it needs Aziz's go-ahead, a new decision, and a D225 amendment with a new
+rules digest and hashes before E20; the 5 cached summaries would need regenerating because the rules
+hash changes):
+- (a) Schema order: put `evidence` before `fact` in the V3 item schema, so the handle is chosen first
+  and the fact is written from that line (rules.py).
+- (b) Reword the empty-list rule: return an empty list only if no evidence line is relevant to the
+  question; otherwise give the relevant facts, even if they answer the question only in part.
+- (c) Optionally: "state each fact in your own words, keeping names and numbers exact, without the
+  [E..] handle". This is a style change; it may raise the rate of removed facts.
+- Validate before freezing, with a selection rule fixed in advance: Q1-Q4 on the 10 D224c dev cases,
+  Test Lab off, the current V3 vs the fixed variant, one generation each. Report written / kept /
+  removed / empty per question type. No E20 case is used.
+- Not proposed: reading handles from the fact text in the checker. That changes what a citation means
+  and would hide the model's citation errors from the citation metric.
