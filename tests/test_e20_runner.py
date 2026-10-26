@@ -390,6 +390,50 @@ def test_a_server_down_before_any_output_is_retried_once_and_logged(synthetic):
     assert "restarting it and retrying once" in files.log_file.read_text("utf-8")
 
 
+class CheckFailsOnce(ScriptedLLM):
+    """A's llm.check() fails once as OllamaLLM.check does when the server refuses the connection."""
+
+    def __init__(self):
+        super().__init__(scripted, model="qwen-test")
+        self.checks = 0
+
+    def check(self):
+        import urllib.error
+
+        from vaultic.copilot.llm import LLMUnavailable
+
+        self.checks += 1
+        if self.checks == 1:
+            try:
+                raise urllib.error.URLError(ConnectionRefusedError(10061, "actively refused"))
+            except urllib.error.URLError as e:
+                raise LLMUnavailable("The local language model is not running: start it.") from e
+
+
+def test_a_server_down_before_any_output_is_retried_once_with_the_real_cause(synthetic):
+    files = _one_case(synthetic)
+    recs, restarts = _generate(synthetic, files, CheckFailsOnce(), down=True)
+    q1a = recs["c01-Q1-A"]
+    assert restarts == [1] and q1a["retried"] is True and q1a["status"] == "ok" and q1a["shown"]
+    cause = q1a["first_attempt"]["cause"]
+    assert cause.startswith("CopilotError") and "LLMUnavailable" in cause
+    assert "URLError" in cause and "ConnectionRefusedError" in cause
+    assert "c01-Q1-A: failed before any output and the server is down" in files.log_file.read_text(
+        "utf-8"
+    )
+
+
+def test_a_failing_while_the_server_is_up_is_zero_facts_and_no_retry(synthetic):
+    files = _one_case(synthetic)
+    recs, restarts = _generate(synthetic, files, CheckFailsOnce(), down=False)
+    q1a = recs["c01-Q1-A"]
+    assert restarts == [] and "retried" not in q1a
+    assert q1a["status"] == "failed" and q1a["shown"] == [] and q1a["removed"] == []
+    assert q1a["output_arrived"] is False and q1a["server_down"] is False
+    assert "ConnectionRefusedError" in q1a["cause"]
+    assert recs["c01-Q2-A"]["status"] == "ok"  # later items go on
+
+
 def test_a_checker_mismatch_is_recorded_as_a_failed_item_not_a_crash(synthetic, monkeypatch):
     import vaultic.copilot.check as check
 

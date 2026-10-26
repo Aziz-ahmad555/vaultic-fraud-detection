@@ -363,9 +363,19 @@ def b_messages(lines: list[dict], question: str, instruction: str) -> list[dict]
 
 
 def describe(e: BaseException) -> str:
-    """The real cause of a failure: type, message and the underlying cause (D227b)."""
-    c = e.__cause__ or e.__context__
-    return f"{type(e).__name__}: {e}" + (f" (cause: {type(c).__name__}: {c})" if c else "")
+    """The real cause of a failure: the whole exception chain, with URLError's reason (D227b,
+    D227c), e.g. 'CopilotError: ... (cause: LLMUnavailable: ... <- URLError: ... <- ConnectionRefusedError: ...)'.
+    """
+    parts, seen, x = [], set(), e
+    while x is not None and id(x) not in seen and len(parts) < 8:
+        seen.add(id(x))
+        parts.append(f"{type(x).__name__}: {x}")
+        reason = getattr(x, "reason", None)
+        if isinstance(reason, BaseException) and id(reason) not in seen:
+            seen.add(id(reason))
+            parts.append(f"{type(reason).__name__}: {reason}")
+        x = x.__cause__ or x.__context__
+    return parts[0] + (f" (cause: {' <- '.join(parts[1:])})" if len(parts) > 1 else "")
 
 
 class WatchedLLM:
@@ -525,7 +535,7 @@ def _watched_attempt(it: Item, cfg: dict, cop: Any, llm: WatchedLLM, full: dict,
     fields = _attempt(it, cfg, cop, llm, full, t, L, variant)
     fields["output_arrived"] = llm.pieces > 0
     if fields["status"] == "failed":
-        fields["cause"] = llm.error or fields.get("error")
+        fields["cause"] = llm.error or fields.get("cause") or fields.get("error")
         fields["server_down"] = bool(server_is_down and server_is_down())
     return fields
 
@@ -564,8 +574,9 @@ def _attempt(it: Item, cfg: dict, cop: Any, llm: Any, full: dict, t: float, L: i
             "units": sentences(text),
             "evidence_digest": full["digest"],
         }
-    except CopilotError as e:
-        return {"status": "failed", "error": e.message, "shown": [], "removed": [], "units": []}
+    except CopilotError as e:  # e.g. llm.check() failed in Copilot.start: keep the chain (D227c)
+        return {"status": "failed", "error": e.message, "cause": describe(e), "shown": [],
+                "removed": [], "units": []}  # fmt: skip
     except Exception as e:  # recorded; retried only under the D227b rule
         return {"status": "failed", "error": describe(e), "shown": [], "removed": [], "units": []}
 
