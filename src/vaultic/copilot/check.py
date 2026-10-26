@@ -1,0 +1,482 @@
+"""Deterministic citation checker (D224 (4), D224a, D224d-D224j): runs on the finished answer and,
+fact by fact, while a structured answer streams (only checked facts are ever sent, D226a).
+
+A sentence (or a structured fact, D224c) is kept only if
+  - it cites at least one handle and every handle it cites was given this turn;
+  - every number in it is a whole value of the cited lines (a clock time such as 03:15 is one value;
+    its digits never support other numbers), exactly or rounded to the sentence's decimals (integers
+    below 10 exactly; "x%" also matches a probability x / 100), AND it belongs to a field whose name
+    shares a non-generic word with the sentence ("fraud probability 0.350" is removed when 0.350 is
+    the view disagreement); ids of 5 or more digits and clock times need only appear as whole values;
+  - every id in it (letters with digits, digits with "_" or ".", kind:value, e-mail domains and other
+    dotted names) appears as a whole word of the cited lines;
+  - a decision word in any form (allowed, held, stepped up, monitoring, blocked; declined and
+    rejected mean block) about the case cites the case's own decision line and matches it; a fact
+    that names earlier / other transactions or "the customer's history" never uses the case line
+    (D224i, D224j); about one named earlier transaction, it cites that transaction's line, names its
+    id and matches its decision; about earlier transactions in general, it may cite the
+    customer-history summary line ("... 6 earlier transactions in total ...; their decisions: hold
+    2") only in "<N> earlier transactions ... <decision>" with N equal to the count the line gives
+    for that decision ("2 earlier transactions were held" is kept; "6 ... were held" is not), and
+    only when the fact has no case reference at all ("it", "this", "the case", "like", "with",
+    "latest" ...). Decision-word forms count as the words of that line's "decision" field when a
+    number is bound to its field (D224j). Conservative on purpose: false removals are accepted,
+    false keeps are not (D224h);
+  - a direction word (raises / lowers ...) matches the cited reason line's direction (D224j);
+  - it does not claim that something was changed (first person or passive: updated, set to, marked,
+    dismissed, escalated, closed, overridden, overturned ...);
+  - a claim that the case is fraud or legitimate ("definitely fraud", "not legitimate", "not fraud",
+    "fraud was confirmed", "no fraud occurred", "fraudster"; "fraud probability" is not one) cites
+    the case's own label line, which states a known label of the same polarity; a named earlier
+    transaction's label line is allowed only when the fact has no case reference (D224j);
+  - a mention of fraud cites a line that mentions fraud.
+Not checked (measured in E20): negation, comparisons, numbers written as words, phrasings outside
+the word lists, "earlier the payment", and fields told apart only by word overlap.
+Everything else is removed and counted with its reason; with nothing left the answer is NOT_AVAILABLE.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from dataclasses import dataclass, field
+from decimal import ROUND_HALF_UP, Decimal
+
+CHECKER_VERSION = "D224j"  # part of the cached-summary key (D224d (5))
+NOT_AVAILABLE = "Not available from the case evidence."
+KNOWN_LABEL = "outcome label: "  # get_case writes "outcome label: fraud (known ...)" when matured
+
+_CITE = re.compile(r"\[([^\[\]]*)\]")
+_HANDLE = re.compile(r"^E\d+$")
+_RANGE = re.compile(r"\[E(\d+)\]\s*[-–]\s*\[E(\d+)\]")
+_BULLET = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+")
+_SENTENCE = re.compile(r".+?(?:[.!?](?:\s*\[[^\[\]]*\])*(?=\s|$)|$)", re.S)
+_TOKEN = re.compile(r"[\w$%@:./,+-]+")
+_NUMBER = re.compile(r"^\$?\d+(?:\.\d+)?%?$")
+_GROUPED = re.compile(r"^\$?\d{1,3}(?:,\d{3})+(?:\.\d+)?%?$")
+_CLOCK = re.compile(r"^\d{1,2}:\d{2}$")
+_DOTTED = re.compile(r"^[a-z0-9-]+(?:\.[a-z0-9-]+)+$", re.I)
+_KIND = re.compile(r"^(?:uid|card|email|address|device|customer|tx|case):\S+$", re.I)
+_SEGMENT = re.compile(r";|,(?=\s)|\(|\)")
+
+# decision words in every form -> the five actions
+_ACTION = re.compile(
+    r"\b(?:(allow(?:s|ed|ing)?)|(block(?:s|ed|ing)?)|(hold(?:s|ing)?|held)|"
+    r"(step[ _-]?ups?|steps?\s+up|stepped\s+up|stepping\s+up)|(monitor(?:s|ed|ing)?)|"
+    r"(declin(?:e|es|ed|ing)|reject(?:s|ed|ing)?))\b",  # D224j: declined / rejected mean block
+    re.I,
+)
+_ACTION_NAMES = ("allow", "block", "hold", "step_up", "monitor", "block")
+# the words of the history line's "decision" field for each action (D224j field binding)
+_ACTION_WORD = {"allow": "allow", "block": "block", "hold": "hold", "step_up": "step",
+                "monitor": "monitor"}  # fmt: skip
+_CASE_DECISION = re.compile(r"^transaction (\d+): .*?\bdecision (\w+)")
+_OTHER_DECISION = re.compile(r"\btransaction (\d+): .*?\bdecision (\w+)")
+_HISTORY_DECISIONS = re.compile(r"\btheir decisions: ([^;]+)")  # get_customer_history summary line
+# D224h: a conservative rule instead of clause parsing. Any case reference -> only the case's own
+# decision line; otherwise the history line only for "<N> earlier transactions ... <decision>"
+_CASE_REF = re.compile(
+    r"\b(?:it|it's|this|this\s+one|that\s+one|both|too|also|as\s+well|as\s+was|so\s+was|so\s+is|"
+    r"is\s+the\s+current|like|unlike|same\s+as|similar\s+to|following|after|given|with|current|"
+    r"present|new\s+one|the\s+flagged|here|now|latest)\b|"  # D224i: current ... now; D224j: latest
+    r"(?<!earlier\s)\bthe\s+(?:case|transaction|payment)\b",
+    re.I,
+)
+# D224i: a fact about earlier / other transactions cannot use the case's own decision line
+_OTHER_TX = re.compile(r"\b(?:earlier|previous|prior|past|other)\s+(?:\w+\s+)?(?:transactions?|"
+                       r"payments?)\b|\bcustomer(?:'s|s')?\s+history\b", re.I)  # fmt: skip
+_N_EARLIER = re.compile(r"(?<![\w.])(\d+)\s+earlier\s+transactions\b", re.I)
+
+_CHANGE = re.compile(
+    r"\b(?:i|we|i've|we've|i'll|we'll|copilot|assistant)\b[^.]{0,30}?\b(?:changed|updated|set|marked|"
+    r"overrode|overridden|approved|released|unblocked|relabell?ed|cleared|dismissed|escalated|closed|"
+    r"lowered|raised|reset|edited|modified|saved|deleted|removed|reopened|resolved|flagged|"
+    r"overturned)\b|"
+    r"\b(?:has|have|had|was|were|is|are|been|got|gets|get)\s+(?:(?:now|been|just|already|also)\s+)*"
+    r"(?:changed|updated|set\s+to|marked|overridden|overruled|relabell?ed|re-?labell?ed|switched|reset|"
+    r"lowered|raised|dismissed|escalated|closed|cleared|approved|released|unblocked|reopened|edited|"
+    r"modified|deleted|removed|resolved|overturned)\b|"
+    r"\b(?:decision|label|threshold|setting|status)s?\s+(?:is|are)\s+now\b",
+    re.I,
+)
+_VERB = (r"(?:is|was|are|were|be|been|being|it's|it\s+is|that's|as|labell?ed|marked|confirmed|deemed|"
+         r"considered|classified\s+as)")  # fmt: skip
+_ADV = (r"(?:(?:a|an|definitely|clearly|certainly|confirmed|actually|likely|probably|indeed|really|"
+        r"truly|surely|obviously|most\s+likely|almost\s+certainly)\s+)*")  # fmt: skip
+_FRAUD_CLAIM = re.compile(
+    rf"\b{_VERB}\s+{_ADV}(?:fraud|fraudulent)\b|\bnot\s+(?:a\s+)?(?:legit\w*|genuine)\b|"
+    r"\b(?:definitely|clearly|certainly|confirmed)\s+(?:a\s+)?fraud(?:ulent)?\b|"
+    # D224j: "fraud was confirmed", "fraudster" ("fraud probability" is not a label claim)
+    r"\bfraud\s+(?:was|is|has\s+been|had\s+been)\s+(?:confirmed|proven|established)\b|\bfraudsters?\b",
+    re.I,
+)
+_LEGIT_CLAIM = re.compile(
+    rf"\b{_VERB}\s+{_ADV}(?:legit\w*|genuine)\b|\bnot\s+(?:a\s+)?(?:case\s+of\s+)?fraud(?:ulent)?\b|"
+    r"\bno\s+fraud\s+(?:occurred|happened|took\s+place|was\s+(?:found|committed))\b",  # D224j
+    re.I,
+)
+# D224j: a direction word must match the cited reason line's direction
+_UP = re.compile(r"\b(?:raises?|raised|raising|increases?|increased|increasing|higher)\b", re.I)
+_DOWN = re.compile(r"\b(?:lowers?|lowered|lowering|decreases?|decreased|decreasing|reduces?|"
+                   r"reduced|reducing)\b", re.I)  # fmt: skip
+_FRAUD_WORD = re.compile(r"\bfraud\w*\b", re.I)
+_CASE_LABEL = re.compile(r"^outcome label(?:: (fraud|legit))?")
+_OTHER_LABEL = re.compile(r"\btransaction (\d+): .*?\boutcome label: (fraud|legit)")
+
+# field binding of numbers
+_STOP = set(
+    "the and with for its his her their them this that these those are was were has have had been "
+    "being from into than then there here which who what when where all any per out not but very also "
+    "only about over under some each both such more most less few into onto upon while whose".split()
+)
+_GENERIC = {"fraud", "transaction", "customer", "case", "view", "evidence", "line", "known"}
+_SYNONYM = {"risk": "prob", "probability": "prob", "score": "prob", "likelihood": "prob",
+            "percent": "prob", "chance": "prob"}  # fmt: skip
+
+
+@dataclass
+class CheckResult:
+    answer: str  # the kept sentences, or NOT_AVAILABLE
+    kept: list[dict] = field(default_factory=list)  # {"text", "citations"}
+    removed: list[dict] = field(default_factory=list)  # {"text", "why"}
+
+    def summary(self) -> dict:
+        return {"kept": len(self.kept), "removed": len(self.removed)}
+
+
+def sentences(text: str) -> list[str]:
+    """Split on newlines, then on . ! ? before a space (a citation right after the stop stays with
+    its sentence; decimals such as 0.35 are not split). List bullets are dropped."""
+    out = []
+    for line in text.splitlines():
+        line = _BULLET.sub("", line).strip()
+        out += [m.group(0).strip() for m in _SENTENCE.finditer(line) if m.group(0).strip()]
+    return out
+
+
+# ---- value tokens ----------------------------------------------------------------------------------
+def _tokens(text: str) -> list[str]:
+    return [t.strip(".,:;+") for t in _TOKEN.findall(_CITE.sub(" ", text)) if t.strip(".,:;+")]
+
+
+def values(text: str) -> list[tuple[str, object]]:
+    """Whole value tokens of a text: ("num", "12.5") / ("clock", minutes) / ("id", token)."""
+    out = []
+    for tok in _tokens(text):
+        if re.search(r"[A-Za-z]", tok) or not re.search(r"\d", tok):
+            continue
+        if _CLOCK.match(tok):
+            h, m = tok.split(":")
+            out.append(("clock", int(h) * 60 + int(m)))
+        elif _NUMBER.match(tok) or _GROUPED.match(tok):
+            out.append(("num", tok))
+        else:  # digits with "_", several "." or "-" / "/": an id, matched exactly
+            out.append(("id", tok))
+    return out
+
+
+def _value(num: str) -> tuple[float, int, bool]:
+    pct = num.endswith("%")
+    core = num.strip("$%").replace(",", "")
+    decimals = len(core.split(".")[1]) if "." in core else 0
+    return float(core), decimals, pct
+
+
+def _decimal(x) -> Decimal:
+    return Decimal(str(x).strip("$%").replace(",", ""))
+
+
+def number_supported(num: str, evidence_numbers: list) -> bool:
+    """The sentence's number against evidence values (their TEXT, D224i): exact, or the evidence
+    rounded half-up to the sentence's decimals (integers below 10 exact), or "x%" for a value
+    between 0 and 1 times 100, rounded half-up. Decimal, so 104.50 -> 105 and 2.675 -> 2.68."""
+    _, d, pct = _value(num)
+    v = _decimal(num)
+    step = Decimal(1).scaleb(-d)
+    for raw in evidence_numbers:
+        e = _decimal(raw)
+        if e == v:
+            return True
+        if (d >= 1 or abs(e) >= 10) and e.quantize(step, ROUND_HALF_UP) == v:
+            return True
+        if pct and 0 <= e <= 1 and (e * 100).quantize(step, ROUND_HALF_UP) == v:
+            return True
+    return False
+
+
+def _words(text: str) -> set[str]:
+    out = set()
+    for w in re.findall(r"[a-z]+", _CITE.sub(" ", text).lower()):
+        if len(w) < 3 or w in _STOP:
+            continue
+        w = w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w
+        out.add(_SYNONYM.get(w, w))
+    return out
+
+
+def number_problem(s: str, cited: list[str]) -> str | None:
+    """The first number of the sentence that is not a whole value of a matching field, or None."""
+    segments = [(_words(seg), values(seg)) for line in cited for seg in _SEGMENT.split(line)]
+    all_values = [v for _, vs in segments for v in vs]
+    fact_words = _words(s)
+    acts = actions(s)  # D224j: "held" binds to the history line's "decision: hold N" field
+    if acts:
+        fact_words |= {_ACTION_WORD[a] for a in acts} | {"decision"}
+    for kind, val in values(s):
+        if kind == "clock":
+            if ("clock", val) not in all_values:
+                return f"time not in the cited evidence: {val // 60:02d}:{val % 60:02d}"
+            continue
+        if kind == "id":
+            if ("id", val) not in all_values:
+                return f"id not in the cited evidence: {val}"
+            continue
+        core = val.strip("$%").replace(",", "")
+        if re.fullmatch(r"\d{5,}", core):  # a transaction or customer id: whole value only
+            if not any(
+                k == "num" and v.strip("$%").replace(",", "") == core for k, v in all_values
+            ):
+                return f"id not in the cited evidence: {val}"
+            continue
+        ok = False
+        for seg_words, seg_values in segments:
+            nums = [v for k, v in seg_values if k == "num"]  # the evidence text (D224i)
+            if not number_supported(val, nums):
+                continue
+            need = seg_words - _GENERIC
+            if (need & fact_words) if need else (not seg_words or seg_words & fact_words):
+                ok = True
+                break
+        if not ok:
+            found = any(number_supported(val, [v]) for k, v in all_values if k == "num")
+            return (f"number belongs to another field of the cited evidence: {val}" if found
+                    else f"number not in the cited evidence: {val}")  # fmt: skip
+    return None
+
+
+def _ids(text: str) -> list[str]:
+    out = []
+    for tok in _tokens(text):
+        tok = tok.strip("-")
+        letters, digits = re.search(r"[A-Za-z]", tok), re.search(r"\d", tok)
+        dotted = _DOTTED.match(tok) and re.search(r"\.[a-z]{2,}$", tok, re.I)
+        if (letters and digits) or dotted or _KIND.match(tok):
+            out.append(tok)
+    return out
+
+
+def id_supported(token: str, cited_lower: str) -> bool:
+    """The token (for kind:value, its value) as a whole word of the cited lines."""
+    tok = token.split(":", 1)[1] if _KIND.match(token) else token
+    return (
+        re.search(r"(?<![\w.-])" + re.escape(tok.lower()) + r"(?![\w-]|\.\w)", cited_lower)
+        is not None
+    )
+
+
+# ---- decisions and labels ------------------------------------------------------------------------
+def actions(text: str) -> set[str]:
+    """The decision words of a text in any form, as the five action names."""
+    return set(actions_in_order(text))
+
+
+def actions_in_order(text: str) -> list[str]:
+    """The decision words of a text as action names, in the order they appear (repeats dropped)."""
+    out: list[str] = []
+    for m in _ACTION.finditer(_CITE.sub(" ", text)):
+        a = next(n for n, g in zip(_ACTION_NAMES, m.groups(), strict=True) if g)
+        if a not in out:
+            out.append(a)
+    return out
+
+
+def decision_problem(s: str, cited: list[str]) -> str | None:
+    """Decision words, conservatively (D224h; replaces D224e's and D224g's attribution):
+    - a fact with any case reference ("it", "this", "the case", "like", "with" ...): every decision
+      word needs the case's own decision line, cited and matching;
+    - otherwise a named transaction's own line supports its decision by id, and the
+      customer-history line supports a decision word only in "<N> earlier transactions ...
+      <decision>", N directly attached to "earlier transactions" and equal to the line's count.
+    - a fact that names earlier / previous / prior / past / other transactions or payments never
+      uses the case's own decision line (D224i).
+    False removals are accepted; false keeps are not."""
+    text = _CITE.sub(" ", s)
+    words = actions_in_order(text)
+    if not words:
+        return None
+    case_cited = any(_CASE_DECISION.match(line) for line in cited)
+    case_ref = bool(_CASE_REF.search(text))
+    nums = {v for k, v in values(text) if k == "num"}
+    lines = [h for line in cited if (h := _HISTORY_DECISIONS.search(line))]
+    counts = {act: n for h in lines for act, n in re.findall(r"(\w+) (\d+)", h.group(1))}
+    other_tx = bool(_OTHER_TX.search(text))  # D224i: about earlier / other transactions
+    for a in words:
+        if not other_tx and any(
+            (m := _CASE_DECISION.match(line)) and m.group(2) == a for line in cited
+        ):
+            continue  # the case's own decision line supports it
+        if not case_ref:
+            if any((o := _OTHER_DECISION.search(line)) and not _CASE_DECISION.match(line)
+                   and o.group(2) == a and o.group(1) in nums for line in cited):  # fmt: skip
+                continue  # a named transaction's own line, by id
+            if lines:  # "<N> earlier transactions" before this decision word, N = the line's count
+                attached = [m for m in _N_EARLIER.finditer(text)
+                            if any(w.start() > m.end() and _action_name(w) == a
+                                   for w in _ACTION.finditer(text))]  # fmt: skip
+                if a in counts and any(m.group(1) == counts[a] for m in attached):
+                    continue
+                return f"decision count not in the customer-history line: {a}"
+        if other_tx and case_ref:
+            return f"mixes the case and earlier or other transactions: {a}"
+        if other_tx:
+            return f"a decision about earlier or other transactions needs their own line: {a}"
+        return (f"decision not in the cited evidence: {a}" if case_cited else
+                f"decision word must cite the case's own decision line: {a}")  # fmt: skip
+    return None
+
+
+def _action_name(m: re.Match) -> str:
+    return next(n for n, g in zip(_ACTION_NAMES, m.groups(), strict=True) if g)
+
+
+def label_problem(s: str, cited: list[str]) -> str | None:
+    fraud, legit = bool(_FRAUD_CLAIM.search(s)), bool(_LEGIT_CLAIM.search(s))
+    if fraud and legit:
+        return "ambiguous outcome label claim"
+    if fraud or legit:
+        want = "fraud" if fraud else "legit"
+        fact_ids = {v for k, v in values(s) if k == "num"}
+        # another transaction's line: only when the fact names its id AND has no case reference
+        # (D224j; the same conservative rule as D224h)
+        for line in cited if not _CASE_REF.search(_CITE.sub(" ", s)) else []:
+            o = _OTHER_LABEL.search(line)
+            if o and not _CASE_LABEL.match(line) and o.group(1) in fact_ids:
+                return None if o.group(2) == want else "label claim disagrees with the cited label"
+        labels = [m for line in cited if (m := _CASE_LABEL.match(line))]
+        if not labels:
+            return "a label claim must cite the case's own label line"
+        known = [m.group(1) for m in labels if m.group(1)]
+        if not known:
+            return "claims an outcome label that is not known yet"
+        if known[0] != want:
+            return "label claim disagrees with the cited label"
+        return None
+    if _FRAUD_WORD.search(s) and not any(_FRAUD_WORD.search(line) for line in cited):
+        return "mentions fraud but the cited evidence does not"
+    return None
+
+
+def check(answer: str, evidence: dict[str, str]) -> CheckResult:
+    """answer: the model's finished text; evidence: handle ("E1") -> the line given this turn."""
+    res = CheckResult(answer=NOT_AVAILABLE)
+    # "[E8]-[E10]" cites E8, E9 and E10
+    answer = _RANGE.sub(lambda m: "[" + ", ".join(f"E{i}" for i in range(int(m.group(1)),
+                        int(m.group(2)) + 1)) + "]" if int(m.group(2)) - int(m.group(1)) < 20
+                        else m.group(0), answer)  # fmt: skip
+    for s in sentences(answer):
+        if s.strip(" .").lower() == NOT_AVAILABLE.strip(" .").lower():
+            continue  # the instructed phrase claims nothing: neither kept nor counted as removed
+        cites = [h for c in _CITE.findall(s) for h in re.split(r"[,;\s]+", c) if h]
+        if cites and not re.sub(r"<\s*E\d+\s*>|[\s.,;:]", "", _CITE.sub("", s)):
+            why = "handles listed apart from their sentences"  # D224b: nothing to tie them to
+        else:
+            why = verdict(s, cites, evidence)
+        if why:
+            res.removed.append({"text": s, "why": why})
+        else:
+            res.kept.append({"text": s, "citations": list(dict.fromkeys(cites))})
+    if res.kept:
+        res.answer = " ".join(k["text"] for k in res.kept)
+    return res
+
+
+def verdict(s: str, cites: list[str], evidence: dict[str, str]) -> str | None:
+    """Why a sentence with these citations is removed, or None when it is kept."""
+    if not cites:
+        return "no citation"
+    if any(not _HANDLE.match(h) or h not in evidence for h in cites):
+        return "cites evidence that was not given"
+    cited = [evidence[h] for h in dict.fromkeys(cites)]
+    low = " ".join(cited).lower()
+    if _CHANGE.search(s):
+        return "claims a change (the copilot cannot change anything)"
+    if why := label_problem(s, cited):
+        return why
+    if why := number_problem(s, cited):
+        return why
+    if bad := [t for t in _ids(s) if not id_supported(t, low)]:
+        return f"id not in the cited evidence: {bad[0]}"
+    if why := direction_problem(s, cited):
+        return why
+    return decision_problem(s, cited)
+
+
+def direction_problem(s: str, cited: list[str]) -> str | None:
+    """A direction word (raises / lowers ...) must match the cited reason line's direction, when
+    that line states one (D224j)."""
+    text = _CITE.sub(" ", s)
+    said = {d for d, rx in (("raises", _UP), ("lowers", _DOWN)) if rx.search(text)}
+    shown = {
+        d for d, rx in (("raises", _UP), ("lowers", _DOWN)) for line in cited if rx.search(line)
+    }
+    if said and shown and not said <= shown:
+        return f"direction not in the cited evidence: {sorted(said - shown)[0]}"
+    return None
+
+
+# ---- structured output (D224c) -------------------------------------------------------------------
+_ITEM = re.compile(
+    r'\{\s*"fact"\s*:\s*("(?:[^"\\]|\\.)*")\s*,\s*"evidence"\s*:\s*("(?:[^"\\]|\\.)*")\s*\}'
+)
+
+
+def parse_facts(draft: str) -> tuple[list[dict], bool]:
+    """The items of a structured answer and whether it was valid JSON. Invalid JSON (e.g. cut off
+    at the token limit) keeps only the complete items that can be read."""
+    try:
+        obj = json.loads(draft)
+        items = obj.get("facts") if isinstance(obj, dict) else obj
+        if not isinstance(items, list):
+            return [], False
+        return [{"fact": str(i.get("fact", "")), "evidence": str(i.get("evidence", ""))}
+                for i in items if isinstance(i, dict)], True  # fmt: skip
+    except (ValueError, AttributeError):
+        return [{"fact": json.loads(f), "evidence": json.loads(e)}
+                for f, e in _ITEM.findall(draft)], False  # fmt: skip
+
+
+def check_facts(draft: str, evidence: dict[str, str], max_facts: int = 5) -> CheckResult:
+    """Each fact is checked against its one cited line (handles written inside the fact text are
+    ignored); prose is rendered by code: '<fact> [Ek].' per kept fact. An empty list is
+    NOT_AVAILABLE; output with no readable item counts as one removed fact."""
+    res = CheckResult(answer=NOT_AVAILABLE)
+    items, valid = parse_facts(draft)
+    if not items and not valid:
+        res.removed.append({"text": draft[:300], "why": "answer not valid JSON"})
+        return res
+    for n, item in enumerate(items):
+        checked = check_item(item, n, evidence, max_facts)
+        if checked is not None:
+            (res.kept if checked[0] == "kept" else res.removed).append(checked[1])
+    if res.kept:
+        res.answer = " ".join(k["text"] for k in res.kept)
+    return res
+
+
+def check_item(
+    item: dict, n: int, evidence: dict[str, str], max_facts: int
+) -> tuple[str, dict] | None:
+    """One structured fact (the n-th, from 0): ("kept", {"text", "citations"}), ("removed",
+    {"text", "why"}), or None for an empty fact or the instructed not-available phrase. Used for the
+    final answer and, fact by fact, while the answer streams (D226a): the same verdict either way.
+    """
+    fact = " ".join(_CITE.sub(" ", item["fact"]).split()).rstrip(" .")
+    if not fact or fact.lower() == NOT_AVAILABLE.strip(" .").lower():
+        return None
+    text = f"{fact} [{item['evidence']}]."
+    why = (
+        "more facts than allowed" if n >= max_facts else verdict(text, [item["evidence"]], evidence)
+    )
+    if why:
+        return "removed", {"text": text, "why": why}
+    return "kept", {"text": text, "citations": [item["evidence"]]}
