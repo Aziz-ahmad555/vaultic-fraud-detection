@@ -1,9 +1,9 @@
 # EXP-320: E20, the copilot evaluation (D225, D225a-D225d, D227, D229). Every value here is copied from
 # research/preregistration_e20.md; tests/test_e20_runner.py checks that they agree. Run (only after
-# the independent review):  python -m vaultic.copilot.e20 --config experiments/configs/EXP-320.yaml
+# the independent review):  python -m vaultic.eval.e20 --config experiments/configs/EXP-320.yaml
 experiment: EXP-320
 preregistration: research/preregistration_e20.md
-decisions: [D225, D225a, D225b, D225c, D225d, D227, D228, D229]
+decisions: [D225, D225a, D225b, D225c, D225d, D227, D227a, D228, D229]
 
 frozen:
   commit: 03f8a16  # D225d (before: 8a7e258 D225b, c9d8806)

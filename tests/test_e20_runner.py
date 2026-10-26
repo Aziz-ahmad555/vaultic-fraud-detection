@@ -15,8 +15,8 @@ import pandas as pd
 import pytest
 from test_demo_server import _app, _bundle, _load_module
 
-from vaultic.copilot import e20
 from vaultic.copilot.llm import ScriptedLLM
+from vaultic.eval import e20
 
 ROOT = Path(__file__).resolve().parents[1]
 CFG_PATH = ROOT / "experiments/configs/EXP-320.yaml"

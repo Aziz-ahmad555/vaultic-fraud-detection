@@ -1,11 +1,11 @@
-"""E20 runner (D225, D225a-D225d, D227, D229): generates the pre-registered copilot evaluation
+"""E20 runner (D225, D225a-D225d, D227, D227a, D229): generates the pre-registered copilot evaluation
 items and the blind labelling sheets. It computes no metrics and writes nothing in the repository.
 
 Run (only after the independent review; from the repository root, VAULTIC_DATA_DIR set):
-    python -m vaultic.copilot.e20 --config experiments/configs/EXP-320.yaml          # start
-    python -m vaultic.copilot.e20 --config ... --resume <run id>                        # resume
-    python -m vaultic.copilot.e20 --config ... --sheets <run id>                        # sheets only
-    python -m vaultic.copilot.e20 --config ... --check                                  # guards only
+    python -m vaultic.eval.e20 --config experiments/configs/EXP-320.yaml          # start
+    python -m vaultic.eval.e20 --config ... --resume <run id>                        # resume
+    python -m vaultic.eval.e20 --config ... --sheets <run id>                        # sheets only
+    python -m vaultic.eval.e20 --config ... --check                                  # guards only
 
 Guards before any test-period row is read or any generation (any failure refuses the start):
   - the frozen files hashed with LF line endings, the rules digest, the checker version, the
