@@ -1,7 +1,8 @@
 /**
  * The copilot panel on the Cases page (D226): a one-click case summary (cached or live), a
- * question box with suggested questions, a streamed answer that is a draft until the checked facts
- * arrive, citation chips that highlight their evidence line, a removed-facts note, and the
+ * question box with suggested questions, an answer streamed as checked facts only (the server
+ * checks each fact as it completes, D226a; no unchecked model text is shown), progress counts,
+ * citation chips that highlight their evidence line, a removed-facts note, and the
  * not-available, refusal, model-not-running, model-loading, Test Lab and error states.
  * It reads only: it cannot change a decision, a label or a setting.
  */
@@ -26,22 +27,17 @@ const FIRST_ANSWER = "a first answer takes about 1-2 minutes on this laptop";
 
 type Run =
   | { kind: "idle" }
-  | { kind: "running"; what: "summary" | "question"; evidence: EvidenceLine[]; draft: string }
+  | { kind: "running"; what: "summary" | "question"; evidence: EvidenceLine[]; facts: CheckedFact[]; progress: Progress | null }
   | { kind: "done"; final: CopilotFinal }
   | { kind: "failed"; message: string; status: number };
 
-/** The complete facts in a partial JSON draft: shown while streaming, marked "not yet checked". */
-export function draftFacts(draft: string): { fact: string; evidence: string }[] {
-  const out: { fact: string; evidence: string }[] = [];
-  const re = /\{\s*"fact"\s*:\s*("(?:[^"\\]|\\.)*")\s*,\s*"evidence"\s*:\s*("(?:[^"\\]|\\.)*")\s*\}/g;
-  for (const m of draft.matchAll(re)) {
-    try {
-      out.push({ fact: JSON.parse(m[1]) as string, evidence: JSON.parse(m[2]) as string });
-    } catch {
-      /* an incomplete string: not shown yet */
-    }
-  }
-  return out;
+type Progress = { drafted: number; shown: number; removed: number };
+
+/** Progress between checked facts (D226a): counts only, never the model's text. */
+export function progressText(p: Progress): string {
+  if (p.drafted === 0) return "Writing the answer; each fact is checked as soon as it is complete…";
+  const n = (k: number, w: string) => `${k} ${w}${k === 1 ? "" : "s"}`;
+  return `${n(p.drafted, "fact")} drafted, ${p.shown} shown${p.removed ? `, ${p.removed} removed` : ""}; checking…`;
 }
 
 /** "Fact [E2]." -> "Fact" (the chips carry the citations). */
@@ -91,10 +87,12 @@ export function CopilotPanel({ t, asOf, copilot = copilotApi }: { t: Transaction
 
   const start = async (what: "summary" | "question", q = "") => {
     setHighlight(null);
-    setRun({ kind: "running", what, evidence: [], draft: "" });
+    setRun({ kind: "running", what, evidence: [], facts: [], progress: null });
     const onEvent = (e: CopilotEvent) => {
       if (e.type === "start") setRun((r) => (r.kind === "running" ? { ...r, evidence: e.evidence } : r));
-      if (e.type === "token") setRun((r) => (r.kind === "running" ? { ...r, draft: r.draft + e.text } : r));
+      if (e.type === "fact") setRun((r) => (r.kind === "running" ? { ...r, facts: [...r.facts, e.fact] } : r));
+      if (e.type === "progress")
+        setRun((r) => (r.kind === "running" ? { ...r, progress: { drafted: e.drafted, shown: e.shown, removed: e.removed } } : r));
     };
     try {
       const final = what === "summary" ? await copilot.summary(caseId, asOf, onEvent, t) : await copilot.ask(caseId, q, asOf, onEvent, t);
@@ -169,19 +167,24 @@ export function CopilotPanel({ t, asOf, copilot = copilotApi }: { t: Transaction
 
       {run.kind === "running" && (
         <div className="copilot-answer" role="status" aria-live="polite" data-testid="copilot-running">
-          <p className="small muted">
-            {run.draft
-              ? "Writing the answer (draft, not yet checked)…"
+          <p className="small muted" data-testid="copilot-progress">
+            {run.progress
+              ? progressText(run.progress)
               : `${run.what === "summary" ? "Preparing the case summary" : "Reading the case evidence"}… ${status?.loaded === false ? "loading the model first; " : ""}${status?.mock ? "" : FIRST_ANSWER}.`}
           </p>
-          {draftFacts(run.draft).length > 0 && (
-            <ul className="small copilot-draft" data-testid="copilot-draft">
-              {draftFacts(run.draft).map((f, i) => (
+          {run.facts.length > 0 && (
+            <ol className="copilot-facts small" data-testid="copilot-streamed">
+              {run.facts.map((f, i) => (
                 <li key={i}>
-                  {f.fact} <span className="muted xs">[{f.evidence}] draft, not yet checked</span>
+                  {factText(f)}{" "}
+                  {f.citations.map((h) => (
+                    <button key={h} type="button" className="cite-chip" aria-pressed={highlight === h} onClick={() => cite(h)} aria-label={`Show evidence ${h}`}>
+                      {h}
+                    </button>
+                  ))}
                 </li>
               ))}
-            </ul>
+            </ol>
           )}
         </div>
       )}

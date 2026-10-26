@@ -408,7 +408,7 @@ HISTORY_EV = {
     ("The customer has 6 earlier transactions, all of which were held", None),
     # known limitation (field binding is word overlap): "previous" is not the line's "earlier"
     ("The customer's 6 previous transactions were held",
-     "number belongs to another field of the cited evidence: 6"),
+     "decision count not in the customer-history line: hold"),  # D224j: "previous", not "earlier"
     ("The customer has 6 earlier transactions, 4 of which were held",
      "number not in the cited evidence: 4"),  # a count the line does not give
     ("The customer's earlier transactions were held",
@@ -514,10 +514,8 @@ PROBE_D224G = [  # (fact, handle, expected reason; None = kept)
     ("All 6 earlier transactions were held", "E7", COUNT_HOLD),
     ("The 6 earlier transactions were held", "E7", COUNT_HOLD),
     ("The 2 earlier transactions in the data were held", "E7", None),
-    ("6 earlier transactions in total, 2 of them held", "E7",
-     "number belongs to another field of the cited evidence: 2"),
-    ("Of 6 earlier transactions, 2 were held", "E7",
-     "number belongs to another field of the cited evidence: 2"),
+    ("6 earlier transactions in total, 2 of them held", "E7", COUNT_HOLD),  # D224j: N attached is 6
+    ("Of 6 earlier transactions, 2 were held", "E7", COUNT_HOLD),
     ("6 earlier transactions over 2 periods were held", "E7", COUNT_HOLD),  # N attached is 6
     # the case's own line, with a history part it cannot support
     ("It was stepped up, unlike the 6 earlier transactions that were held", "E1",
@@ -649,3 +647,86 @@ ROUND_EV = {
 ])  # fmt: skip
 def test_numbers_are_rounded_half_up_from_the_evidence_text(fact, handle, kept):
     assert bool(check_facts(_facts((fact, handle)), ROUND_EV).kept) is kept
+
+
+# ---- D224j: the full review's fixes -----------------------------------------------------------------
+CASE_LABEL_ONLY = "a label claim must cite the case's own label line"
+
+
+@pytest.mark.parametrize("fact", [
+    "Earlier transaction 3400001 was fraud and so is this one",
+    "Earlier transaction 3400001 was fraud, as is the current payment",
+    "Transaction 3400001 was fraudulent, like this case",
+])  # fmt: skip
+def test_blocker_a_named_transactions_label_never_supports_a_case_claim(fact):
+    r = check_facts(_facts((fact, "E6")), PRIOR_EV)  # E6: transaction 3400001, outcome label: fraud
+    assert [x["why"] for x in r.removed] == [CASE_LABEL_ONLY]
+    # without a case reference the named transaction's own line still supports it
+    assert check_facts(_facts(("Earlier transaction 3400001 was fraud", "E6")), PRIOR_EV).kept
+
+
+@pytest.mark.parametrize("fact,why", [
+    ("2 earlier transactions were held", None),  # the decision field: "their decisions: hold 2"
+    ("The customer's 2 earlier transactions in the data were held", None),
+    ("6 earlier transactions were held", COUNT_HOLD),  # 6 is the total, not the hold count
+    ("2 earlier transactions were allowed", "decision count not in the customer-history line: allow"),
+])  # fmt: skip
+def test_decision_words_bind_to_the_history_decision_field_with_the_count(fact, why):
+    r = check_facts(_facts((fact, "E7")), D224G_EV)  # E7: 6 in total, 2 in the data, hold 2
+    if why is None:
+        assert r.summary() == {"kept": 1, "removed": 0}, r.removed
+    else:
+        assert [x["why"] for x in r.removed] == [why]
+
+
+BLOCK_EV = {"E1": STEP_UP_EV["E1"].replace("decision step_up", "decision block")}
+
+
+@pytest.mark.parametrize("fact,ev,why", [
+    ("The payment was declined", STEP_UP_EV, "decision not in the cited evidence: block"),
+    ("The transaction was rejected", STEP_UP_EV, "decision not in the cited evidence: block"),
+    ("The payment was declined", BLOCK_EV, None),
+    ("The decision was overturned", STEP_UP_EV, "claims a change (the copilot cannot change anything)"),
+    ("The latest transaction was held", D224G_EV, "decision word must cite the case's own decision line: hold"),
+    ("The customer's history was stepped up", STEP_UP_EV,
+     "a decision about earlier or other transactions needs their own line: step_up"),
+])  # fmt: skip
+def test_cheap_rules_decisions_changes_and_references(fact, ev, why):
+    handle = "E5" if "latest" in fact else "E1"
+    r = check_facts(_facts((fact, handle)), ev)
+    if why is None:
+        assert r.summary() == {"kept": 1, "removed": 0}, r.removed
+    else:
+        assert [x["why"] for x in r.removed] == [why]
+
+
+@pytest.mark.parametrize("fact,handle,why", [
+    ("Fraud was confirmed", "E1", CASE_LABEL_ONLY),
+    ("No fraud occurred", "E1", CASE_LABEL_ONLY),
+    ("The customer is a fraudster", "E1", CASE_LABEL_ONLY),
+    ("No fraud occurred", "E3", None),  # the case's own label line says legit
+    ("Fraud was confirmed", "E3", "label claim disagrees with the cited label"),
+    ("The fraud probability is 0.912", "E1", None),  # not a label claim
+])  # fmt: skip
+def test_cheap_rules_more_label_claim_forms(fact, handle, why):
+    r = check_facts(_facts((fact, handle)), PRIOR_EV)
+    if why is None:
+        assert r.summary() == {"kept": 1, "removed": 0}, r.removed
+    else:
+        assert [x["why"] for x in r.removed] == [why]
+
+
+def test_cheap_rules_a_direction_must_match_the_cited_reason_line():
+    ev = {
+        "E5": "tabular view raises the risk by 20.8 points (gate weight 0.99, view probability 0.674)."
+    }
+    assert check_facts(_facts(("The tabular view raises the risk by 20.8 points", "E5")), ev).kept
+    assert check_facts(
+        _facts(("The tabular view increases the risk by 20.8 points", "E5")), ev
+    ).kept
+    r = check_facts(_facts(("The tabular view lowers the risk by 20.8 points", "E5")), ev)
+    assert [x["why"] for x in r.removed] == ["direction not in the cited evidence: lowers"]
+    # a line without a direction does not check one (documented limitation)
+    assert check_facts(
+        _facts(("The calibrated fraud probability raises to 0.912", "E1")), PROBE_EV
+    ).kept

@@ -77,15 +77,20 @@ def audit_entries(demo):
 
 
 # ---- answering ---------------------------------------------------------------------------------------
-def test_a_streamed_answer_is_a_draft_until_checked(demo):
+def test_only_checked_facts_are_streamed_never_unchecked_model_text(demo):
     client, cop = mount(demo, ScriptedLLM(decision_answer))
     code, events = ask(client, demo.tid, stream=True)
     assert code == 200
     kinds = [e["type"] for e in events]
-    assert kinds[0] == "start" and kinds[-1] == "final" and kinds.count("token") >= 5
-    assert all(e["status"] == "draft, not yet checked" for e in events if e["type"] == "token")
+    assert kinds[0] == "start" and kinds[-1] == "final"
+    assert set(kinds) == {"start", "progress", "fact", "final"}  # no "token" events (D226a)
     final = events[-1]
-    assert "".join(e["text"] for e in events if e["type"] == "token") == final["draft"]
+    assert "draft" not in final
+    # the streamed facts are exactly the checked ones; the removed fact ("999 cards") never appears
+    assert [e["fact"] for e in events if e["type"] == "fact"] == final["kept"]
+    assert not any("999" in str(e) for e in events if e["type"] in ("fact", "progress"))
+    last = [e for e in events if e["type"] == "progress"][-1]
+    assert (last["drafted"], last["shown"], last["removed"]) == (2, 1, 1)
     assert len(final["kept"]) == 1 and final["removed"][0]["why"].startswith("number not in")
     assert final["answer"].startswith("The decision is ")
     assert final["route"] == "why" and final["audit"] == "ok"
@@ -466,7 +471,7 @@ def test_a_model_failing_mid_stream_ends_with_an_error_event_and_one_audit_entry
     cop = Copilot(demo.app.state.read, Failing(), audit=demo.app.state.audit)
     n = len(audit_entries(demo))
     events = list(cop.run(cop.start("question", demo.tid, WHY, AS_OF, 30)))
-    assert [e["type"] for e in events] == ["start", "token", "error"]
+    assert [e["type"] for e in events] == ["start", "progress", "error"]
     assert "out of memory" in events[-1]["message"]
     assert len(audit_entries(demo)) == n + 1
 

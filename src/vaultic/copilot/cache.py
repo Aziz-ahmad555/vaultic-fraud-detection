@@ -82,7 +82,7 @@ def summary_entry(cop, tid: int, t: float, L: int, rule: str) -> dict:
             "evidence_tokens": prep.evidence.tokens, "model": cop.llm.model,
             "generated_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
             "answer": final["answer"], "kept": final["kept"], "removed": final["removed"],
-            "draft": final.get("draft"), "seconds": final["seconds"]}  # fmt: skip
+            "draft": prep.draft, "seconds": final["seconds"]}  # fmt: skip
 
 
 def build(app, llm, L: int = 30, log=print, variant: str | None = None) -> dict:

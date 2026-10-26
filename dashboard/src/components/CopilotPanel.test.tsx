@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { CopilotError, NOT_AVAILABLE, createMockCopilot, type CopilotApi, type CopilotEvent, type CopilotFinal, type CopilotStatus, type EvidenceLine } from "../api/copilot";
 import { createMockApi } from "../api/mock/mockApi";
 import type { AsOf, Transaction } from "../api/types";
-import { CopilotPanel, READ_ONLY_NOTE, SUGGESTED, draftFacts, removedNote } from "./CopilotPanel";
+import { CopilotPanel, READ_ONLY_NOTE, SUGGESTED, progressText, removedNote } from "./CopilotPanel";
 
 const asOf: AsOf = { time: 141 * 86400 + 14 * 3600, labelDelayDays: 30 };
 
@@ -96,7 +96,7 @@ describe("copilot panel (D226)", () => {
     expect(await screen.findByTestId("copilot-cached")).toHaveTextContent("cached, generated at 2026-10-25 04:04 UTC by qwen2.5:7b-instruct-q4_K_M");
   });
 
-  it("shows a live summary's progress, then its draft facts as 'not yet checked', then the checked answer", async () => {
+  it("streams only checked facts with progress counts between them, never the model's text (D226a)", async () => {
     let resolve: (f: CopilotFinal) => void = () => {};
     let push: (e: CopilotEvent) => void = () => {};
     const cop: CopilotApi = {
@@ -111,10 +111,15 @@ describe("copilot panel (D226)", () => {
     expect(await screen.findByTestId("copilot-running")).toHaveTextContent("Preparing the case summary");
     expect(screen.getByRole("button", { name: "Case summary" })).toBeDisabled();
     act(() => push({ type: "start", evidence: EVIDENCE, model: READY.model, reasons_source: "view-level" }));
-    act(() => push({ type: "token", text: '{"facts": [{"fact": "The decision is hold", "evidence": "E1"}, {"fact": "The cus', status: "draft, not yet checked" }));
-    expect(screen.getByTestId("copilot-running")).toHaveTextContent("draft, not yet checked");
-    expect(screen.getByTestId("copilot-draft")).toHaveTextContent("The decision is hold");
-    expect(screen.getByTestId("copilot-draft")).not.toHaveTextContent("The cus");
+    act(() => push({ type: "progress", phase: "writing", drafted: 0, shown: 0, removed: 0 }));
+    expect(screen.getByTestId("copilot-progress")).toHaveTextContent("each fact is checked as soon as it is complete");
+    act(() => push({ type: "fact", fact: { text: "The decision is hold [E1].", citations: ["E1"] } }));
+    act(() => push({ type: "progress", phase: "writing", drafted: 2, shown: 1, removed: 1 }));
+    expect(screen.getByTestId("copilot-progress")).toHaveTextContent("2 facts drafted, 1 shown, 1 removed; checking");
+    expect(screen.getByTestId("copilot-streamed")).toHaveTextContent("The decision is hold");
+    expect(screen.queryByText(/not yet checked/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show evidence E1" }));
+    expect(screen.getByTestId("copilot-evidence").querySelector('[data-handle="E1"]')).toHaveClass("ev-hl");
     act(() => resolve(final({ kind: "summary" })));
     await screen.findByTestId("copilot-answer");
     expect(screen.queryByTestId("copilot-running")).toBeNull();
@@ -183,9 +188,9 @@ describe("copilot panel (D226)", () => {
   });
 });
 
-describe("draft facts", () => {
-  it("shows only complete items of a partial JSON draft", () => {
-    expect(draftFacts('{"facts": [{"fact": "A \\"quoted\\" fact", "evidence": "E2"}, {"fact": "half')).toEqual([{ fact: 'A "quoted" fact', evidence: "E2" }]);
-    expect(draftFacts("")).toEqual([]);
+describe("progress text", () => {
+  it("shows counts only", () => {
+    expect(progressText({ drafted: 1, shown: 1, removed: 0 })).toBe("1 fact drafted, 1 shown; checking…");
+    expect(progressText({ drafted: 3, shown: 2, removed: 1 })).toBe("3 facts drafted, 2 shown, 1 removed; checking…");
   });
 });

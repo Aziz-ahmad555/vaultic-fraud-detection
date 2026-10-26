@@ -302,4 +302,11 @@ states (not enabled, Ollama not running, model not loaded, Test Lab off / loadin
 read-only note, mock mode. Browser-checked against the real backend with Ollama on (cached and live)
 and off; screenshots in `docs/thesis_notes/img/`.
 
+**Full review fixes (2026-10-26): D224j (checker) and D226a (UI / streaming).** Named-transaction label
+route only without a case reference (blocker); decision-word forms bind to the history decision field;
+cheap rules (declined / rejected, overturned, latest, the customer's history, more label-claim forms,
+reason direction); only server-checked facts are streamed (no unchecked model text on screen); the Key
+facts card falls back to page data on 404. Dev drafts re-checked: V1 0.885, V2 0.909, V3 0.909; V3
+stays.
+
 **Next:** D225 (E20 pre-registration, alone), on Aziz's go-ahead.

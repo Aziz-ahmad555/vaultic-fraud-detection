@@ -18,10 +18,10 @@ const FINAL = { type: "final", case: 1, kind: "question", route: "why", model: "
 
 describe("copilot client (D226)", () => {
   it("reads an NDJSON stream split across chunks and resolves with the final event", async () => {
-    const lines = [{ type: "start", evidence: [], model: "m", reasons_source: null }, { type: "token", text: "{", status: "draft, not yet checked" }, FINAL].map((e) => JSON.stringify(e)).join("\n") + "\n";
+    const lines = [{ type: "start", evidence: [], model: "m", reasons_source: null }, { type: "progress", phase: "writing", drafted: 1, shown: 1, removed: 0 }, { type: "fact", fact: { text: "a [E1].", citations: ["E1"] } }, FINAL].map((e) => JSON.stringify(e)).join("\n") + "\n";
     const seen: CopilotEvent[] = [];
     const final = await readStream(streamed([lines.slice(0, 17), lines.slice(17, 60), lines.slice(60)]), (e) => seen.push(e));
-    expect(seen.map((e) => e.type)).toEqual(["start", "token", "final"]);
+    expect(seen.map((e) => e.type)).toEqual(["start", "progress", "fact", "final"]);
     expect(final.answer).toBe("a");
   });
 

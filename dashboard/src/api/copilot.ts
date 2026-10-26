@@ -1,8 +1,9 @@
 /**
  * Client for the read-only copilot (services/api/copilot.py, D224-D226): a local language model
  * that answers questions about one case from its evidence. Answers arrive as an NDJSON stream:
- * "start" (the evidence lines), "token" (draft JSON, not yet checked), then "final" (the checked
- * facts) or "refused" / "error". Nothing here can change a decision, a label or a setting.
+ * "start" (the evidence lines), "progress" (facts drafted / shown / removed) and "fact" (one fact the
+ * server has already checked), then "final" (the checked facts) or "refused" / "error". No
+ * unchecked model text is ever sent (D226a). Nothing here can change a decision, a label or a setting.
  *
  * http mode needs the backend started with VAULTIC_COPILOT=1 (and Ollama on 127.0.0.1 to answer);
  * mock mode (the default) uses a scripted copilot built from the mock case: no Ollama.
@@ -41,7 +42,6 @@ export interface CopilotFinal {
   answer: string;
   kept: CheckedFact[];
   removed: RemovedFact[];
-  draft?: string | null;
   refused?: string;
   cached?: { label: string; generated_at: string; model: string } | null;
   seconds: number;
@@ -51,7 +51,8 @@ export interface CopilotFinal {
 
 export type CopilotEvent =
   | { type: "start"; evidence: EvidenceLine[]; model: string; reasons_source: string | null }
-  | { type: "token"; text: string; status: string }
+  | { type: "progress"; phase: string; drafted: number; shown: number; removed: number }
+  | { type: "fact"; fact: CheckedFact }
   | { type: "refused"; refusal: string; message: string }
   | CopilotFinal
   | { type: "error"; message: string };
@@ -204,6 +205,18 @@ function scripted(t: Transaction, kind: "question" | "summary", question: string
   return facts.slice(0, 4);
 }
 
+export const PAGE_DATA_SOURCE = "view-level reasons (page data; the copilot is not enabled on the backend)";
+
+/** Key facts from the page's own transaction (mock mode, and the http fallback on 404, D226a). */
+export function factsFromTransaction(t: Transaction, asOf: AsOf, reasonsSource: string, source: string): KeyFactsData {
+  return {
+    case: t.row.TransactionID, amount: t.amount, product: t.product, decision: t.decision.action, p: t.decision.p,
+    expected_loss: t.decision.expected_loss, conformal_set: t.decision.conformal_set, disagreement: t.decision.disagreement,
+    label: t.row.label, label_delay_days: asOf.labelDelayDays, reasons_source: reasonsSource,
+    reasons: t.reasons.slice(0, 5).map((r) => ({ text: r.text, points: r.points })), testlab: "not mounted", source,
+  };
+}
+
 export function createMockCopilot(delayMs = 25): CopilotApi {
   async function run(t: Transaction | undefined, asOf: AsOf, kind: "question" | "summary", question: string, onEvent: (e: CopilotEvent) => void) {
     if (!t) throw new CopilotError("The mock copilot needs the case.", 0);
@@ -223,25 +236,26 @@ export function createMockCopilot(delayMs = 25): CopilotApi {
     }
     const facts = scripted(t, kind, question);
     const removed = kind === "summary" ? [{ text: `The customer has 999 earlier transactions [E2].`, why: "number not in the cited evidence: 999" }] : [];
-    const draft = JSON.stringify({ facts: facts.map(([fact, evidence]) => ({ fact, evidence })) });
-    for (const piece of draft.match(/.{1,12}/g) ?? []) {
+    // like the server (D226a): only checked facts are streamed, with progress counts between them
+    const final = mockFinal(t, kind, evidence, facts, removed, null);
+    onEvent({ type: "progress", phase: "writing", drafted: 0, shown: 0, removed: 0 });
+    let shown = 0;
+    for (const fact of final.kept) {
       await sleep(delayMs);
-      onEvent({ type: "token", text: piece, status: "draft, not yet checked" });
+      shown += 1;
+      onEvent({ type: "fact", fact });
+      onEvent({ type: "progress", phase: "writing", drafted: shown, shown, removed: 0 });
     }
-    const f = { ...mockFinal(t, kind, evidence, facts, removed, null), draft };
+    if (removed.length) onEvent({ type: "progress", phase: "writing", drafted: shown + removed.length, shown, removed: removed.length });
+    const f = final;
     onEvent(f);
     return f;
   }
   return {
     status: async () => ({ model: "scripted (mock)", llm: "ready", loaded: true, variant: "V3", testlab: "not mounted", reasons: "view-level reasons", cached_summaries: 0, note: `${MOCK_LABEL}.`, mock: true }),
-    facts: async (caseId, asOf, t) => {
+    facts: async (_caseId, asOf, t) => {
       if (!t) throw new CopilotError("The mock key facts need the case.", 0);
-      return {
-        case: caseId, amount: t.amount, product: t.product, decision: t.decision.action, p: t.decision.p, expected_loss: t.decision.expected_loss,
-        conformal_set: t.decision.conformal_set, disagreement: t.decision.disagreement, label: t.row.label, label_delay_days: asOf.labelDelayDays,
-        reasons_source: "view-level reasons (gate weight x view logit); feature reasons not available: the Test Lab is off",
-        reasons: t.reasons.slice(0, 5).map((r) => ({ text: r.text, points: r.points })), testlab: "not mounted", source: "rendered by code from the mock case; no language model",
-      };
+      return factsFromTransaction(t, asOf, "view-level reasons (gate weight x view logit); feature reasons not available: the Test Lab is off", "rendered by code from the mock case; no language model");
     },
     ask: (_id, question, asOf, onEvent, t) => run(t, asOf, "question", question, onEvent),
     summary: (_id, asOf, onEvent, t) => run(t, asOf, "summary", "", onEvent),

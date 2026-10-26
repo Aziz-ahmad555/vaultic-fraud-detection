@@ -66,7 +66,7 @@ def run_variant(app, llm, variant: str, log=print) -> list[dict]:
         f = cop.answer(prep)
         rows.append({"tid": tid, "rule": rule, "task": "why flagged", "variant": variant,
                      "answer": f["answer"], "kept": f["kept"], "removed": f["removed"],
-                     "draft": f.get("draft"), "seconds": f["seconds"]})  # fmt: skip
+                     "draft": prep.draft, "seconds": f["seconds"]})  # fmt: skip
         for r in rows[-2:]:
             log(f"{variant} {r['task']:<11} {tid}: {r['seconds']} s, kept {len(r['kept'])}, "
                 f"removed {len(r['removed'])}")  # fmt: skip

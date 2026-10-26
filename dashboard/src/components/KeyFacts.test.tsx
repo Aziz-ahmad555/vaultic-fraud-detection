@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { createMockCopilot, type KeyFactsData } from "../api/copilot";
+import { CopilotError, createMockCopilot, type KeyFactsData } from "../api/copilot";
 import { createMockApi } from "../api/mock/mockApi";
 import type { AsOf, Transaction } from "../api/types";
 import { nextChecks } from "../lib/nextChecks";
@@ -44,6 +44,24 @@ describe("key facts card (D226)", () => {
     unmount();
     render(<KeyFactsView f={{ ...F, reasons_source: "view-level reasons (gate weight x view logit); feature reasons not available: the Test Lab is loading" }} />);
     expect(screen.getByTestId("reasons-source")).toHaveTextContent("the Test Lab is loading");
+  });
+
+  it("falls back to the page's own data, labelled view-level, when the copilot is not mounted (D226a)", async () => {
+    const t = await someCase();
+    const notMounted = { ...createMockCopilot(0), facts: () => Promise.reject(new CopilotError("Not Found", 404)) };
+    render(<KeyFacts t={t} asOf={asOf} copilot={notMounted} />);
+    const card = await screen.findByTestId("key-facts");
+    expect(card).toHaveTextContent(t.decision.p.toFixed(3));
+    expect(screen.getByTestId("reasons-source")).toHaveTextContent("View-level reasons: page data; the copilot is not enabled on the backend");
+    expect(card).toHaveTextContent("page's transaction data");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("shows other errors as errors", async () => {
+    const t = await someCase();
+    const broken = { ...createMockCopilot(0), facts: () => Promise.reject(new CopilotError("backend error", 500)) };
+    render(<KeyFacts t={t} asOf={asOf} copilot={broken} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("backend error");
   });
 
   it("is built from the mock case in mock mode", async () => {

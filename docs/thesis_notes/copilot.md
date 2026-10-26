@@ -1,4 +1,4 @@
-# Local-LLM investigation copilot: backend and UI (D222-D226)
+# Local-LLM investigation copilot: backend and UI (D222-D226a)
 
 Sprint 2 (roadmap Phase 15, our Phase C (c)): the backend (D222-D224i) and the UI on the Cases
 page (D226). The evaluation E20 waits for its own pre-registration (D225, not started). The copilot
@@ -40,19 +40,24 @@ model help without letting it state anything the evidence does not support.
 4. **Trimmed evidence.** Only the chosen tools' results are sent, as short lines with handles
    [E1], [E2], ... (about 700 tokens at most per question, 1,000 for a summary).
 5. **The model answers in structured output** (D224c): Ollama's JSON-schema mode forces a list of
-   at most 5 facts, each with exactly one handle chosen from the handles given in this turn; the
+   at most 4 facts (V3), each with exactly one handle chosen from the handles given in this turn; the
    prose the analyst reads is rendered by code ("<fact> [Ek]."), not written by the model. The
    evidence block is called data in the rules; strings from the data are cleaned (no brackets or
    new lines, at most 60 characters) and a string that reads like an instruction is withheld. While
-   the answer streams, it is shown as "draft, not yet checked".
-6. **A deterministic citation checker** then keeps a fact only if (D224a, D224d):
+   the answer streams, the server checks each fact the moment it is complete and sends only checked
+   facts with progress counts ("2 facts drafted, 1 shown, 1 removed"); no unchecked model text ever
+   reaches the screen (D226a, which replaces D222's "shown as a draft until checked").
+6. **A deterministic citation checker** keeps a fact only if (D224a, D224d-D224j):
    - every number is a whole value of its cited line (a time such as 03:15 is one value) and
      belongs to a field whose name shares a word with the fact, so a number cannot borrow another
      field's value; ids (digits, "_", "."), e-mail domains and other names appear there exactly;
    - a decision word in any form ("held", "stepped up", "monitoring") cites the case's own
      decision line and matches it (about an earlier transaction: that transaction's line, by id;
-     about earlier transactions in general: the customer-history summary line, with its count,
-     e.g. "their decisions: hold 2" supports "2 earlier transactions were held", D224e). The rule
+     about earlier transactions in general: the customer-history summary line, with the count it
+     gives for that decision: "... 6 earlier transactions in total ...; their decisions: hold 2"
+     supports "2 earlier transactions were held" but not "6 earlier transactions were held"; the
+     decision-word forms ("held", "stepped up") count as the words of that line's "decision" field
+     when the number is bound to its field, D224e, D224j). "Declined" and "rejected" mean block. The rule
      is conservative (D224h): a fact with any case reference ("it", "this", "that one", "the
      case", "the transaction", or "both", "too", "also", "as well", "as was", "so was", "like",
      "unlike", "same as", "similar to", "following", "after", "given", "with") gets no support
@@ -61,7 +66,10 @@ model help without letting it state anything the evidence does not support.
      <decision>", N directly attached to "earlier transactions" and equal to the line's count. A
      fact that names earlier / previous / prior / past / other transactions or payments never uses
      the case's own decision line (D224i), and the case-reference list also has "current",
-     "present", "new one", "this one", "the flagged", "here", "now", "is the current", "so is";
+     "present", "new one", "this one", "the flagged", "here", "now", "is the current", "so is",
+     "latest" (D224j); "the customer's history" counts as naming earlier transactions;
+   - a direction word ("raises", "lowers", "increases" ...) matches the cited reason line's
+     direction when that line states one (D224j);
    - numbers are rounded half-up from the evidence text (Decimal, D224i): 104.50 supports "105"
      but not "104", 2.675 supports "2.68", 0.145 supports "15%";
    - a claim that the case is fraud or legitimate ("definitely fraud", "not legitimate") cites the
@@ -123,8 +131,10 @@ Endpoints (mounted with `VAULTIC_COPILOT=1`): `GET /api/copilot/status`, `POST /
   | **V2 schema + one instruction** | 55 | 52 | 3 | **0.945** | 2 (2 empty lists) | 0 | 1,255.8 |
   | V3 schema, at most 4 facts | 44 | 41 | 3 | 0.932 | 4 (3 empty lists) | 0 | 646.4 |
 
-  V2 was chosen by the fixed rule and is the default; its five demo summaries are the cached ones
-  (44 of 47 summary facts kept across the 10 dev summaries; every demo summary has kept facts).
+  *Superseded:* V2 was chosen by the fixed rule on these first results and was the default until
+  the later checker changes; after the re-checks (D224d onwards, below) the same rule picks V3, which
+  is the default now, and V3's five demo summaries are the cached ones. On these first results: 44
+  of 47 V2 summary facts were kept across the 10 dev summaries; every demo summary had kept facts.
   Removal reasons: a number not in the cited line (a points value or expected loss cited to the wrong
   line, a transaction id with a dropped digit) and, under V1 and V3, a handle written inside the fact
   text. All generations everywhere were valid JSON. Per-task timing for V2: summaries 83.9-128.9 s
@@ -176,8 +186,19 @@ Endpoints (mounted with `VAULTIC_COPILOT=1`): `GET /api/copilot/status`, `POST /
   dev drafts (`E:/dev-cache/copilot/dev_recheck_D224i_20261026-021137.json`, no model): unchanged,
   V1 0.904 (47/52), V2 0.909 (50/55), V3 0.909 (40/44), no fact newly removed or kept; V3 stays;
   the cached V3 summaries keep all their facts under checker version D224i.
+- **Full review fixes (D224j checker, D226a UI and streaming).** Blocker: a named earlier
+  transaction's label line supports a label claim only when the fact has no case reference ("Earlier
+  transaction 3400001 was fraud and so is this one" is removed). Also: decision-word forms bind to
+  the history line's decision field; "declined" / "rejected" (block), "overturned" (a change),
+  "latest" and "the customer's history" added; "fraud was confirmed", "no fraud occurred" and
+  "fraudster" are label claims; a direction word must match the cited reason line. Re-check of the
+  stored dev drafts (`E:/dev-cache/copilot/dev_recheck_D224j_20261026-052135.json`, no model):
+  V1 0.885 (46/52), V2 0.909 (50/55), V3 0.909 (40/44); D224c's rule still picks V3 (tie, fewer
+  removed). The one newly removed fact (V1) was "... while the anomaly view did not lower the risk":
+  the direction rule removes it because of the negation, an accepted over-strict removal. The cached
+  V3 summaries keep all their facts (4 each) under checker version D224j.
 - Tests (all with a scripted model, so CI never needs Ollama): `tests/test_copilot_check.py` and
-  `tests/test_copilot_api.py` (206 tests: checker reject cases incl. the review's probe cases,
+  `tests/test_copilot_api.py` (228 tests: checker reject cases incl. the review's probe cases,
   refusals, injection in a tool result, read-only guarantee, one audit entry per request incl.
   invalid ones and tool errors, Test Lab off, loading and on, model not running, proxy-free
   client, evidence budget, cached summaries).
@@ -195,8 +216,9 @@ Right under the case header, three parts, and a permanent note:
    <time> by <model>" and is checked again by the current checker when shown; otherwise it is
    generated live with a progress state); a question box with three suggested questions ("Why was
    this flagged?", "What is unusual about this customer?", "Which views drove the score?"); the
-   answer streams as a draft (complete facts appear as they arrive, marked "draft, not yet checked")
-   and is replaced by the checked facts (at most 4, V3), each with clickable citation chips that
+   answer streams as checked facts only (the server checks each fact as it completes; progress
+   counts in between, "2 facts drafted, 2 shown; checking…"; D226a), then the final checked facts
+   (at most 4, V3), each with clickable citation chips that
    highlight and scroll to the cited line in an *Evidence* list; a removed-facts note with the reasons
    ("1 fact removed: decision count not in the customer-history line"); a "Not available from the
    case evidence" state; and a refusal state with the fixed message.
@@ -226,7 +248,8 @@ time day 151, 23:00, label delay 30 days:
 |---|---|---|
 | 3485718 (cached demo case, highest-risk step-up) | Case summary | served from the cache, labelled "cached, generated at 2026-10-24 22:58 UTC by qwen2.5:7b-instruct-q4_K_M"; 4 checked facts, 0 removed; chip E14 highlighted its evidence line |
 | 3485759 (not cached) | "Why was this flagged?" | live, 74 s including the model load; 1 checked fact (it copies the whole decision line: correct but not helpful) |
-| 3485763 (not cached) | Case summary | live, 86.7 s; draft facts appeared while streaming; 4 checked facts, 0 removed |
+| 3485763 (not cached) | Case summary | live, 86.7 s; 4 checked facts, 0 removed (run before D226a, when unchecked draft facts were still shown while streaming) |
+| 3486004 (not cached), after D226a | Case summary | live, 103.8 s; only checked facts streamed ("2 facts drafted, 2 shown; checking…"); final 3 kept, 1 removed ("mentions fraud but the cited evidence does not"), and the removed fact never appeared on screen |
 | 3485718, Ollama stopped | page and Case summary | "not running" with the start hint, questions disabled; the cached summary still served |
 | 3485759, Ollama stopped | Case summary | the backend's 503 message with the start hint |
 
@@ -237,9 +260,15 @@ now), and the "model not loaded yet" note is cleared once an answer has loaded t
 Screenshots (`docs/thesis_notes/img/`): `copilot_1_key_facts.jpg`, `copilot_2_cached_summary.jpg`,
 `copilot_3_live_summary_streaming.jpg`, `copilot_4_live_summary_checked.jpg`,
 `copilot_5_ollama_off_cached_still_served.jpg`, `copilot_6_ollama_off_live_503.jpg`.
+`copilot_3_live_summary_streaming.jpg` was retaken after D226a (case 3486004: checked facts and
+progress counts only).
 
-Tests: 24 new dashboard tests (every panel state, key facts and the label curtain, next checks, the
-stream client), 106 dashboard tests in all; type check and build pass.
+The Key facts card falls back to the page's own transaction data, labelled "view-level reasons
+(page data; the copilot is not enabled on the backend)", when the facts endpoint answers 404
+(D226a).
+
+Tests: 26 new dashboard tests (every panel state, key facts with the label curtain and the 404
+fallback, next checks, the stream client), 108 dashboard tests in all; type check and build pass.
 
 ## Limitations
 Remaining limitations of the checker (D224i), all measured by E20 rather than fixed by more rules:

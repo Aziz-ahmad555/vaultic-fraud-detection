@@ -5,7 +5,9 @@ answer, with exactly one audit entry.
               call), runs the routed tools, renders the trimmed evidence, looks up a cached summary
               and checks that the model can answer. Errors (case not visible, model not running)
               are audited and raised as CopilotError(status, message).
-  run(prep)   yields events: "start" (evidence and labels), "token" (draft JSON, not yet checked),
+  run(prep)   yields events: "start" (evidence and labels), "progress" (facts drafted / shown /
+              removed) and "fact" (one fact, already checked: no unchecked model text is ever sent,
+              D226a),
               then "final" (the checked facts rendered as prose; removed facts counted) or "error".
               The model answers in structured output (D224c): a list of facts, each with one handle
               from the handles given this turn; prose is rendered by code. The audit
@@ -30,7 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from vaultic.copilot import rules
-from vaultic.copilot.check import CHECKER_VERSION, check_facts
+from vaultic.copilot.check import CHECKER_VERSION, check_facts, check_item, parse_facts
 from vaultic.copilot.llm import LLM, LLMUnavailable
 from vaultic.copilot.tools import BUDGET, TOOLS, Ctx, Evidence, network_ids, reason_facts, render
 
@@ -39,7 +41,6 @@ MAX_TOKENS = {"question": 260, "summary": 260}  # the JSON carries keys and whit
 MAX_QUESTION = 500
 NOTE = ("Local language model ({model}), answers only from the case evidence; not the evaluated "
         "detection system. Nothing it says is a research number.")  # fmt: skip
-DRAFT = "draft, not yet checked"
 log = logging.getLogger("vaultic.copilot")
 
 
@@ -82,6 +83,7 @@ class Prepared:
     reasons_source: str | None = None
     audited: bool = False
     audit_ok: bool = True
+    draft: str | None = None  # the model's raw output: server-side only (D226a)
 
 
 class Copilot:
@@ -248,16 +250,32 @@ class Copilot:
                                   rules.max_facts(self.variant))  # fmt: skip
                 yield self._final(prep, "cached summary",
                                   {"answer": res.answer, "kept": res.kept, "removed": res.removed,
-                                   "draft": c.get("draft"), "cached": {"label": cached_label(c),
+                                   "cached": {"label": cached_label(c),
                                    "generated_at": c["generated_at"], "model": c["model"]}})  # fmt: skip
                 return
-            pieces = []
+            pieces: list[str] = []
+            seen = shown = dropped = 0
+            limit = rules.max_facts(self.variant)
             try:
                 handles = [x["handle"] for x in prep.evidence.lines]
                 schema = rules.schema(handles, self.variant)
                 for piece in self.llm.stream(self.messages(prep), MAX_TOKENS[prep.kind], schema):
                     pieces.append(piece)
-                    yield {"type": "token", "text": piece, "status": DRAFT}
+                    if len(pieces) == 1:
+                        yield {"type": "progress", "phase": "writing", "drafted": 0, "shown": 0,
+                               "removed": 0}  # fmt: skip
+                    # D226a: check each fact the moment it is complete; stream only checked facts
+                    items, _ = parse_facts("".join(pieces))
+                    for n in range(seen, len(items)):
+                        checked = check_item(items[n], n, prep.evidence.by_handle, limit)
+                        if checked is not None and checked[0] == "kept":
+                            shown += 1
+                            yield {"type": "fact", "fact": checked[1]}
+                        elif checked is not None:
+                            dropped += 1
+                        yield {"type": "progress", "phase": "writing", "drafted": n + 1,
+                               "shown": shown, "removed": dropped}  # fmt: skip
+                    seen = max(seen, len(items))
             except Exception as e:  # LLMUnavailable: "model failed"; anything else: "error" (D224d)
                 if isinstance(e, LLMUnavailable):
                     outcome, msg = "model failed", str(e)
@@ -276,9 +294,10 @@ class Copilot:
                 return
             draft = "".join(pieces)
             res = check_facts(draft, prep.evidence.by_handle, rules.max_facts(self.variant))
+            prep.draft = draft  # kept server-side (cache generation); never sent (D226a)
             yield self._final(prep, "answered",
                               {"answer": res.answer, "kept": res.kept, "removed": res.removed,
-                               "draft": draft, "cached": None})  # fmt: skip
+                               "cached": None})  # fmt: skip
         finally:  # a client that disconnects mid-stream still leaves its one entry
             if not prep.audited:
                 self._audit(prep, "interrupted", seconds=self.clock() - prep.started)
