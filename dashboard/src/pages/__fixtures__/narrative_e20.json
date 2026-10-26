@@ -1,0 +1,151 @@
+[
+ {
+  "transaction": {
+   "row": {
+    "TransactionID": 3500001,
+    "m_tabular": 1,
+    "m_behavioral": 1,
+    "m_temporal": 1,
+    "m_graph": 0,
+    "m_anomaly": 1
+   },
+   "amount": 1234.5,
+   "product": "W",
+   "decision": {
+    "action": "step_up",
+    "p": 0.125,
+    "expected_loss": 154.3125,
+    "conformal_set": "uncertain",
+    "disagreement": 0.1
+   },
+   "reasons": [
+    {
+     "feature": "view:tabular",
+     "view": "tabular",
+     "points": 20.5,
+     "text": "Tabular view raises risk (gate weight 0.99, view probability 1.000)"
+    },
+    {
+     "feature": "view:behavioral",
+     "view": "behavioral",
+     "points": -3.2,
+     "text": "Behavioral view lowers risk"
+    },
+    {
+     "feature": "view:temporal",
+     "view": "temporal",
+     "points": 2.5,
+     "text": "Temporal view raises risk"
+    },
+    {
+     "feature": "view:anomaly",
+     "view": "anomaly",
+     "points": 0.4,
+     "text": "Anomaly view raises risk"
+    },
+    {
+     "feature": "view:graph",
+     "view": "graph",
+     "points": 9.0,
+     "text": "Relational view raises risk"
+    }
+   ],
+   "inputs": {
+    "sharedEntities": 2
+   }
+  },
+  "expected": "Transaction 3500001 ($1,234.50, product W) scored a risk of 13 out of 100 and was routed to step-up. The model is uncertain about this case: its conformal set contains both classes. The main reasons are: tabular view raises risk (gate weight 0.99, view probability 1.000) (+21 points); temporal view raises risk (+3 points); anomaly view raises risk (0 points). No relational evidence was available, so that view carries no weight. 2 other customers used its card in the 7 days before."
+ },
+ {
+  "transaction": {
+   "row": {
+    "TransactionID": 3500002,
+    "m_tabular": 1,
+    "m_behavioral": 1,
+    "m_temporal": 0,
+    "m_graph": 0,
+    "m_anomaly": 1
+   },
+   "amount": 15.0,
+   "product": "C",
+   "decision": {
+    "action": "hold",
+    "p": 0.995,
+    "expected_loss": 14.925,
+    "conformal_set": "fraud",
+    "disagreement": 0.1
+   },
+   "reasons": [
+    {
+     "feature": "view:tabular",
+     "view": "tabular",
+     "points": -1.0,
+     "text": "Tabular view lowers risk"
+    }
+   ],
+   "inputs": {
+    "sharedEntities": 0
+   }
+  },
+  "expected": "Transaction 3500002 ($15.00, product C) scored a risk of 100 out of 100 and was routed to hold. No feature raised the risk above a typical transaction. No temporal or relational evidence was available, so those views carry no weight. No other customer used its card in the 7 days before."
+ },
+ {
+  "transaction": {
+   "row": {
+    "TransactionID": 3500003,
+    "m_tabular": 1,
+    "m_behavioral": 1,
+    "m_temporal": 1,
+    "m_graph": 1,
+    "m_anomaly": 1
+   },
+   "amount": 300.0,
+   "product": "R",
+   "decision": {
+    "action": "allow",
+    "p": 0.5,
+    "expected_loss": 150.0,
+    "conformal_set": "legit",
+    "disagreement": 0.1
+   },
+   "reasons": [
+    {
+     "feature": "view:tabular",
+     "view": "tabular",
+     "points": 0.5,
+     "text": "Tabular view raises risk a little"
+    }
+   ],
+   "inputs": {
+    "sharedEntities": null
+   }
+  },
+  "expected": "Transaction 3500003 ($300.00, product R) scored a risk of 50 out of 100 and was routed to allow. The main reasons are: tabular view raises risk a little (+1 points)."
+ },
+ {
+  "transaction": {
+   "row": {
+    "TransactionID": 3500004,
+    "m_tabular": 1,
+    "m_behavioral": 1,
+    "m_temporal": 1,
+    "m_graph": 1,
+    "m_anomaly": 1
+   },
+   "amount": 7.25,
+   "product": "H",
+   "decision": {
+    "action": "monitor",
+    "p": 0.035,
+    "expected_loss": 0.25375000000000003,
+    "conformal_set": "empty",
+    "disagreement": 0.1
+   },
+   "reasons": [],
+   "inputs": {
+    "sharedEntities": 1
+   }
+  },
+  "expected": "Transaction 3500004 ($7.25, product H) scored a risk of 4 out of 100 and was routed to monitor. The model is uncertain about this case: its conformal set contains both classes. No feature raised the risk above a typical transaction. 1 other customer used its card in the 7 days before."
+ }
+]
