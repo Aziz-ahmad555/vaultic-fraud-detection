@@ -369,3 +369,33 @@ hash changes):
   removed / empty per question type. No E20 case is used.
 - Not proposed: reading handles from the fact text in the checker. That changes what a citation means
   and would hide the model's citation errors from the citation metric.
+
+**D229 prompt fix (2026-10-26, D224c dev cases only; no checker change).** Variants: P0 = V3 unchanged;
+P1 = the evidence handle chosen before the fact text (schema order and rules sentence) + the empty-list
+rule reworded (empty only if no evidence line is relevant); P2 = P1 + facts in the model's own words,
+names and numbers exact. Q1-Q4 x 10 dev cases, Test Lab off, one generation each (120). Every P1 / P2
+draft wrote `evidence` before `fact`. Drafts and removed facts: `E:/dev-cache/copilot/d229_compare_20261026-223223.json`.
+
+| variant | written | kept | removed | kept-fact rate | coverage (of 40) | empty | fully removed | median s |
+|---|---|---|---|---|---|---|---|---|
+| P0 (V3) | 37 | 36 | 1 | 0.973 | 17 | 22 | 1 | 22.6 |
+| P1 | 100 | 91 | 9 (1 invalid JSON) | 0.910 | 33 | 4 | 3 | 39.8 |
+| **P2** | 115 | 102 | 13 | 0.887 | **38** | 1 | 1 | 41.4 |
+
+Per question type (coverage of 10; kept-fact rate):
+
+| | Q1 why | Q2 linked | Q3 history | Q4 missing |
+|---|---|---|---|---|
+| P0 | 7; 0.875 | 0; - | 0; - | 10; 1.000 |
+| P1 | 10; 0.947 | 10; 0.950 | 4; 0.667 | 9; 0.962 |
+| P2 | 10; 0.864 | 10; 1.000 | 8; 0.545 | 10; 1.000 |
+
+The rule (exclude kept-fact rate < 0.85, then highest coverage) picks **P2**; it is the default. Removal
+reasons for P2: mixes the case and earlier transactions 5, a decision about earlier transactions needs
+their own line 3, number not in the cited evidence 2, decision count 1, label claim 1, fraud word 1.
+Checked by hand: 9 of P2's 10 removed Q3 facts were true in content (the conservative history-decision
+rule, D224h). One kept fact was wrong: 3542087 Q3, "all of which are for an amount of 49.00", while the
+earlier amounts include 48.95, 57.95 and 50.00; the checker only matched the numbers. So with own words,
+the kept-fact rate overstates faithfulness. E20's human labels measure this, and no checker change was
+made (D229). D225d amends the pre-registration. The 5 cached demo summaries were regenerated once under
+P2: 19 facts kept, 1 removed (old file kept on drive E).
