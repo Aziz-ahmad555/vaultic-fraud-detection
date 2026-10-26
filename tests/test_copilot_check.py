@@ -340,7 +340,7 @@ def test_the_dev_selection_rule_is_rate_then_fewer_removed_then_faster():
 
 
 def test_the_default_variant_is_the_one_the_dev_comparison_chose():
-    assert rules.VARIANT == "V3"  # D224c's rule on the dev drafts re-checked under D224e (D224f)
+    assert rules.VARIANT == "P2"  # D229's rule on Q1-Q4 x 10 dev cases (coverage 38/40, kept 0.887)
 
 
 # ---- the independent review's probe cases (slip.py, D224d) -------------------------------------------

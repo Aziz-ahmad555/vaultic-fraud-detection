@@ -36,10 +36,10 @@ VARIANTS = {
     "P2": {"instruction": "State each fact in your own words; keep names and numbers exactly as in "
                           "its evidence line.", "max_facts": 4, "base": BASE_P, "evidence_first": True},
 }  # fmt: skip
-# Chosen by D224c's fixed rule on the dev set (one generation per variant), with the stored drafts
-# re-checked by the current checker (D224j, no model): kept V1 46/52, V2 50/55, V3 40/44; V2 and V3
-# tie at 10/11 and the tie-break (fewer removed facts: V3 4, V2 5) picks V3 (D224f)
-VARIANT = "V3"
+# D224c's rule chose V3 on summaries and Q1 (D224f). D229's fixed rule on Q1-Q4 x 10 dev cases, Test
+# Lab off, one generation each: kept-fact rate V3 0.973, P1 0.910, P2 0.887 (none excluded at 0.85);
+# coverage V3 17/40, P1 33/40, P2 38/40 -> P2
+VARIANT = "P2"
 
 
 def system(variant: str | None = None) -> str:

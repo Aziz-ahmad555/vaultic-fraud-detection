@@ -113,7 +113,7 @@ def test_only_checked_facts_are_streamed_never_unchecked_model_text(demo):
     assert items["items"]["properties"]["evidence"]["enum"] == [
         x["handle"] for x in final["evidence"]
     ]
-    assert items["maxItems"] == max_facts()  # the default variant (D224f: V3, 4)
+    assert items["maxItems"] == max_facts()  # the default variant (D229: P2, 4)
     assert final["answer"].endswith(f"[{final['kept'][0]['citations'][0]}].")
 
 
@@ -645,7 +645,7 @@ def test_key_facts_are_rendered_by_code_with_the_label_curtain_and_the_reasons_s
 def test_status_says_whether_the_model_is_loaded(demo):
     client, _ = mount(demo, ScriptedLLM("x"))
     s = client.get("/api/copilot/status").json()
-    assert s["llm"] == "ready" and s["loaded"] is True and s["variant"] == "V3"
+    assert s["llm"] == "ready" and s["loaded"] is True and s["variant"] == "P2"
     down = Copilot(demo.app.state.read, OllamaLLM(host=f"http://127.0.0.1:{free_port()}"))
     s = down.status()
     assert "not running" in s["llm"] and s["loaded"] is None
