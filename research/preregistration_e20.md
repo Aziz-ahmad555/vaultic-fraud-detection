@@ -1,4 +1,4 @@
-# Pre-registration: E20, copilot evaluation (D225, amended by D225a, D225b and D225c)
+# Pre-registration: E20, copilot evaluation (D225, amended by D225a, D225b, D225c and D225d)
 
 Written 2026-10-26 on branch `e20` from `phase0-1` at `c9d8806` (the copilot merge, PR #14), before
 any E20 generation. Nothing in this file has been run. It fixes the system, the cases, the items, the
@@ -30,26 +30,38 @@ Test Lab loaded, before the model); answers 72.0 s, 33.5 s, 40.7 s; same-card lo
 point-in-time history matched a direct computation from the store on all 3 cases. The RAM criterion fails,
 so the rule gives **OFF**: the Test Lab stays off, as pre-registered. Everything else is unchanged.
 
+**Amendment D225d (2026-10-26, before any runner or generation):** D229 fixed the prompt on D224c dev cases
+(Q2 / Q3 had always come back empty under V3). By D229's fixed rule, system A uses prompt variant **P2**:
+the evidence handle is chosen before the fact text, an empty list only when no evidence line is relevant,
+and facts in the model's own words with names and numbers exact; still at most 4 facts. Dev results (Q1-Q4 x
+10 dev cases, Test Lab off): kept-fact rate V3 0.973, P1 0.910, P2 0.887; coverage V3 17/40, P1 33/40, P2
+38/40. The frozen code reference becomes `e20` at `03f8a16`. `rules.py` and the rules digest change; the
+checker (D224j) and everything else are unchanged. Known checker limits with own words, seen by hand on the
+dev drafts: a wrong fact can be kept where only its numbers are checked, and true facts about earlier
+transactions can be removed by the conservative history-decision rule. The human labels measure exactly
+this. The workload estimate is revised (section 10). Cases, items, systems B and C, labelling, metrics,
+hypotheses and run rules are unchanged.
+
 ## 1. The frozen system
 
 | item | value |
 |---|---|
-| code | `e20` at `8a7e258` (D225b; was `phase0-1` at `c9d8806`) |
+| code | `e20` at `03f8a16` (D225d; before: `8a7e258` D225b, `c9d8806`) |
 | model | Qwen2.5-7B-Instruct, Q4_K_M (`qwen2.5:7b-instruct-q4_K_M`), Apache-2.0 (D223); model layer `sha256:2bada8a7450677000f678be90653b85d364de7db25eb5ea54136ada5f3933730` |
 | server | Ollama 0.40.10 on 127.0.0.1:11434, `OLLAMA_NO_CLOUD=1`, CPU only (i5-8265U, 15.9 GB RAM) |
 | decoding | temperature 0, `num_ctx` 4096, output cap 260 tokens |
-| prompt variant | V3: JSON schema, at most 4 facts, each with one handle from an enum (D224c, D224f) |
-| rules digest (V3) | `451c68b97cee9dbb8c3d8e8f59f530979e217406eaaf066f28015e4b817221b0` (`rules.rules_digest()`) |
+| prompt variant | **P2** (D229, D225d): JSON schema, at most 4 facts, each with one handle from an enum chosen before the fact text; empty list only when no evidence line is relevant; facts in the model's own words, names and numbers exact (was V3, D224c / D224f) |
+| rules digest (P2) | `2c00b54b19d147286d89325c058d4474717ced303b907ad70365e9ad5659e0cf` (`rules.rules_digest()`) |
 | checker | version `D224j` (`check.CHECKER_VERSION`) |
 | Test Lab | **off** for the whole run: reasons are view-level, labelled as such; customer values outside the test-period bundle are "not available", labelled why (D228). Decided by the D225c rule: with the Test Lab on, peak RAM was 15.5 GiB, over the 13.0 GiB limit |
 | demo bundle | `data/interim/demo_final_bundle.parquet`, SHA-256 `1480e4c9aeadd641d5b8ad4caf323369341a5a3ddd1adb8bbf49c31c50e08356` |
 
-SHA-256 of the committed (LF) content of the files that define the system (`git show 8a7e258:<file>`; D225b):
+SHA-256 of the committed (LF) content of the files that define the system (`git show 03f8a16:<file>`; D225d):
 
 | file | SHA-256 |
 |---|---|
 | `src/vaultic/copilot/check.py` | `d2a725efb5944a5887659ef6a1e366200b98ceb384be237cfee3f96a3f5f5ba5` |
-| `src/vaultic/copilot/rules.py` | `9b5ce5cdbcee7eda2aa6d1095e259c9429f630e7334212b5d2433d42b7f63bd8` |
+| `src/vaultic/copilot/rules.py` | `29623fd8552e3de4b6f6f95b6b0a09566cd5967dfbf9bfa04c9f04cdf3952730` |
 | `src/vaultic/copilot/tools.py` | `de6e0342d9d8105def80e6f7023b6bd051a4c22e4959b491867aa0354fdf71e8` |
 | `src/vaultic/copilot/pit_history.py` | `6250cf2057ca421d762167cefc8242d042d604bfbacfeab81941198222d7f382` |
 | `src/vaultic/copilot/service.py` | `87658e72aee6149f7be13a6030d04f1bc1e6db4d5a53993cbdc96fc181459109` |
@@ -143,7 +155,7 @@ Every item is asked at as-of = the case's own decision time, label delay 30 days
 ## 4. Systems compared
 
 - **(A) Copilot:** the frozen system of section 1 through `Copilot.start("question", ...)` /
-  `answer(...)`: refusal rules, routed tools, trimmed evidence with handles, V3 structured output,
+  `answer(...)`: refusal rules, routed tools, trimmed evidence with handles, P2 structured output (D225d),
   the D224j checker. What is shown = the kept facts (at most 4); an answer with no kept fact shows
   "Not available from the case evidence." (zero facts). Removed facts are saved (audit) and are not
   "shown"; they are labelled in pass 1 for the descriptive checker-effect analysis only (D225a).
@@ -318,6 +330,10 @@ assumed at about 3.5; C's narrative has about 4-5 sentences per case, labelled o
 | B (120 items) | ~420 | ~1.8 | ~760 |
 | C (30 narratives) | ~135 | ~2.0 | ~270 |
 | **total, pass 1** | **~755** | | **~1,365** |
+
+Revised by D225d (planning only): on the D229 dev set P2 kept about 2.6 facts per item (102 / 40) with 11%
+removed, so A shown is about 305 units (about 520 claims) and A removed about 35 (about 60 claims); pass 1
+about 895 units and 1,610 claims, about 16-21 hours in all.
 
 Time, at roughly 30-40 seconds per claim including splitting and looking up the evidence: **pass 1
 about 11-15 hours**; **pass 2** (citations, ~600 A and B shown units at ~15 s) **about 2.5 hours**;
