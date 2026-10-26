@@ -88,10 +88,21 @@ def test_only_checked_facts_are_streamed_never_unchecked_model_text(demo):
     assert "draft" not in final
     # the streamed facts are exactly the checked ones; the removed fact ("999 cards") never appears
     assert [e["fact"] for e in events if e["type"] == "fact"] == final["kept"]
-    assert not any("999" in str(e) for e in events if e["type"] in ("fact", "progress"))
+    # the removed fact's text never reaches the browser: not in any event (fact, progress, final) ...
+    removed_text = "The customer has 999 cards"
+    for e in events:
+        assert removed_text not in json.dumps(e) and "999" not in json.dumps(e), e["type"]
     last = [e for e in events if e["type"] == "progress"][-1]
     assert (last["drafted"], last["shown"], last["removed"]) == (2, 1, 1)
-    assert len(final["kept"]) == 1 and final["removed"][0]["why"].startswith("number not in")
+    assert len(final["kept"]) == 1 and final["removed_count"] == 1
+    assert final["removed"] == [{"why": "number not in the cited evidence"}]  # reason category only
+    # ... nor in the stream=false JSON
+    code, body = ask(client, demo.tid, stream=False)
+    assert code == 200 and removed_text not in json.dumps(body) and "999" not in json.dumps(body)
+    assert body["removed"] == [{"why": "number not in the cited evidence"}]
+    # the full removed text is kept server-side, in the audit entry only
+    after = json.loads(audit_entries(demo)[0]["after"])
+    assert after["removed_facts"][0]["text"].startswith(removed_text)
     assert final["answer"].startswith("The decision is ")
     assert final["route"] == "why" and final["audit"] == "ok"
     assert "not the evaluated detection system" in final["note"]

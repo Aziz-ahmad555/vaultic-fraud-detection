@@ -24,8 +24,9 @@ export interface CheckedFact {
   citations: string[];
 }
 
+/** A removed fact as the browser sees it: only the reason's category, never the fact's text (the
+ * text stays server-side, in the audit entry). */
 export interface RemovedFact {
-  text: string;
   why: string;
 }
 
@@ -235,7 +236,7 @@ export function createMockCopilot(delayMs = 25): CopilotApi {
       return f;
     }
     const facts = scripted(t, kind, question);
-    const removed = kind === "summary" ? [{ text: `The customer has 999 earlier transactions [E2].`, why: "number not in the cited evidence: 999" }] : [];
+    const removed = kind === "summary" ? [{ why: "number not in the cited evidence" }] : [];
     // like the server (D226a): only checked facts are streamed, with progress counts between them
     const final = mockFinal(t, kind, evidence, facts, removed, null);
     onEvent({ type: "progress", phase: "writing", drafted: 0, shown: 0, removed: 0 });

@@ -5,8 +5,10 @@ and never changes a decision, label, threshold or setting; one audit entry per r
   GET  /api/copilot/status    model, whether it is running and loaded, Test Lab state, cached summaries
   GET  /api/copilot/facts     ?case_id=&time=&L=: the case's key facts by code (no model, D226)
   POST /api/copilot/ask       {"case_id", "question", "time", "L" (default 30), "stream" (default
-                              true)}: NDJSON events (start, token = draft not yet checked, final =
-                              the checked answer, or refused / error); stream=false: the final JSON
+                              true)}: NDJSON events (start, progress = counts, fact = one fact the
+                              server has already checked, final = the checked answer with only the
+                              reasons of removed facts, or refused / error; D226a); stream=false:
+                              the final JSON
   POST /api/copilot/summary   {"case_id", "time", "L", "stream"}: the case summary; a cached demo
                               summary is labelled "cached, generated at <time> by <model>"
 

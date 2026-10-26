@@ -74,7 +74,7 @@ describe("copilot panel (D226)", () => {
   });
 
   it("shows the removed-facts note with the reasons", async () => {
-    const f = final({ removed: [{ text: "x [E2].", why: "decision count not in the customer-history line: hold" }] });
+    const f = final({ removed: [{ why: "decision count not in the customer-history line: hold" }] });
     expect(removedNote(f)).toBe("1 fact removed: decision count not in the customer-history line: hold");
     render(<CopilotPanel t={await someCase()} asOf={asOf} copilot={fake(READY, f)} />);
     fireEvent.click(await screen.findByRole("button", { name: "Case summary" }));
@@ -82,7 +82,7 @@ describe("copilot panel (D226)", () => {
   });
 
   it("shows 'Not available from the case evidence' when no fact is kept", async () => {
-    const f = final({ kept: [], answer: NOT_AVAILABLE, removed: [{ text: "y [E1].", why: "no citation" }, { text: "z [E1].", why: "no citation" }] });
+    const f = final({ kept: [], answer: NOT_AVAILABLE, removed: [{ why: "no citation" }, { why: "no citation" }] });
     render(<CopilotPanel t={await someCase()} asOf={asOf} copilot={fake(READY, f)} />);
     fireEvent.click(await screen.findByRole("button", { name: "Which views drove the score?" }));
     expect(await screen.findByTestId("copilot-not-available")).toHaveTextContent(NOT_AVAILABLE);

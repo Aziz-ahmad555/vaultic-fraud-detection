@@ -143,6 +143,7 @@ class Copilot:
         after = {"model": self.llm.model, "variant": self.variant, "route": prep.route, "outcome": outcome,
                  "refused": prep.refused, "evidence": [x["evidence_id"] for x in ev],
                  "kept": (result or {}).get("kept"), "removed": (result or {}).get("removed"),
+                 "removed_facts": (result or {}).get("removed_facts"),
                  "cached": prep.cached is not None, "reasons": prep.reasons_source,
                  "withheld_strings": len(prep.flags),
                  "seconds": None if seconds is None else round(seconds, 1)}  # fmt: skip
@@ -230,8 +231,18 @@ class Copilot:
 
     def _final(self, prep: Prepared, outcome: str, body: dict) -> dict:
         seconds = self.clock() - prep.started
-        ok = self._audit(prep, outcome, {"kept": len(body.get("kept", [])),
-                                         "removed": len(body.get("removed", []))}, seconds)  # fmt: skip
+        removed = body.get("removed", [])
+        # the removed facts' text stays server-side, in the audit entry only; the browser gets each
+        # removed fact's reason and the count, never its text
+        ok = self._audit(prep, outcome, {"kept": len(body.get("kept", [])), "removed": len(removed),
+                                         "removed_facts": removed}, seconds)  # fmt: skip
+        # the reason's category only: a reason may quote the removed fact ("...: 999"), so the quoted
+        # part stays in the audit entry too
+        body = {
+            **body,
+            "removed": [{"why": r["why"].split(":")[0]} for r in removed],
+            "removed_count": len(removed),
+        }
         return {"type": "final", **self._base(prep), **body, "seconds": round(seconds, 1),
                 "audit": "ok" if ok else "failed"}  # fmt: skip
 
