@@ -1,4 +1,4 @@
-# Pre-registration: E20, copilot evaluation (D225, amended by D225a)
+# Pre-registration: E20, copilot evaluation (D225, amended by D225a and D225b)
 
 Written 2026-10-26 on branch `e20` from `phase0-1` at `c9d8806` (the copilot merge, PR #14), before
 any E20 generation. Nothing in this file has been run. It fixes the system, the cases, the items, the
@@ -13,11 +13,19 @@ checker-effect analysis outside the Holm family (section 6); A vs B is stated as
 comparison (section 4); a labelling workload estimate is added (section 10). Everything else is
 unchanged from D225.
 
+**Amendment D225b (2026-10-26, before any runner or generation):** D228 changed the copilot code (customer
+history from the Test Lab's point-in-time store when it is on; with it off, values the test-period bundle
+cannot support are labelled why they are not available). The frozen code reference becomes `e20` at
+`8a7e258`; the hash of `tools.py` changes and `pit_history.py` is added (section 1); every other hash, the
+rules digest, the checker version, the model and the bundle are unchanged. Re-check without the model
+(D224c dev set, 60 stored drafts): 0 verdict changes. The Test Lab stays **off** as pre-registered, pending
+Aziz's decision; switching it on would be a further amendment, logged alone. Everything else is unchanged.
+
 ## 1. The frozen system
 
 | item | value |
 |---|---|
-| code | `phase0-1` at `c9d8806` |
+| code | `e20` at `8a7e258` (D225b; was `phase0-1` at `c9d8806`) |
 | model | Qwen2.5-7B-Instruct, Q4_K_M (`qwen2.5:7b-instruct-q4_K_M`), Apache-2.0 (D223); model layer `sha256:2bada8a7450677000f678be90653b85d364de7db25eb5ea54136ada5f3933730` |
 | server | Ollama 0.40.10 on 127.0.0.1:11434, `OLLAMA_NO_CLOUD=1`, CPU only (i5-8265U, 15.9 GB RAM) |
 | decoding | temperature 0, `num_ctx` 4096, output cap 260 tokens |
@@ -27,13 +35,14 @@ unchanged from D225.
 | Test Lab | **off** for the whole run: reasons are view-level, labelled as such (the Test Lab and the model do not fit in memory together for 270 generations) |
 | demo bundle | `data/interim/demo_final_bundle.parquet`, SHA-256 `1480e4c9aeadd641d5b8ad4caf323369341a5a3ddd1adb8bbf49c31c50e08356` |
 
-SHA-256 of the committed (LF) content of the files that define the system (`git show c9d8806:<file>`):
+SHA-256 of the committed (LF) content of the files that define the system (`git show 8a7e258:<file>`; D225b):
 
 | file | SHA-256 |
 |---|---|
 | `src/vaultic/copilot/check.py` | `d2a725efb5944a5887659ef6a1e366200b98ceb384be237cfee3f96a3f5f5ba5` |
 | `src/vaultic/copilot/rules.py` | `9b5ce5cdbcee7eda2aa6d1095e259c9429f630e7334212b5d2433d42b7f63bd8` |
-| `src/vaultic/copilot/tools.py` | `b7938eacf21dbb50c21c3b153325f9120fbf580db18fa1632e36a4abe9150b98` |
+| `src/vaultic/copilot/tools.py` | `de6e0342d9d8105def80e6f7023b6bd051a4c22e4959b491867aa0354fdf71e8` |
+| `src/vaultic/copilot/pit_history.py` | `6250cf2057ca421d762167cefc8242d042d604bfbacfeab81941198222d7f382` |
 | `src/vaultic/copilot/service.py` | `87658e72aee6149f7be13a6030d04f1bc1e6db4d5a53993cbdc96fc181459109` |
 | `src/vaultic/copilot/llm.py` | `5c469d03b46449dc15fbf040282934eae37e0a81fa1da2474784251d3b52c115` |
 | `src/vaultic/copilot/similar.py` | `93b29ae82025e7e8b2ac54179883a54730d81a46a6cd5e3925a4370a91b29bf7` |
