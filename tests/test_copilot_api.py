@@ -649,3 +649,29 @@ def test_status_says_whether_the_model_is_loaded(demo):
     down = Copilot(demo.app.state.read, OllamaLLM(host=f"http://127.0.0.1:{free_port()}"))
     s = down.status()
     assert "not running" in s["llm"] and s["loaded"] is None
+
+
+def test_the_d229_comparison_saves_drafts_and_removed_facts_and_sends_the_variant_schema(
+    demo, monkeypatch
+):
+    import vaultic.copilot.dev_compare as dc
+
+    sent = []
+
+    class Spy(ScriptedLLM):
+        def stream(self, messages, max_tokens, schema=None):
+            sent.append((messages[0]["content"], schema))
+            yield '{"facts": [{"evidence": "E1", "fact": "The customer has 999 cards"}]}'
+
+    monkeypatch.setattr(dc, "dev_cases", lambda frame, actions: [("dev", demo.tid)])
+    app = SimpleNamespace(state=SimpleNamespace(read=demo.app.state.read))
+    rows = dc.run_d229(app, Spy(""), "P1", log=lambda m: None)
+    assert [r["q"] for r in rows] == ["Q1", "Q2", "Q3", "Q4"]
+    assert all(
+        r["draft"] and r["removed"] and r["removed"][0]["text"] and r["evidence"] for r in rows
+    )
+    assert all(
+        list(s["properties"]["facts"]["items"]["properties"]) == ["evidence", "fact"]
+        for _, s in sent
+    )
+    assert all("empty list only if no evidence line is relevant" in m for m, _ in sent)

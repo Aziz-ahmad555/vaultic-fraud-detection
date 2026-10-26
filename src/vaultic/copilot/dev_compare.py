@@ -73,6 +73,67 @@ def run_variant(app, llm, variant: str, log=print) -> list[dict]:
     return rows
 
 
+# ---- D229: the prompt fix, Q1-Q4 on the dev set ------------------------------------------------
+D229_VARIANTS = ("V3", "P1", "P2")  # P0 = V3 unchanged
+D229_QUESTIONS = {"Q1": "Why was this transaction flagged?",
+                  "Q2": "Which entities or customers is this case linked to, and with what known fraud?",
+                  "Q3": "Has this customer done something like this before?",
+                  "Q4": "What evidence is missing or uncertain for this case?"}  # fmt: skip
+
+
+def run_d229(app, llm, variant: str, log=print) -> list[dict]:
+    """40 items (10 dev cases x Q1-Q4), Test Lab off, one generation each; every draft and every
+    removed fact with its text kept (D229)."""
+    from vaultic.copilot.check import check_facts
+    from vaultic.copilot.rules import max_facts
+    from vaultic.copilot.service import Copilot
+
+    cop = Copilot(app.state.read, llm, variant=variant)
+    frame = app.state.read.frame
+    rows = []
+    for rule, tid in dev_cases(frame, app.state.read.actions):
+        t = case_time(frame, tid)
+        for qk, q in D229_QUESTIONS.items():
+            started = time.perf_counter()
+            prep = cop.start("question", tid, q, t, L)
+            f = cop.answer(prep)
+            seconds = round(time.perf_counter() - started, 1)
+            res = check_facts(prep.draft or "", prep.evidence.by_handle, max_facts(variant))
+            rows.append({"tid": tid, "rule": rule, "q": qk, "question": q, "variant": variant,
+                         "route": prep.route, "refused": prep.refused, "messages": cop.messages(prep),
+                         "evidence": prep.evidence.block if prep.evidence else None,
+                         "draft": prep.draft, "answer": f.get("answer"), "kept": res.kept,
+                         "removed": res.removed, "seconds": seconds})  # fmt: skip
+            log(
+                f"{variant} {tid} {qk}: {seconds} s, kept {len(res.kept)}, removed {len(res.removed)}"
+            )
+    return rows
+
+
+def tally_d229(rows: list[dict]) -> dict:
+    """tally() plus coverage (items with at least one kept fact) and the median seconds per item."""
+    out = tally(rows)
+    secs = sorted(r["seconds"] for r in rows)
+    mid = len(secs) // 2
+    out["coverage"] = sum(1 for r in rows if r["kept"])
+    out["items"] = len(rows)
+    out["empty"] = sum(1 for r in rows if not r["kept"] and not r["removed"])
+    out["fully_removed"] = sum(1 for r in rows if not r["kept"] and r["removed"])
+    out["median_seconds"] = (
+        (secs[mid] if len(secs) % 2 else (secs[mid - 1] + secs[mid]) / 2) if secs else 0.0
+    )
+    return out
+
+
+def choose_d229(summary: dict[str, dict]) -> str:
+    """D229: exclude kept-fact rate < 0.85; highest coverage; ties: higher kept-fact rate, then lower
+    median latency. Every variant excluded: P0 (V3) stays."""
+    ok = {v: s for v, s in summary.items() if s["kept_rate"] >= 0.85}
+    if not ok:
+        return "V3"
+    return min(ok, key=lambda v: (-ok[v]["coverage"], -ok[v]["kept_rate"], ok[v]["median_seconds"]))
+
+
 def recheck_row(cop, row: dict) -> dict:
     """The stored draft of one generation checked again with the current checker: the evidence is
     rebuilt exactly as when it was generated (a summary's must match its stored evidence hash), and
@@ -126,10 +187,29 @@ def main(argv=None) -> None:
 
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--bundle", type=Path, default=None)
+    p.add_argument("--d229", action="store_true", help="D229 prompt comparison (P0 / P1 / P2)")
     p.add_argument("--recheck", type=Path, default=None,
                    help="re-check a stored dev_compare_<stamp>.json and the cached demo summaries "
                         "with the current checker (no model call)")  # fmt: skip
     a = p.parse_args(argv)
+    if a.d229:
+        llm = OllamaLLM()
+        llm.check()
+        app = _demo_app(a.bundle)
+        "".join(llm.stream([{"role": "user", "content": "ok"}], 5))  # warm-up, not counted
+        results = {v: run_d229(app, llm, v) for v in D229_VARIANTS}
+        summary = {v: tally_d229(rows) for v, rows in results.items()}
+        per_q = {v: {qk: tally_d229([r for r in rows if r["q"] == qk]) for qk in D229_QUESTIONS}
+                 for v, rows in results.items()}  # fmt: skip
+        best = choose_d229(summary)
+        out = cache_file().parent / f"d229_compare_{time.strftime('%Y%m%d-%H%M%S')}.json"
+        out.write_text(json.dumps({"rule": "D229", "model": llm.model, "summary": summary,
+                                   "per_question": per_q, "chosen": best, "rows": results},
+                                  indent=1), "utf-8")  # fmt: skip
+        for v in D229_VARIANTS:
+            print(v, summary[v])
+        print(f"chosen: {best}; wrote {out}")
+        return
     if a.recheck is not None:
         app = _demo_app(a.bundle)
         data = recheck(app, a.recheck)

@@ -264,7 +264,56 @@ def test_the_schema_constrains_handles_and_the_variants_differ_only_as_fixed_in_
     assert rules.system("V2").startswith(rules.BASE) and "copy numbers exactly" in rules.system(
         "V2"
     )
-    assert len({rules.rules_digest(v) for v in rules.VARIANTS}) == 3
+    assert len({rules.rules_digest(v) for v in rules.VARIANTS}) == 5
+    assert rules.rules_digest("V3") == (  # D229: P0 is V3 unchanged
+        "451c68b97cee9dbb8c3d8e8f59f530979e217406eaaf066f28015e4b817221b0"
+    )
+
+
+def test_p1_and_p2_choose_the_handle_before_the_fact_and_reword_the_empty_list_rule():
+    for v in ("P1", "P2"):
+        item = rules.schema(["E1", "E2"], v)["properties"]["facts"]["items"]
+        assert list(item["properties"]) == ["evidence", "fact"] and item["required"] == [
+            "evidence",
+            "fact",
+        ]
+        assert rules.max_facts(v) == 4
+        text = rules.system(v)
+        assert "first the handle of the one evidence line" in text
+        assert "empty list only if no evidence line is relevant" in text
+        assert "If the evidence does not answer the question, return an empty list" not in text
+    assert list(rules.schema(["E1"], "V3")["properties"]["facts"]["items"]["properties"]) == [
+        "fact",
+        "evidence",
+    ]
+    assert "own words" in rules.system("P2") and "own words" not in rules.system("P1")
+    assert rules.system("P2").startswith(rules.system("P1"))
+
+
+def test_the_d229_rule_excludes_low_kept_rates_then_takes_coverage_then_rate_then_speed():
+    from vaultic.copilot.dev_compare import choose_d229, tally_d229
+
+    rows = [{"kept": [1], "removed": [], "seconds": 10.0}, {"kept": [], "removed": [], "seconds": 30.0},
+            {"kept": [], "removed": [{"why": "x"}], "seconds": 20.0}]  # fmt: skip
+    t = tally_d229(rows)
+    assert (t["coverage"], t["empty"], t["fully_removed"], t["median_seconds"], t["kept_rate"]) == (
+        1,
+        1,
+        1,
+        20.0,
+        0.5,
+    )
+    s = {"V3": {"kept_rate": 0.95, "coverage": 10, "median_seconds": 30.0},
+         "P1": {"kept_rate": 0.90, "coverage": 25, "median_seconds": 40.0},
+         "P2": {"kept_rate": 0.84, "coverage": 35, "median_seconds": 20.0}}  # fmt: skip
+    assert choose_d229(s) == "P1"  # P2 excluded (< 0.85), P1 has the higher coverage
+    s["P2"]["kept_rate"] = 0.85
+    assert choose_d229(s) == "P2"  # 0.85 is not excluded
+    s["P2"] = {**s["P1"], "kept_rate": 0.92}
+    assert choose_d229(s) == "P2"  # coverage tie: higher kept rate
+    s["P2"] = {**s["P1"], "median_seconds": 35.0}
+    assert choose_d229(s) == "P2"  # then lower median latency
+    assert choose_d229({v: {**x, "kept_rate": 0.5} for v, x in s.items()}) == "V3"  # all excluded
 
 
 def test_the_dev_selection_rule_is_rate_then_fewer_removed_then_faster():
