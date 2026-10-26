@@ -1,4 +1,4 @@
-# Pre-registration: E20, copilot evaluation (D225, amended by D225a and D225b)
+# Pre-registration: E20, copilot evaluation (D225, amended by D225a, D225b and D225c)
 
 Written 2026-10-26 on branch `e20` from `phase0-1` at `c9d8806` (the copilot merge, PR #14), before
 any E20 generation. Nothing in this file has been run. It fixes the system, the cases, the items, the
@@ -21,6 +21,15 @@ rules digest, the checker version, the model and the bundle are unchanged. Re-ch
 (D224c dev set, 60 stored drafts): 0 verdict changes. The Test Lab stays **off** as pre-registered, pending
 Aziz's decision; switching it on would be a further amendment, logged alone. Everything else is unchanged.
 
+**Amendment D225c (2026-10-26, before any runner or generation):** the Test Lab state is decided by a rule
+fixed before measuring: ON only if, on 3 questions on D224c dev cases (3566631 Q1, 3555114 Q2, 3522679 Q3)
+with the Test Lab ready on the real store and the model, peak whole-machine RAM < 13.0 GiB, every answer
+< 150 s and every same-card lookup < 5 s; otherwise OFF. Measured once (2026-10-26): peak RAM **15.5 GiB**
+of 15.85 GiB (Ollama processes 4.87 GiB, Python with the Test Lab 4.03 GiB; 10.41 GiB in use after the
+Test Lab loaded, before the model); answers 72.0 s, 33.5 s, 40.7 s; same-card lookups 0.006-0.007 s; the
+point-in-time history matched a direct computation from the store on all 3 cases. The RAM criterion fails,
+so the rule gives **OFF**: the Test Lab stays off, as pre-registered. Everything else is unchanged.
+
 ## 1. The frozen system
 
 | item | value |
@@ -32,7 +41,7 @@ Aziz's decision; switching it on would be a further amendment, logged alone. Eve
 | prompt variant | V3: JSON schema, at most 4 facts, each with one handle from an enum (D224c, D224f) |
 | rules digest (V3) | `451c68b97cee9dbb8c3d8e8f59f530979e217406eaaf066f28015e4b817221b0` (`rules.rules_digest()`) |
 | checker | version `D224j` (`check.CHECKER_VERSION`) |
-| Test Lab | **off** for the whole run: reasons are view-level, labelled as such (the Test Lab and the model do not fit in memory together for 270 generations) |
+| Test Lab | **off** for the whole run: reasons are view-level, labelled as such; customer values outside the test-period bundle are "not available", labelled why (D228). Decided by the D225c rule: with the Test Lab on, peak RAM was 15.5 GiB, over the 13.0 GiB limit |
 | demo bundle | `data/interim/demo_final_bundle.parquet`, SHA-256 `1480e4c9aeadd641d5b8ad4caf323369341a5a3ddd1adb8bbf49c31c50e08356` |
 
 SHA-256 of the committed (LF) content of the files that define the system (`git show 8a7e258:<file>`; D225b):
