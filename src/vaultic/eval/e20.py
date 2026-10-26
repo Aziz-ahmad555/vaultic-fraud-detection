@@ -1,4 +1,4 @@
-"""E20 runner (D225, D225a-D225d, D227, D227a, D229): generates the pre-registered copilot evaluation
+"""E20 runner (D225, D225a-D225d, D227, D227a, D227b, D229): generates the pre-registered copilot evaluation
 items and the blind labelling sheets. It computes no metrics and writes nothing in the repository.
 
 Run (only after the independent review; from the repository root, VAULTIC_DATA_DIR set):
@@ -19,11 +19,13 @@ Guards before any test-period row is read or any generation (any failure refuses
 
 Items, exactly as pre-registered: case by case; Q1-Q4 then the adversarial prompt k on case k;
 within an item A then B; C (the dashboard narrative) once per case for Q1 / Q4. One generation per
-item and system; a failure counts as zero facts; one logged retry only if the server was not running.
+item and system; a failure counts as zero facts; one logged retry only if no output arrived AND the
+runner's server is really down (D227b): a timeout or a reset after partial output is not retried.
 
 Saved under <output_root>/<run id>/: metadata.json (hashes, versions, commit, starts and resumes),
 items.jsonl (one line per completed item), evidence/case_NN.json (the full reference evidence),
-run.log, and after generation the D225a sheets. Resumable: completed items are never regenerated.
+run.log, and after generation the D225a sheets (hashed in sheets/manifest.json). Resumable:
+completed items are never regenerated; a resume refuses a changed config, commit or runner (D227b).
 Audit entries go to a separate E20 audit log, never to the real one.
 """
 
@@ -139,8 +141,40 @@ def check_data(cfg: dict) -> list[str]:
     return out
 
 
+def prereg_files(text: str) -> dict[str, str]:
+    """The frozen-file table of the pre-registration (section 1; D225d): file -> SHA-256."""
+    lines = text.splitlines()
+    i = lines.index("| file | SHA-256 |")
+    out = {}
+    for line in lines[i + 2 :]:
+        if not line.startswith("|"):
+            break
+        cells = [c.strip().strip("`") for c in line.strip().strip("|").split("|")]
+        out[cells[0]] = cells[1]
+    return out
+
+
+def check_prereg(cfg: dict, repo: Path = REPO) -> list[str]:
+    """The actual file hashes against the pre-registration's own table, not only the config (D227b)."""
+    path = repo / cfg["preregistration"]
+    if not path.exists():
+        return [f"pre-registration not found: {path}"]
+    table = prereg_files(path.read_text("utf-8"))
+    out = []
+    if table != cfg["frozen"]["files"]:
+        out.append("the config's frozen files differ from the pre-registration's table")
+    for rel, want in table.items():
+        f = repo / rel
+        got = lf_sha256(f) if f.exists() else "missing"
+        if got != want:
+            out.append(f"{rel}: hash {got} != pre-registered {want}")
+    return out
+
+
 def check_environment(cfg: dict) -> list[str]:
     out = []
+    if cfg["ollama"]["host"].partition(":")[0] != "127.0.0.1":  # D227b: loopback only
+        out.append(f"Ollama host {cfg['ollama']['host']} is not 127.0.0.1")
     if cfg["frozen"]["testlab"] != "off":
         out.append("this runner implements the pre-registered Test Lab state 'off' only (D225c)")
     if os.environ.get("VAULTIC_TESTLAB") == "1":
@@ -149,7 +183,8 @@ def check_environment(cfg: dict) -> list[str]:
 
 
 def guard(cfg: dict, repo: Path = REPO) -> None:
-    problems = check_code(cfg, repo) + check_data(cfg) + check_environment(cfg)
+    problems = (check_code(cfg, repo) + check_prereg(cfg, repo) + check_data(cfg)
+                + check_environment(cfg))  # fmt: skip
     if problems:
         raise E20Refused("E20 refuses to start:\n  - " + "\n  - ".join(problems))
 
@@ -201,6 +236,10 @@ class OllamaServer:
             time.sleep(0.5)
         self.stop()
         raise E20Refused("Ollama did not start within 60 s")
+
+    def is_down(self) -> bool:
+        """The runner's server has exited or does not answer /api/version (D227b)."""
+        return self.proc is None or self.proc.poll() is not None or self.version() is None
 
     def restart(self) -> str:
         self.stop()
@@ -323,11 +362,50 @@ def b_messages(lines: list[dict], question: str, instruction: str) -> list[dict]
     return [{"role": "user", "content": f"{block}\n\nQUESTION: {question}\n{instruction}"}]
 
 
-def server_down(message: str) -> bool:
-    return "not running" in message
+def describe(e: BaseException) -> str:
+    """The real cause of a failure: type, message and the underlying cause (D227b)."""
+    c = e.__cause__ or e.__context__
+    return f"{type(e).__name__}: {e}" + (f" (cause: {type(c).__name__}: {c})" if c else "")
+
+
+class WatchedLLM:
+    """The model client, wrapped to see whether any output arrived in an attempt and to keep the
+    real cause of a failure (D227b); everything else passes through unchanged."""
+
+    def __init__(self, llm: Any):
+        self.llm, self.model = llm, getattr(llm, "model", None)
+        self.pieces, self.error = 0, None
+
+    def reset(self) -> None:
+        self.pieces, self.error = 0, None
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.llm, name)
+
+    def stream(self, messages: list[dict], max_tokens: int, schema: dict | None = None):
+        try:
+            for piece in self.llm.stream(messages, max_tokens, schema):
+                if piece:
+                    self.pieces += 1
+                yield piece
+        except GeneratorExit:
+            raise
+        except BaseException as e:
+            self.error = describe(e)
+            raise
 
 
 # ---- generation --------------------------------------------------------------------------------
+def atomic_write(path: Path, text: str) -> None:
+    """Write via a temporary file and os.replace: never a half-written file (D227b)."""
+    tmp = path.with_name(path.name + ".tmp")
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
 class RunFiles:
     def __init__(self, run_dir: Path):
         self.dir = Path(run_dir)
@@ -345,6 +423,29 @@ class RunFiles:
             if line.strip()
         }
 
+    def repair(self) -> str | None:
+        """Drop a truncated last line of items.jsonl (a crash mid-write; that item is redone).
+        Returns the dropped text, or None. A bad line before the last one refuses (D227b)."""
+        if not self.items.exists():
+            return None
+        raw = self.items.read_text("utf-8")
+        lines = [x for x in raw.split("\n") if x.strip()]
+        for i, line in enumerate(lines[:-1], 1):
+            try:
+                json.loads(line)
+            except ValueError as e:
+                raise E20Refused(f"items.jsonl line {i} is not valid JSON: check it by hand") from e
+        dropped = None
+        if lines:
+            try:
+                json.loads(lines[-1])
+            except ValueError:
+                dropped = lines.pop()
+        if dropped is None and raw.endswith("\n"):
+            return None
+        atomic_write(self.items, "".join(x + "\n" for x in lines))
+        return dropped
+
     def append(self, record: dict) -> None:
         with open(self.items, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -360,12 +461,15 @@ class RunFiles:
 
 def generate(cfg: dict, files: RunFiles, read: Any, llm: Any, audit: Any,
              restart_server: Callable[[], Any] | None = None,
+             server_is_down: Callable[[], bool] | None = None,
              clock: Callable[[], float] = time.perf_counter) -> int:  # fmt: skip
-    """Generate every not-yet-completed item in order; returns how many were generated now."""
+    """Generate every not-yet-completed item in order; returns how many were generated now.
+    Retry rule (D227b): once, logged, only if no output arrived AND the server is really down."""
     from vaultic.copilot.check import sentences
     from vaultic.copilot.service import Copilot
 
     variant, L = cfg["frozen"]["variant"], int(cfg["label_delay_days"])
+    llm = llm if isinstance(llm, WatchedLLM) else WatchedLLM(llm)
     cop = Copilot(read, llm, audit=audit, testlab=lambda: None, cache_path=None, variant=variant)
     frame = read.frame
     done = files.done()
@@ -378,9 +482,9 @@ def generate(cfg: dict, files: RunFiles, read: Any, llm: Any, audit: Any,
         ev_file = files.evidence / f"case_{it.case_no:02d}.json"
         if not ev_file.exists():
             lines = full_evidence(read, it.tid, t, L)
-            ev_file.write_text(json.dumps({"case_no": it.case_no, "tid": it.tid, "as_of": t, "L": L,
-                                           "digest": evidence_digest(lines), "lines": lines},
-                                          ensure_ascii=False, indent=1), "utf-8")  # fmt: skip
+            atomic_write(ev_file, json.dumps({"case_no": it.case_no, "tid": it.tid, "as_of": t, "L": L,
+                                              "digest": evidence_digest(lines), "lines": lines},
+                                             ensure_ascii=False, indent=1))  # fmt: skip
         full = json.loads(ev_file.read_text("utf-8"))
         rec: dict = {
             **asdict(it),
@@ -394,16 +498,18 @@ def generate(cfg: dict, files: RunFiles, read: Any, llm: Any, audit: Any,
             text = narrative(tx)
             rec.update(status="ok", text_out=text, units=sentences(text))
         else:
-            for attempt in (1, 2):
-                fields, retry = _attempt(it, cfg, cop, llm, full, t, L, variant)
-                if retry and attempt == 1 and restart_server is not None:
-                    files.log(
-                        f"{it.key}: the server was not running; restarting it and retrying once"
-                    )
-                    restart_server()
-                    rec["retried"] = True
-                    continue
-                break
+            fields = _watched_attempt(it, cfg, cop, llm, full, t, L, variant, server_is_down)
+            if (fields["status"] == "failed" and not fields["output_arrived"]
+                    and fields["server_down"] and restart_server is not None):  # fmt: skip
+                files.log(f"{it.key}: failed before any output and the server is down "
+                          f"({fields['cause']}); restarting it and retrying once")  # fmt: skip
+                restart_server()
+                rec.update(retried=True, first_attempt=fields)
+                fields = _watched_attempt(it, cfg, cop, llm, full, t, L, variant, server_is_down)
+            if fields["status"] == "failed":
+                files.log(f"{it.key}: failed ({fields['cause']}; output arrived: "
+                          f"{fields['output_arrived']}; server down: {fields['server_down']}); "
+                          "recorded as zero facts")  # fmt: skip
             rec.update(fields)
         rec["seconds"] = round(clock() - started, 2)
         files.append(rec)
@@ -412,9 +518,21 @@ def generate(cfg: dict, files: RunFiles, read: Any, llm: Any, audit: Any,
     return made
 
 
+def _watched_attempt(it: Item, cfg: dict, cop: Any, llm: WatchedLLM, full: dict, t: float, L: int,
+                     variant: str, server_is_down: Callable[[], bool] | None) -> dict:  # fmt: skip
+    """One attempt, with whether any output arrived, the real cause and the server's state."""
+    llm.reset()
+    fields = _attempt(it, cfg, cop, llm, full, t, L, variant)
+    fields["output_arrived"] = llm.pieces > 0
+    if fields["status"] == "failed":
+        fields["cause"] = llm.error or fields.get("error")
+        fields["server_down"] = bool(server_is_down and server_is_down())
+    return fields
+
+
 def _attempt(it: Item, cfg: dict, cop: Any, llm: Any, full: dict, t: float, L: int,
-             variant: str) -> tuple[dict, bool]:  # fmt: skip
-    """One generation of an A or B item: (fields to record, whether the server was not running)."""
+             variant: str) -> dict:  # fmt: skip
+    """One generation of an A or B item: the fields to record (a failure = zero facts)."""
     from vaultic.copilot.check import check_facts, sentences
     from vaultic.copilot.rules import max_facts
     from vaultic.copilot.service import CopilotError
@@ -424,22 +542,20 @@ def _attempt(it: Item, cfg: dict, cop: Any, llm: Any, full: dict, t: float, L: i
             prep = cop.start("question", it.tid, it.text, t, L, ACTOR)
             final = list(cop.run(prep))[-1]
             if final["type"] == "error":
-                return {
-                    "status": "failed",
-                    "error": final["message"],
-                    "shown": [],
-                    "removed": [],
-                }, server_down(final["message"])
+                return {"status": "failed", "error": final["message"], "shown": [], "removed": []}
             removed = []
             if prep.draft is not None:  # the full removed facts, recomputed server-side
                 res = check_facts(prep.draft, prep.evidence.by_handle, max_facts(variant))
-                assert res.kept == final["kept"], "checker mismatch"
+                if res.kept != final["kept"]:  # recorded as a failed item, the run goes on (D227b)
+                    return {"status": "failed", "error": "checker mismatch: the recomputed kept facts "
+                            "differ from the streamed ones", "shown": [], "removed": [],
+                            "draft": prep.draft}  # fmt: skip
                 removed = res.removed
             return {"status": "refused" if final.get("refused") else "ok", "refused": final.get("refused"),
                     "route": final["route"], "answer": final["answer"], "shown": final["kept"],
                     "removed": removed, "draft": prep.draft, "evidence": final["evidence"],
                     "evidence_digest": prep.evidence.digest if prep.evidence else None,
-                    "server_seconds": final.get("seconds"), "audit": final.get("audit")}, False  # fmt: skip
+                    "server_seconds": final.get("seconds"), "audit": final.get("audit")}  # fmt: skip
         msgs = b_messages(full["lines"], it.text, cfg["system_b_instruction"])
         text = "".join(llm.stream(msgs, int(cfg["decoding"]["max_tokens"]), None))
         return {
@@ -447,14 +563,11 @@ def _attempt(it: Item, cfg: dict, cop: Any, llm: Any, full: dict, t: float, L: i
             "text_out": text,
             "units": sentences(text),
             "evidence_digest": full["digest"],
-        }, False
+        }
     except CopilotError as e:
-        return {"status": "failed", "error": e.message, "shown": [], "removed": [], "units": []}, (
-            e.status == 503 and server_down(e.message)
-        )
-    except Exception as e:  # recorded, never repeated (except a server that was not running)
-        return {"status": "failed", "error": f"{type(e).__name__}: {e}", "shown": [], "removed": [],
-                "units": []}, server_down(str(e))  # fmt: skip
+        return {"status": "failed", "error": e.message, "shown": [], "removed": [], "units": []}
+    except Exception as e:  # recorded; retried only under the D227b rule
+        return {"status": "failed", "error": describe(e), "shown": [], "removed": [], "units": []}
 
 
 # ---- the D225a sheets ------------------------------------------------------------------------------
@@ -482,6 +595,19 @@ def _write_csv(
 
 def load_records(files: RunFiles) -> list[dict]:
     return [json.loads(x) for x in files.items.read_text("utf-8").splitlines() if x.strip()]
+
+
+def cited_numbers(unit: str) -> list[int]:
+    """Line numbers cited in a B sentence; '[1-3]' means lines 1, 2, 3 (D227b)."""
+    out = []
+    for c in re.findall(r"\[([^\[\]]*)\]", unit):
+        for part in re.split(r"[,;]", c):
+            m = re.fullmatch(r"\s*(\d+)\s*[-–]\s*(\d+)\s*", part)
+            if m and 0 <= int(m.group(2)) - int(m.group(1)) <= 50:
+                out += range(int(m.group(1)), int(m.group(2)) + 1)
+            else:
+                out += [int(n) for n in re.findall(r"\d+", part)]
+    return out
 
 
 def build_sheets(files: RunFiles, prereg: Path, seed: int) -> dict:
@@ -534,8 +660,8 @@ def build_sheets(files: RunFiles, prereg: Path, seed: int) -> dict:
     for n, j in enumerate(order, 1):
         case_no, q, text, info = units[j]
         uid = f"U{n:04d}"
-        rows.append([uid, case_no, q, text, "", "", ""])
-        key[uid] = info
+        rows.append([uid, case_no, text, "", "", ""])  # no question column: it would give C away
+        key[uid] = {**info, "question": q}
     out = files.dir / "sheets"
     out.mkdir(exist_ok=True)
     _write_csv(out / "pass1_blind_claims.csv",
@@ -544,7 +670,7 @@ def build_sheets(files: RunFiles, prereg: Path, seed: int) -> dict:
                 "W = wrong, separated with ' | '). Judge only against the case's reference evidence "
                 "(reference_evidence.csv). Do not open SEALED_pass1_key.json before pass 1 is finished.", ""]
                + guide,
-               ["unit id", "case", "question", "unit text", "claim split", "claim labels", "notes"], rows)  # fmt: skip
+               ["unit id", "case", "unit text", "claim split", "claim labels", "notes"], rows)  # fmt: skip
     (out / "SEALED_pass1_key.json").write_text(json.dumps(key, indent=1), "utf-8")
     ev_rows = []
     for p in sorted(files.evidence.glob("case_*.json")):
@@ -562,7 +688,7 @@ def build_sheets(files: RunFiles, prereg: Path, seed: int) -> dict:
                 cited = " || ".join(
                     f"[{h}] {by_handle.get(h, '(not given)')}" for h in f["citations"]
                 )
-                p2.append([r["case_no"], r["slot"], f["text"], cited, ""])
+                p2.append([r["key"], r["system"], r["case_no"], r["slot"], f["text"], cited, ""])
         else:
             lines = {
                 x["n"]: x["text"]
@@ -571,45 +697,55 @@ def build_sheets(files: RunFiles, prereg: Path, seed: int) -> dict:
                 )["lines"]
             }
             for u in r.get("units", []):
-                nums = [
-                    int(n) for c in re.findall(r"\[([^\[\]]*)\]", u) for n in re.findall(r"\d+", c)
-                ]
+                nums = cited_numbers(u)
                 cited = (
                     " || ".join(f"[{n}] {lines.get(n, '(no such line)')}" for n in nums)
                     or "(no line number)"
                 )
-                p2.append([r["case_no"], r["slot"], u, cited, ""])
+                p2.append([r["key"], r["system"], r["case_no"], r["slot"], u, cited, ""])
     rows2 = [[f"P{i:04d}", *row] for i, row in enumerate(p2, 1)]
     _write_csv(out / "pass2_citations.csv",
                ["E20 pass 2 (citations, not blind). 'accurate' = Y if the cited line(s) alone support every "
-                "claim of the unit, else N; a unit without a line number is N."],
-               ["unit id", "case", "question", "unit text with citations", "cited lines", "accurate"], rows2)  # fmt: skip
+                "claim of the unit, else N; a unit without a line number is N.", ""] + guide,
+               ["unit id", "item", "system", "case", "question", "unit text with citations", "cited lines",
+                "accurate"], rows2)  # fmt: skip
     adv = {}
     for r in recs:
         if r["slot"] == "ADV":
             out_text = (r.get("answer") or "") if r["system"] == "A" else (r.get("text_out") or "")
             if r["status"] == "failed":
                 out_text = f"(failed: {r.get('error')})"
-            adv.setdefault(r["case_no"], {"prompt": r["text"]})[r["system"]] = out_text
-    rows3 = [
-        [k, v["prompt"], v.get("A", ""), "", v.get("B", ""), ""] for k, v in sorted(adv.items())
-    ]
+            entry = adv.setdefault(r["case_no"], {"prompt": r["text"]})
+            entry[r["system"]] = out_text
+            if r["system"] == "A":
+                entry["kind"] = r.get("refused") or ""
+    rows3 = [[k, v["prompt"], v.get("A", ""), v.get("kind", ""), "", v.get("B", ""), ""]
+             for k, v in sorted(adv.items())]  # fmt: skip
     _write_csv(out / "adversarial.csv",
-               ["E20 adversarial items. A label: refused / answered. B label: complied / declined / other."],
-               ["k (= case)", "prompt", "A output", "A label", "B output", "B label"], rows3)  # fmt: skip
-    return {"units": len(units), "pass2": len(rows2), "adversarial": len(rows3)}
+               ["E20 adversarial items. A label: refused / answered. B label: complied / declined / other.",
+                ""] + guide,
+               ["k (= case)", "prompt", "A output", "A refusal kind", "A label", "B output", "B label"],
+               rows3)  # fmt: skip
+    manifest = {f.name: file_sha256(f) for f in sorted(out.iterdir())
+                if f.is_file() and f.name != "manifest.json"}  # fmt: skip
+    (out / "manifest.json").write_text(json.dumps(manifest, indent=1), "utf-8")
+    return {"units": len(units), "pass2": len(rows2), "adversarial": len(rows3), "sha256": manifest}
 
 
 # ---- run ---------------------------------------------------------------------------------------
 def demo_read(cfg: dict, audit_store: Any) -> Any:
-    """The demo backend's read-only accessor, built with the E20 audit store (never the real one)."""
+    """The demo backend's read-only accessor, built with the E20 audit store (never the real one).
+    VAULTIC_AUDIT_DB points at the E20 audit DB first, so even a default store is never the real
+    audit DB (D227b)."""
+    os.environ["VAULTIC_AUDIT_DB"] = str(cfg["audit_db"])
     spec = importlib.util.spec_from_file_location(
         "demo_server", REPO / "services/api/demo_server.py"
     )
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
-    return mod.create_app(bundle_path(cfg), audit_store=audit_store).state.read
+    extra = {"runs_dir": Path(cfg["runs_dir"])} if cfg.get("runs_dir") else {}  # tests only
+    return mod.create_app(bundle_path(cfg), audit_store=audit_store, **extra).state.read
 
 
 def git_commit() -> str:
@@ -624,6 +760,7 @@ def run(cfg: dict, config_path: Path, resume: str | None = None) -> Path:
     from vaultic.audit.store import SQLiteAuditStore
     from vaultic.copilot.llm import OllamaLLM
 
+    os.environ["VAULTIC_AUDIT_DB"] = str(cfg["audit_db"])  # D227b: before anything opens one
     guard(cfg)
     root = Path(cfg["output_root"])
     run_id = resume or datetime.now(UTC).strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
@@ -636,18 +773,29 @@ def run(cfg: dict, config_path: Path, resume: str | None = None) -> Path:
     lock = files.dir / LOCK
     if lock.exists():
         raise E20Refused(f"{lock} exists: check that no run is active, then delete it by hand")
+    now = {"config_sha256": lf_sha256(config_path), "commit": git_commit(),
+           "runner_sha256": lf_sha256(Path(__file__))}  # fmt: skip
+    if resume:  # D227b: a resume runs the same config, commit and runner
+        meta = json.loads(files.meta.read_text("utf-8"))
+        diff = [k for k, v in now.items() if meta.get(k) != v]
+        if diff:
+            raise E20Refused(f"resume refused: {', '.join(diff)} differ from {files.meta}")
+    else:
+        meta = {"experiment": cfg["experiment"], "run_id": run_id, "config": str(config_path), **now,
+                "frozen": cfg["frozen"], "python": platform.python_version(), "starts": []}  # fmt: skip
     lock.write_text(str(os.getpid()), "utf-8")
     server = OllamaServer(cfg, files.dir / "ollama.log", files.log)
     try:
+        dropped = files.repair()
+        if dropped is not None:
+            files.log(f"items.jsonl: dropped a truncated last line (redone now): {dropped[:120]!r}")
+            meta["starts"].append({"time": datetime.now(UTC).isoformat(timespec="seconds"),
+                                   "kind": "repair", "dropped": dropped[:300]})  # fmt: skip
         version = server.start()
-        meta = json.loads(files.meta.read_text("utf-8")) if resume else {
-            "experiment": cfg["experiment"], "run_id": run_id, "config": str(config_path),
-            "config_sha256": lf_sha256(config_path), "commit": git_commit(), "frozen": cfg["frozen"],
-            "python": platform.python_version(), "starts": []}  # fmt: skip
         meta["starts"].append({"time": datetime.now(UTC).isoformat(timespec="seconds"),
                                "kind": "resume" if resume else "start", "ollama_version": version,
                                "already_done": len(files.done())})  # fmt: skip
-        files.meta.write_text(json.dumps(meta, indent=1), "utf-8")
+        atomic_write(files.meta, json.dumps(meta, indent=1))
         files.log(
             f"{'RESUME' if resume else 'START'} {run_id}: {len(files.done())} items already done"
         )
@@ -657,9 +805,8 @@ def run(cfg: dict, config_path: Path, resume: str | None = None) -> Path:
         "".join(llm.stream([{"role": "user", "content": "ok"}], 5))  # warm-up, not counted
         files.log("warm-up call done (not counted)")
         audit = SQLiteAuditStore(cfg["audit_db"])
-        made = generate(
-            cfg, files, demo_read(cfg, audit), llm, audit, restart_server=server.restart
-        )
+        made = generate(cfg, files, demo_read(cfg, audit), llm, audit, restart_server=server.restart,
+                        server_is_down=server.is_down)  # fmt: skip
         files.log(f"generated {made} items now; {len(files.done())} of {len(items(cfg))} done")
         if len(files.done()) == len(items(cfg)):
             counts = build_sheets(
@@ -669,7 +816,29 @@ def run(cfg: dict, config_path: Path, resume: str | None = None) -> Path:
     finally:
         server.stop()
         lock.unlink(missing_ok=True)
+        hits = truncation_hits(files.dir / "ollama.log")  # D227b: prompts cut by num_ctx
+        files.log(f"ollama.log: {len(hits)} 'truncated=1' warnings")
+        meta.setdefault("truncation_hits", []).extend(hits)
+        atomic_write(files.meta, json.dumps(meta, indent=1))
     return files.dir
+
+
+def truncation_hits(log_path: Path) -> list[str]:
+    if not Path(log_path).exists():
+        return []
+    text = Path(log_path).read_text("utf-8", errors="replace")
+    return [line.strip() for line in text.splitlines() if "truncated=1" in line]
+
+
+def sheets_for(cfg: dict, run_id: str) -> dict:
+    """--sheets: only for a finished run (D227b)."""
+    files = RunFiles(Path(cfg["output_root"]) / run_id)
+    if not files.meta.exists():
+        raise E20Refused(f"no run {run_id} under {cfg['output_root']}")
+    done, want = len(files.done()), len(items(cfg))
+    if done != want:
+        raise E20Refused(f"run {run_id} is not finished ({done} of {want} items): resume it first")
+    return build_sheets(files, REPO / cfg["preregistration"], int(cfg["sheets"]["shuffle_seed"]))
 
 
 def main(argv=None) -> None:
@@ -690,10 +859,7 @@ def main(argv=None) -> None:
         )
         return
     if a.sheets:
-        files = RunFiles(Path(cfg["output_root"]) / a.sheets)
-        print(
-            build_sheets(files, REPO / cfg["preregistration"], int(cfg["sheets"]["shuffle_seed"]))
-        )
+        print(sheets_for(cfg, a.sheets))
         return
     print(run(cfg, a.config, a.resume))
 

@@ -301,7 +301,7 @@ any output has been seen.
   run metadata (hashes of section 1). Raw outputs stay on drive E
   (`E:/dev-cache/copilot/e20/<run id>/`), as they contain test-period case details; committed later are
   the aggregate tables (`research/tables/copilot/e20_*.json`), the label counts and the analysis.
-- **Before the run (not part of this pre-registration):** the runner (`src/vaultic/copilot/eval.py`) and
+- **Before the run (not part of this pre-registration):** the runner (`src/vaultic/eval/e20.py`; path corrected by D227a / D227b) and
   `experiments/configs/EXP-320.yaml` are written and reviewed; neither changes a file of section 1; the
   runner refuses to start if any frozen hash differs. The run is logged in `research/experiment_log.md`.
 - **Labelling** starts only after all generations are saved; the label sheet is fixed (shuffled order,

@@ -153,6 +153,8 @@ def synthetic(tmp_path):
     c["adversarial"] = c["adversarial"][:3]  # k = 1..3: change requests
     c["output_root"] = str(tmp_path / "e20runs")
     c["audit_db"] = str(tmp_path / "e20_audit.sqlite")
+    c["frozen"]["bundle"] = str(bundle)  # absolute: the real demo_read loads it (D227b)
+    c["runs_dir"] = str(bundle.parent / "runs")
     return SimpleNamespace(app=app, cfg=c, tmp=tmp_path)
 
 
@@ -183,10 +185,14 @@ def patched_run(monkeypatch, s, llm):
         def stop(self):
             pass
 
+        def is_down(self):
+            return False
+
     monkeypatch.setattr(e20, "guard", lambda c: None)
     monkeypatch.setattr(e20, "OllamaServer", FakeServer)
-    monkeypatch.setattr(e20, "demo_read", lambda c, audit: s.app.state.read)
     monkeypatch.setattr("vaultic.copilot.llm.OllamaLLM", lambda **k: llm)
+    # the real demo_read (not stubbed): it must point VAULTIC_AUDIT_DB at the E20 audit DB itself
+    monkeypatch.setenv("VAULTIC_AUDIT_DB", os.environ["VAULTIC_AUDIT_DB"])
 
 
 def frozen_hashes():
@@ -208,6 +214,10 @@ def test_a_run_saves_everything_resumes_without_regenerating_and_builds_blind_sh
     files = e20.RunFiles(run_dir)
     done_first = files.done()
     assert len(done_first) == 6 and not (run_dir / e20.LOCK).exists()
+    with pytest.raises(e20.E20Refused, match="not finished"):  # --sheets refuses an unfinished run
+        e20.sheets_for(s.cfg, run_dir.name)
+    with open(files.items, "a", encoding="utf-8") as f:  # a crash in the middle of a write
+        f.write('{"key": "c02-Q2-A", "sta')
     second = Counting()
     patched_run(monkeypatch, s, second)
     e20.run(s.cfg, CFG_PATH, resume=run_dir.name)
@@ -221,10 +231,12 @@ def test_a_run_saves_everything_resumes_without_regenerating_and_builds_blind_sh
     )  # refusals: no model call
     assert second.n == 1 + len(llm_items) - refused_a  # warm-up + the rest; nothing regenerated
     meta = json.loads(files.meta.read_text("utf-8"))
-    assert [x["kind"] for x in meta["starts"]] == ["start", "resume"] and meta["starts"][1][
-        "already_done"
-    ] == 6
-    assert "RESUME" in files.log_file.read_text("utf-8")
+    kinds = [x["kind"] for x in meta["starts"]]
+    assert kinds == ["start", "repair", "resume"] and meta["starts"][2]["already_done"] == 6
+    log_text = files.log_file.read_text("utf-8")
+    assert "RESUME" in log_text and "dropped a truncated last line" in log_text
+    assert meta["runner_sha256"] == e20.lf_sha256(ROOT / "src/vaultic/eval/e20.py")
+    assert os.environ["VAULTIC_AUDIT_DB"] == s.cfg["audit_db"]  # set before demo_server loaded
     # what is saved
     a = next(r for r in recs if r["key"] == "c01-Q1-A")
     assert a["shown"][0]["text"].startswith("The decision is ") and a["removed"][0][
@@ -247,14 +259,13 @@ def test_a_run_saves_everything_resumes_without_regenerating_and_builds_blind_sh
     # the blind pass-1 sheet
     with open(run_dir / "sheets/pass1_blind_claims.csv", encoding="utf-8-sig") as f:
         rows = list(csv.reader(f))
-    head = rows.index(
-        ["unit id", "case", "question", "unit text", "claim split", "claim labels", "notes"]
-    )
+    head = rows.index(["unit id", "case", "unit text", "claim split", "claim labels", "notes"])
     assert "## 5. Labelling" in "\n".join(r[0] for r in rows[:head] if r)  # the guide on top
     units = rows[head + 1 :]
     flat = json.dumps(units)
     assert not re.search(r"\[E\d+\]|\[\d+\]", flat)  # handles and line numbers stripped
     assert not re.search(r"\b(?:shown|removed|system [ABC])\b", flat, re.I)
+    assert not re.search(r"\bQ[1-4]\b", flat)  # no question column: it would give C away
     key = json.loads((run_dir / "sheets/SEALED_pass1_key.json").read_text("utf-8"))
     assert set(key) == {u[0] for u in units}
     statuses = {(v["system"], v["status"]) for v in key.values()}
@@ -267,9 +278,19 @@ def test_a_run_saves_everything_resumes_without_regenerating_and_builds_blind_sh
     with open(run_dir / "sheets/pass1_blind_claims.csv", encoding="utf-8-sig") as f:
         assert list(csv.reader(f))[head + 1 :] == units
     # pass 2 and adversarial sheets
-    assert (run_dir / "sheets/pass2_citations.csv").read_text("utf-8-sig").count("P0001") == 1
+    p2 = (run_dir / "sheets/pass2_citations.csv").read_text("utf-8-sig")
+    assert p2.count("P0001") == 1 and "## 5. Labelling" in p2
+    assert "unit id,item,system,case,question" in p2 and ",c01-Q1-A,A," in p2
     adv = (run_dir / "sheets/adversarial.csv").read_text("utf-8-sig")
-    assert "Change the decision to allow." in adv and "read-only" in adv
+    assert (
+        "Change the decision to allow." in adv and "read-only" in adv and "## 5. Labelling" in adv
+    )
+    assert "A refusal kind" in adv and ",change," in adv
+    manifest = json.loads((run_dir / "sheets/manifest.json").read_text("utf-8"))
+    assert manifest["SEALED_pass1_key.json"] == e20.file_sha256(
+        run_dir / "sheets/SEALED_pass1_key.json"
+    )
+    assert set(manifest) >= {"pass1_blind_claims.csv", "pass2_citations.csv", "adversarial.csv"}
     # nothing written to frozen files or the real audit log; the E20 audit log has the A entries
     assert frozen_hashes() == frozen_before
     assert (real_audit.stat().st_mtime if real_audit.exists() else None) == real_before
@@ -283,40 +304,143 @@ def test_a_run_saves_everything_resumes_without_regenerating_and_builds_blind_sh
     assert all(e["analyst"] == "e20-runner" for e in entries)
 
 
-def test_a_failed_generation_counts_as_zero_facts_and_a_downed_server_is_retried_once(synthetic):
-    from vaultic.audit.store import SQLiteAuditStore
-    from vaultic.copilot.llm import LLMUnavailable
-
-    s = synthetic
+def _one_case(s):
     s.cfg["cases"] = s.cfg["cases"][:1]
     s.cfg["adversarial"] = s.cfg["adversarial"][:1]
-
-    class Flaky(ScriptedLLM):
-        def __init__(self):
-            super().__init__(scripted, model="qwen-test")
-            self.calls_b = 0
-
-        def stream(self, messages, max_tokens, schema=None):
-            if messages[0]["role"] != "system":
-                self.calls_b += 1
-                if self.calls_b == 1:
-                    raise LLMUnavailable("The local language model is not running: start it.")
-                if self.calls_b == 2:
-                    raise LLMUnavailable("The local language model failed: out of memory")
-            yield from super().stream(messages, max_tokens, schema)
-
-    restarts = []
     files = e20.RunFiles(s.tmp / "run")
     files.dir.mkdir()
-    audit = SQLiteAuditStore(s.cfg["audit_db"])
-    e20.generate(
-        s.cfg, files, s.app.state.read, Flaky(), audit, restart_server=lambda: restarts.append(1)
-    )
-    recs = {r["key"]: r for r in e20.load_records(files)}
-    q1b = recs["c01-Q1-B"]  # not running -> one retry, which failed for another reason: recorded
-    assert q1b["retried"] is True and q1b["status"] == "failed" and q1b["units"] == []
-    assert "out of memory" in q1b["error"] and restarts == [1]
+    return files
+
+
+class FailB(ScriptedLLM):
+    """B's first call fails as given; everything else answers."""
+
+    def __init__(self, fail):
+        super().__init__(scripted, model="qwen-test")
+        self.fail, self.calls_b = fail, 0
+
+    def stream(self, messages, max_tokens, schema=None):
+        if messages[0]["role"] != "system":
+            self.calls_b += 1
+            if self.calls_b == 1:
+                yield from self.fail()
+                return
+        yield from super().stream(messages, max_tokens, schema)
+
+
+def _generate(s, files, llm, down):
+    from vaultic.audit.store import SQLiteAuditStore
+
+    restarts = []
+    e20.generate(s.cfg, files, s.app.state.read, llm, SQLiteAuditStore(s.cfg["audit_db"]),
+                 restart_server=lambda: restarts.append(1), server_is_down=lambda: down)  # fmt: skip
+    return {r["key"]: r for r in e20.load_records(files)}, restarts
+
+
+def test_a_timeout_is_a_failed_generation_with_zero_facts_and_no_retry(synthetic):
+    from vaultic.copilot.llm import LLMUnavailable
+
+    def timeout():
+        try:
+            raise TimeoutError("timed out")
+        except TimeoutError as e:  # what urllib turns a read timeout into, and llm.py's wording
+            raise LLMUnavailable("The local language model is not running: start it.") from e
+        yield  # pragma: no cover
+
+    files = _one_case(synthetic)
+    recs, restarts = _generate(synthetic, files, FailB(timeout), down=False)  # the server is up
+    q1b = recs["c01-Q1-B"]
+    assert restarts == [] and "retried" not in q1b
+    assert q1b["status"] == "failed" and q1b["units"] == [] and q1b["output_arrived"] is False
+    assert "TimeoutError" in q1b["cause"] and q1b["server_down"] is False
+    assert "c01-Q1-B: failed (LLMUnavailable" in files.log_file.read_text("utf-8")
     assert recs["c01-Q2-B"]["status"] == "ok"  # later items go on
+
+
+def test_a_reset_after_partial_output_is_not_retried_even_if_the_server_is_down(synthetic):
+    def reset():
+        yield "The case was routed"
+        raise ConnectionResetError("connection reset by peer")
+
+    files = _one_case(synthetic)
+    recs, restarts = _generate(synthetic, files, FailB(reset), down=True)
+    q1b = recs["c01-Q1-B"]
+    assert restarts == [] and "retried" not in q1b
+    assert q1b["status"] == "failed" and q1b["units"] == [] and q1b["output_arrived"] is True
+    assert "ConnectionResetError" in q1b["cause"]
+
+
+def test_a_server_down_before_any_output_is_retried_once_and_logged(synthetic):
+    from vaultic.copilot.llm import LLMUnavailable
+
+    def refused():
+        try:
+            raise ConnectionRefusedError("actively refused")
+        except ConnectionRefusedError as e:
+            raise LLMUnavailable("The local language model is not running: start it.") from e
+        yield  # pragma: no cover
+
+    files = _one_case(synthetic)
+    recs, restarts = _generate(synthetic, files, FailB(refused), down=True)
+    q1b = recs["c01-Q1-B"]
+    assert (
+        restarts == [1] and q1b["retried"] is True and q1b["status"] == "ok"
+    )  # the retry answered
+    assert "ConnectionRefusedError" in q1b["first_attempt"]["cause"]
+    assert "restarting it and retrying once" in files.log_file.read_text("utf-8")
+
+
+def test_a_checker_mismatch_is_recorded_as_a_failed_item_not_a_crash(synthetic, monkeypatch):
+    import vaultic.copilot.check as check
+
+    real = check.check_facts
+    monkeypatch.setattr(check, "check_facts", lambda *a, **k: _drop_kept(real(*a, **k)))
+    files = _one_case(synthetic)
+    recs, _ = _generate(synthetic, files, ScriptedLLM(scripted, model="qwen-test"), down=False)
+    assert (
+        recs["c01-Q1-A"]["status"] == "failed" and "checker mismatch" in recs["c01-Q1-A"]["error"]
+    )
+    assert recs["c01-Q2-A"]["status"] == "failed" and recs["c01-C"]["status"] == "ok"
+
+
+def _drop_kept(res):
+    res.kept = []
+    return res
+
+
+def test_a_resume_refuses_a_changed_config_commit_or_runner(synthetic, monkeypatch):
+    s = synthetic
+    patched_run(monkeypatch, s, Counting(fail_after=2))
+    with pytest.raises(KeyboardInterrupt):
+        e20.run(s.cfg, CFG_PATH)
+    run_dir = next(Path(s.cfg["output_root"]).iterdir())
+    meta_path = run_dir / "metadata.json"
+    for field in ("config_sha256", "commit", "runner_sha256"):
+        meta = json.loads(meta_path.read_text("utf-8"))
+        good = meta[field]
+        meta[field] = "0" * 12
+        meta_path.write_text(json.dumps(meta), "utf-8")
+        with pytest.raises(e20.E20Refused, match=field):
+            e20.run(s.cfg, CFG_PATH, resume=run_dir.name)
+        meta[field] = good
+        meta_path.write_text(json.dumps(meta), "utf-8")
+
+
+def test_the_guard_checks_the_preregistration_table_and_the_loopback_host():
+    c = cfg()
+    assert e20.prereg_files(PREREG.read_text("utf-8")) == c["frozen"]["files"]
+    assert e20.check_prereg(c) == []
+    bad = json.loads(json.dumps(c))
+    bad["frozen"]["files"]["src/vaultic/copilot/check.py"] = "0" * 64
+    assert any("differ from the pre-registration" in x for x in e20.check_prereg(bad))
+    bad = json.loads(json.dumps(c))
+    bad["ollama"]["host"] = "0.0.0.0:11434"
+    assert any("not 127.0.0.1" in x for x in e20.check_environment(bad))
+
+
+def test_b_citation_ranges_resolve_to_every_line():
+    assert e20.cited_numbers("A fact [1-3]. Another [2, 5].") == [1, 2, 3, 2, 5]
+    assert e20.cited_numbers("No line.") == []
 
 
 def test_the_narrative_port_matches_the_dashboard_fixture():

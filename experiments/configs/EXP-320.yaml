@@ -3,7 +3,7 @@
 # the independent review):  python -m vaultic.eval.e20 --config experiments/configs/EXP-320.yaml
 experiment: EXP-320
 preregistration: research/preregistration_e20.md
-decisions: [D225, D225a, D225b, D225c, D225d, D227, D227a, D228, D229]
+decisions: [D225, D225a, D225b, D225c, D225d, D227, D227a, D227b, D228, D229]
 
 frozen:
   commit: 03f8a16  # D225d (before: 8a7e258 D225b, c9d8806)
@@ -34,7 +34,8 @@ ollama:
   keep_alive: 60m
   timeout_s: 600
 
-decoding:  # fixed in the frozen llm.py / service.py; recorded here and checked against the code
+decoding:  # temperature and num_ctx are fixed in the frozen, hash-checked llm.py (recorded here);
+          # max_tokens is checked against service.MAX_TOKENS by the guard (D227b)
   temperature: 0
   num_ctx: 4096
   max_tokens: 260
