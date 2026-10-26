@@ -1,4 +1,4 @@
-"""E20 runner (D225, D225a, D227): generates the pre-registered copilot evaluation items and the
+"""E20 runner (D225, D225a, D225b, D225c, D227): generates the pre-registered copilot evaluation items and the
 blind labelling sheets. It computes no metrics and writes nothing in the repository.
 
 Run (only after the independent review; from the repository root, VAULTIC_DATA_DIR set):
@@ -11,7 +11,8 @@ Guards before any test-period row is read or any generation (any failure refuses
   - the frozen files hashed with LF line endings, the rules digest, the checker version, the V3
     variant, the token cap, the model layer digest (Ollama manifest on drive E) and the demo
     bundle's SHA-256 equal the config, whose values equal the pre-registration (tested);
-  - the Test Lab is off (pre-registered): it is never mounted and VAULTIC_TESTLAB=1 is refused;
+  - the Test Lab is off (pre-registered; confirmed by the D225c rule): it is never mounted and
+    VAULTIC_TESTLAB=1 is refused;
   - Ollama: the runner starts and owns the server itself (127.0.0.1:11434, OLLAMA_NO_CLOUD=1,
     models on drive E), refuses if the port is already in use, checks the version, stops it at the
     end: a running server's environment cannot be verified from outside.
@@ -141,9 +142,9 @@ def check_data(cfg: dict) -> list[str]:
 def check_environment(cfg: dict) -> list[str]:
     out = []
     if cfg["frozen"]["testlab"] != "off":
-        out.append("this runner implements the pre-registered Test Lab state 'off' only")
+        out.append("this runner implements the pre-registered Test Lab state 'off' only (D225c)")
     if os.environ.get("VAULTIC_TESTLAB") == "1":
-        out.append("VAULTIC_TESTLAB=1 is set; the pre-registered Test Lab state is off")
+        out.append("VAULTIC_TESTLAB=1 is set; the pre-registered Test Lab state is off (D225c)")
     return out
 
 

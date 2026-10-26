@@ -1,16 +1,17 @@
-# EXP-320: E20, the copilot evaluation (D225, D225a, D227). Every value here is copied from
+# EXP-320: E20, the copilot evaluation (D225, D225a, D225b, D225c, D227). Every value here is copied from
 # research/preregistration_e20.md; tests/test_e20_runner.py checks that they agree. Run (only after
 # the independent review):  python -m vaultic.copilot.e20 --config experiments/configs/EXP-320.yaml
 experiment: EXP-320
 preregistration: research/preregistration_e20.md
-decisions: [D225, D225a, D227]
+decisions: [D225, D225a, D225b, D225c, D227, D228]
 
 frozen:
-  commit: c9d8806
+  commit: 8a7e258  # D225b (was c9d8806)
   files:  # SHA-256 of the content with LF line endings (= the committed content)
     src/vaultic/copilot/check.py: d2a725efb5944a5887659ef6a1e366200b98ceb384be237cfee3f96a3f5f5ba5
     src/vaultic/copilot/rules.py: 9b5ce5cdbcee7eda2aa6d1095e259c9429f630e7334212b5d2433d42b7f63bd8
-    src/vaultic/copilot/tools.py: b7938eacf21dbb50c21c3b153325f9120fbf580db18fa1632e36a4abe9150b98
+    src/vaultic/copilot/tools.py: de6e0342d9d8105def80e6f7023b6bd051a4c22e4959b491867aa0354fdf71e8
+    src/vaultic/copilot/pit_history.py: 6250cf2057ca421d762167cefc8242d042d604bfbacfeab81941198222d7f382
     src/vaultic/copilot/service.py: 87658e72aee6149f7be13a6030d04f1bc1e6db4d5a53993cbdc96fc181459109
     src/vaultic/copilot/llm.py: 5c469d03b46449dc15fbf040282934eae37e0a81fa1da2474784251d3b52c115
     src/vaultic/copilot/similar.py: 93b29ae82025e7e8b2ac54179883a54730d81a46a6cd5e3925a4370a91b29bf7
@@ -23,7 +24,7 @@ frozen:
   model_layer_digest: sha256:2bada8a7450677000f678be90653b85d364de7db25eb5ea54136ada5f3933730
   bundle: interim/demo_final_bundle.parquet   # under VAULTIC_DATA_DIR (default: data/)
   bundle_sha256: 1480e4c9aeadd641d5b8ad4caf323369341a5a3ddd1adb8bbf49c31c50e08356
-  testlab: "off"
+  testlab: "off"  # D225c rule applied: peak RAM 15.5 GiB with the Test Lab on > 13.0 GiB
 
 ollama:
   exe: E:/Ollama/ollama.exe
