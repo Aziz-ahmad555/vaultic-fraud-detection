@@ -1,0 +1,46 @@
+{
+  "note": "E20 generation manifest (D227c): hashes and counts only. No outputs, labels or metrics. Sheets and raw outputs stay on E: (not committed).",
+  "run_id": "20261026-220704-227d24",
+  "experiment": "EXP-320",
+  "commit": "6142cf2685cbd95e5a503938cc4ef96fa51ce825",
+  "config_sha256": "00f30a3fb2ef06be297f3053f9a675752230e922852cf6f1a7d3ae51b3b85a9f",
+  "runner_sha256": "7a9201c4a360c6b57a5fea398d1e5d683f2ecf8328da62e29c139abd75e6db15",
+  "starts": [
+    "start"
+  ],
+  "items": {
+    "total": 330,
+    "per_system": {
+      "A": 150,
+      "B": 150,
+      "C": 30
+    },
+    "status": {
+      "A:ok": 120,
+      "A:refused": 30,
+      "B:ok": 150,
+      "C:ok": 30
+    },
+    "failed": [],
+    "retried": []
+  },
+  "truncated_1_warnings": 0,
+  "sheet_units": {
+    "pass1_blind": 846,
+    "pass2_citations": 666,
+    "adversarial": 30
+  },
+  "sha256": {
+    "items.jsonl": "1e4418ba209f444f91163d3536359c4923fb74061fd0aec4dff85572e521291c",
+    "metadata.json": "74174c5fe5cc423618ae1be5f25ffd12fdde96662e2c3fea66b07fed589cc2a1",
+    "run.log": "c441044282617d665c08177195a0ed25704a601a58a31aca4e9084b720901afd",
+    "ollama.log": "355f438f03176d9da72acda460b1f04348a6706f38eb179db9bce67d2499ed82",
+    "sheets": {
+      "adversarial.csv": "b0d973afdfc18d10cdc64f02f528fcf99ad33e8528300d253ffdca26cc1656cc",
+      "pass1_blind_claims.csv": "5f595039b0b84d40f7ce1c1457b52c49bb22bed6d74b8fcaf032b8b0aaa23c32",
+      "pass2_citations.csv": "1c239bde8c7f373dd2163354ab7900ebf896f9ad3fd140016a987e029cefaf72",
+      "reference_evidence.csv": "0233a16eb8910271226a06d6df95f5e38cc8465369bb7fec12da9018cee67565",
+      "SEALED_pass1_key.json": "3fa02a815c8fa9c48dfcc9da5b3348775711bcda3c5f71595e633f66cc73e55a"
+    }
+  }
+}
