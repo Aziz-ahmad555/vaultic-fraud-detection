@@ -1,0 +1,39 @@
+{
+ "rule": "D225e / D225f: hashes and counts only, never labels",
+ "run_id": "20261026-220704-227d24",
+ "pass1": {
+  "prepare": {
+   "rule": "D225e / D225f",
+   "pass": "pass1",
+   "folder": "E:\\dev-cache\\copilot\\e20\\judge\\pass1",
+   "run_id": "20261026-220704-227d24",
+   "source_sheet_sha256": "5f595039b0b84d40f7ce1c1457b52c49bb22bed6d74b8fcaf032b8b0aaa23c32",
+   "units": 846,
+   "prepared": "2026-11-01T23:37:20+00:00",
+   "sha256": {
+    ".claude/settings.json": "e729b849cfc7bdae35a75dd5e8631f8ba12a1dfff16ba80579dc59abcc5f7f4b",
+    "inputs/guide.md": "a36ca00ff7c6a4c6e9a0a80198216d308ff90b4bb8e575cfbe7f5cdba5a37dd3",
+    "inputs/pass1_blind_claims.csv": "5f595039b0b84d40f7ce1c1457b52c49bb22bed6d74b8fcaf032b8b0aaa23c32",
+    "inputs/reference_evidence.csv": "0233a16eb8910271226a06d6df95f5e38cc8465369bb7fec12da9018cee67565",
+    "PROMPT.md": "211e43f8405b93961f85552920eea60fdfae6ef9ff7b5bf4ef4679749a106f07"
+   }
+  }
+ },
+ "pass2": {
+  "prepare": {
+   "rule": "D225e / D225f",
+   "pass": "pass2",
+   "folder": "E:\\dev-cache\\copilot\\e20\\judge\\pass2",
+   "run_id": "20261026-220704-227d24",
+   "source_sheet_sha256": "1c239bde8c7f373dd2163354ab7900ebf896f9ad3fd140016a987e029cefaf72",
+   "units": 666,
+   "prepared": "2026-11-01T23:37:21+00:00",
+   "sha256": {
+    ".claude/settings.json": "ddb141f05c8ac2d3327ac2a469567abfd26581392e83646f69d16fb00d4d48a1",
+    "inputs/guide.md": "d8cb8ec338ddf0328bfcd3bd245f2a8f26583795c57fb988f85c2da8b699b100",
+    "inputs/pass2_for_judge.csv": "cb1dcd345b4b1331f2e1695bb636e9cb81d4e3dfb95f21e9973a3f9de4f23e53",
+    "PROMPT.md": "34a0e81d350f344e26183ef172924b531e6f830d2f9054d3cf92c0531fb5c9ef"
+   }
+  }
+ }
+}
