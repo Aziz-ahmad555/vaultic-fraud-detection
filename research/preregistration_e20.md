@@ -1,4 +1,4 @@
-# Pre-registration: E20, copilot evaluation (D225, amended by D225a, D225b, D225c, D225d and D225e)
+# Pre-registration: E20, copilot evaluation (D225, amended by D225a, D225b, D225c, D225d, D225e and D225f)
 
 Written 2026-10-26 on branch `e20` from `phase0-1` at `c9d8806` (the copilot merge, PR #14), before
 any E20 generation. Nothing in this file has been run. It fixes the system, the cases, the items, the
@@ -54,6 +54,16 @@ judge + human validation" because of the workload for a single labeller (about 1
 - **Adversarial sheet:** labelled by Aziz only.
 
 The guide, metrics, hypotheses and run rules are unchanged. The procedure is in section 11.
+
+**Amendment D225f (2026-11-02, before any labelling):** the judge's isolation and output details.
+- **Deny rule** in each judge folder: no shell, web, subagent or MCP tools, and no reads outside the
+  judge folder.
+- **Output:** since the judge has no shell, it writes one file per case (`out/case_NN.jsonl`).
+- **Audit:** the session transcripts are checked, and the model id is read from them.
+- **Order:** the sample file must be pushed before a judge folder is prepared.
+- **Pass 2:** D225e (5) and (6) and the seeds are confirmed by Aziz.
+
+The prompts of section 11.2 are updated to match.
 
 ## 1. The frozen system
 
@@ -396,7 +406,8 @@ metric is computed until Aziz asks for it.
    - `inputs/pass1_blind_claims.csv` and `inputs/reference_evidence.csv` (byte copies; their sha256
      must equal `sheets/manifest.json`);
    - `inputs/guide.md` (the header lines of the blind sheet, verbatim);
-   - `PROMPT.md` (11.2);
+   - `PROMPT.md` (extracted by the tool from 11.2);
+   - `.claude/settings.json`, the deny rule (D225f, 11.2);
    - an empty `out/`.
 3. **Judge pass 1** in a fresh session (11.2).
 4. **Check the judge output** (`check pass1`):
@@ -405,7 +416,9 @@ metric is computed until Aziz asks for it.
    - each line list matches its claim, and every line number exists for that case.
 
    A case is redone only if its output is malformed or missing; that is logged and done before step 5.
-   The sha256 of `out/judge_pass1.jsonl`, the model id, the dates, the number of sessions and the result
+   `check` joins `out/case_01.jsonl` ... `out/case_30.jsonl` in case order into
+   `<run folder>/judge/judge_pass1.jsonl`, outside the judge's reach (D225f). The sha256 of the case files
+   and the joined file, the model id, the dates, the number of sessions and the result
    of the transcript audit (11.2) go to `research/tables/e20/judge_manifest.json`. Only hashes and counts
    are committed, never labels.
 5. **Build the human pass-1 sheet** from the judge's split (`human-sheet pass1`, 11.3). Aziz labels it.
@@ -413,7 +426,8 @@ metric is computed until Aziz asks for it.
 6. **Judge pass 2** after pass 1 is finished, in a new fresh session. Its folder `judge/pass2/` holds only:
    - `inputs/pass2_for_judge.csv`: the columns unit id, case, unit text with citations and cited lines,
      with the item, system and question columns removed;
-   - `inputs/guide.md`, `PROMPT.md` and `out/`.
+   - `inputs/guide.md` (the header of `pass2_citations.csv`), `PROMPT.md`, `.claude/settings.json` and
+     `out/`.
 
    Then `check pass2` (each of the 666 ids once, labels Y or N) and hashes, as in step 4.
 7. **Human pass-2 sheet:** the 90 sampled rows of `pass2_citations.csv` as they stand. They hold no
@@ -434,25 +448,34 @@ assigns labels, and no labels are revised after a case is written.
 
 **Session.** A new session whose working folder is the judge folder (not the repository, not the run
 folder). Its first message is `PROMPT.md` verbatim. If the context runs out, another fresh session gets the
-same prompt plus "Continue from case k. out/ already holds cases 1 to k-1; do not reread or change them."
-Each session is logged.
+same prompt plus "Continue from case k. out/ already holds case files for cases 1 to k-1; do not change
+them." Each session is logged.
 
-**Isolation.**
-- The inputs are copies outside the run folder, and the prompt forbids any other path and the web.
-- After the run, the session transcripts are checked: every file the judge read, listed or searched must
-  be inside the judge folder.
-- A read outside it (above all the sealed key, `items.jsonl` or the repository) is reported. The judge
-  labels are then not used until Aziz decides, logged.
-- A deny rule in the judge folder's `.claude/settings.json` (no reads of `E:/dev-cache/copilot/e20/2026*`
-  or the repository) is an extra guard. It is a persistent setting, so it is added only with Aziz's
-  consent.
+**Isolation (D225f).**
+- The inputs are copies outside the run folder.
+- The judge folder's `.claude/settings.json` (Aziz's consent) blocks:
+  - the shell, the web, subagents, messaging and every MCP tool of the desktop app;
+  - reads of every sibling of every ancestor of the judge folder, which covers the run folder, the
+    repository and the rest of drive E, plus the other pass's folder and every other drive;
+  - edits of `inputs/`, `PROMPT.md` and `.claude/`.
 
-**Pass-1 prompt** (`PROMPT.md`, fixed now):
+  It also sets `blockReadsOutsideWorkingDirectories`. Native Windows has no sandbox, so the shell is
+  removed rather than restricted.
+- After the run, `check` audits the session transcripts:
+  - every tool call must be a file tool or a planning tool;
+  - every path must be inside the judge folder, and every write inside `out/`;
+  - any other tool or path counts as a violation, even an attempt that was denied.
+
+  On a violation, above all one touching the sealed key, `items.jsonl` or the repository, the judge's
+  labels are not used until Aziz decides, and that decision is logged.
+
+**Pass-1 prompt** (`PROMPT.md` of `judge/pass1`, fixed now; D225f):
 
 > You are labelling claims for a research evaluation. Work only with the files in this folder:
-> inputs/pass1_blind_claims.csv, inputs/reference_evidence.csv and inputs/guide.md. Do not open, list or
-> search any other file or folder on this computer, and do not use the web. You may use tools to read and
-> search these three files.
+> PROMPT.md, inputs/pass1_blind_claims.csv, inputs/reference_evidence.csv and inputs/guide.md, and write
+> only inside out/. Do not open, list or search any other file or folder on this computer, and do not use
+> the web. You have no shell: use the file tools to read and search these files and the Write tool to
+> write your output.
 >
 > Each row of pass1_blind_claims.csv below its header lines is one unit: a short statement about one
 > transaction case. reference_evidence.csv holds each case's evidence as numbered lines (case, line, text).
@@ -466,21 +489,40 @@ Each session is logged.
 > evidence only, never outside knowledge; (3) give the evidence line number(s) you used for each claim
 > (an empty list if none). Label by reading and judging; do not write or run code that assigns labels.
 >
-> Append one JSON object per unit, one per line, to out/judge_pass1.jsonl:
+> Write one file per case, out/case_01.jsonl to out/case_30.jsonl (two-digit case number), with one JSON
+> object per unit of that case, one per line, in unit id order:
 > {"unit": "U0001", "case": 3, "claims": ["...", "..."], "labels": ["S", "U"], "lines": [[12], []], "note": ""}
 > claims, labels and lines have the same length; note is a short remark (for example an unclear split),
-> else "". After each case append {"case_done": k} to out/progress.jsonl, and do not change a case once
-> it is written. When case 30 is done, append {"done": true} to out/progress.jsonl and stop.
+> else "". Write each case's file once, when that case is finished, and never change it afterwards. When
+> out/case_30.jsonl is written, reply DONE and stop.
 
-**Pass-2 prompt.** The same frame with inputs/pass2_for_judge.csv. For each unit, Y if the cited line(s)
-alone support every claim of the unit, by the guide's "Citation accuracy" and "supported" rules; else N.
-"(no line number)", "(not given)" and "(no such line)" give N. It writes
-`{"unit": "P0001", "case": 3, "accurate": "Y", "note": ""}` per line to out/judge_pass2.jsonl, again case
-by case.
+**Pass-2 prompt** (`PROMPT.md` of `judge/pass2`, fixed now; D225f):
+
+> You are checking citations for a research evaluation. Work only with the files in this folder:
+> PROMPT.md, inputs/pass2_for_judge.csv and inputs/guide.md, and write only inside out/. Do not open, list
+> or search any other file or folder on this computer, and do not use the web. You have no shell: use the
+> file tools to read and search these files and the Write tool to write your output.
+>
+> Each row of pass2_for_judge.csv is one unit: a short statement about one transaction case, with its
+> citations, and the text of the evidence line(s) it cites in "cited lines" (separated by " || ").
+> guide.md is the labelling guide: follow its "Citation accuracy" rule and its definition of "supported"
+> exactly. You must not try to work out which system wrote a unit.
+>
+> For each case, from 1 to 30, and for each unit of that case in unit id order: label it Y if the cited
+> line(s) alone support every claim of the unit, else N. If "cited lines" is "(no line number)", or any
+> cited line is shown as "(not given)" or "(no such line)", label it N. Judge only from the cited lines,
+> never outside knowledge. Label by reading and judging; do not write or run code that assigns labels.
+>
+> Write one file per case, out/case_01.jsonl to out/case_30.jsonl (two-digit case number), with one JSON
+> object per unit of that case, one per line, in unit id order:
+> {"unit": "P0001", "case": 3, "accurate": "Y", "note": ""}
+> note is a short remark, else "". Write each case's file once, when that case is finished, and never
+> change it afterwards. When out/case_30.jsonl is written, reply DONE and stop.
 
 ### 11.3 How the human sample sheet hides the judge's labels
 
-`human-sheet pass1` reads `human_sample.json` and `out/judge_pass1.jsonl`. It writes
+`human-sheet pass1` runs only after `check pass1` passed. It reads `human_sample.json` and the joined
+`<run folder>/judge/judge_pass1.jsonl`, and writes
 `E:/dev-cache/copilot/e20/<run id>/human/human_pass1.csv`:
 - **Header:** the guide plus the instruction "label each claim as written; if the split seems wrong, put Y
   in 'split problem' and still label it".
