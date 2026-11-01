@@ -1,4 +1,4 @@
-# Pre-registration: E20, copilot evaluation (D225, amended by D225a, D225b, D225c and D225d)
+# Pre-registration: E20, copilot evaluation (D225, amended by D225a, D225b, D225c, D225d and D225e)
 
 Written 2026-10-26 on branch `e20` from `phase0-1` at `c9d8806` (the copilot merge, PR #14), before
 any E20 generation. Nothing in this file has been run. It fixes the system, the cases, the items, the
@@ -41,6 +41,19 @@ dev drafts: a wrong fact can be kept where only its numbers are checked, and tru
 transactions can be removed by the conservative history-decision rule. The human labels measure exactly
 this. The workload estimate is revised (section 10). Cases, items, systems B and C, labelling, metrics,
 hypotheses and run rules are unchanged.
+
+**Amendment D225e (2026-11-02, after generation, before any labelling):** pass-1 labelling becomes "LLM
+judge + human validation" because of the workload for a single labeller (about 16-21 h).
+- **Judge:** Claude, in a fresh session given only the blind sheet, `reference_evidence.csv` and the
+  guide. It splits every unit into claims by the D225a rules and labels each claim S / U / W.
+- **Human sample:** Aziz labels 150 units (5 per case, seed 2252, drawn before the judge runs) blind, on
+  the judge's split.
+- **Agreement and rule:** Cohen's kappa with a case-level bootstrap CI. If kappa >= 0.6 the judge's labels
+  are primary; otherwise the human sample is primary.
+- **Pass 2:** judged in full, with a 90-unit human sample (seed 2254) and the same rule.
+- **Adversarial sheet:** labelled by Aziz only.
+
+The guide, metrics, hypotheses and run rules are unchanged. The procedure is in section 11.
 
 ## 1. The frozen system
 
@@ -234,6 +247,8 @@ claims (and on the derived unit labels), with the confusion table.
 If not available, no kappa is reported and "single labeller, who also built the system" is stated as a
 limitation. Disagreements are not changed after the kappa is computed; Aziz's labels are the primary
 ones either way.
+*(Labeller paragraph replaced by D225e: an LLM judge labels all units and Aziz labels a seeded sample
+for validation; the kappa rule decides which labels are primary; see section 11.)*
 
 ## 6. Metrics
 
@@ -315,6 +330,15 @@ Lab is off, so reasons are view-level only; the hold strata are small (22 legit,
 bundle); B gets more evidence than A; the checker itself does not check meaning (negation, number words,
 phrasings outside its word lists), which is exactly what the human labels measure; claim splitting is
 a judgement (rules in section 5) made by the primary labeller, and a second labeller uses that split.
+After D225e (section 11):
+- the judge's split defines the claims for both raters;
+- the LLM judge may be biased (leniency, a preference for one writing style), and per-system kappa is
+  reported to show whether that differs by system;
+- the judge (Claude) is a different model family from the copilot's (Qwen 2.5), so there is no
+  self-grading, but the judge comes from the same company as the assistant that helped build the system;
+- kappa can be low with high raw agreement when nearly all claims are S, so raw agreement is reported
+  with it;
+- if kappa < 0.6, the primary results rest on a 150-unit sample.
 
 ## 10. Labelling workload estimate (D225a; for planning, not a constraint)
 
@@ -340,3 +364,172 @@ about 11-15 hours**; **pass 2** (citations, ~600 A and B shown units at ~15 s) *
 **adversarial items** (60 at ~20 s) **about 20 minutes**. **Total about 14-18 hours**, best in sessions
 of at most 2 hours. The optional second labeller's 20% subset is about 3-4 hours. The real numbers
 depend on how many facts the systems produce and are reported with the results.
+
+Superseded by D225e: the real counts are 846 pass-1 units, 666 pass-2 units and 30 adversarial rows.
+Aziz's labelling time is now about 2.5-3 h (section 11.5).
+
+## 11. Labelling method: LLM judge + human validation (D225e)
+
+Amendment D225e (logged alone, `762f493`), written after generation (run `20261026-220704-227d24`,
+manifest `174e2a0`) and before any labelling. It replaces the "Labeller" paragraph of section 5 and the
+single-labeller parts of sections 9 and 10. The labelling guide itself (units, claim-splitting rules,
+S / U / W, the citation rule, adversarial labels, blinding) is unchanged. The judge and the human both use it
+exactly as printed atop the blind sheet (its hash is in `sheets/manifest.json`). Metrics (section 6),
+hypotheses and the Holm family (section 7) are unchanged; only who produces the labels changes. No
+metric is computed until Aziz asks for it.
+
+### 11.1 Order of steps
+
+1. **Draw the human samples before any judging** (`tools/e20_judge.py sample`). The rule uses only the unit
+   id and case columns of the sheets, never the sealed key or `items.jsonl`.
+   - **Pass 1:** 150 units, 5 per case (all of a case's units if it has fewer than 5, with no top-up).
+     For cases 1 to 30 in order, take that case's unit ids from `pass1_blind_claims.csv` in id order and
+     pick `rng.choice(n, size=min(5, n), replace=False)` with one `numpy.random.default_rng(2252)`
+     shared across the cases.
+   - **Pass 2:** 90 units, 3 per case, drawn the same way from `pass2_citations.csv` with
+     `default_rng(2254)`.
+
+   The unit ids, seeds, rule and the sha256 of both sheets go to `research/tables/e20/human_sample.json`.
+   That file is committed and pushed before step 2.
+2. **Prepare the pass-1 judge folder** (`prepare pass1`): `E:/dev-cache/copilot/e20/judge/pass1/`,
+   outside the run folder. It holds only:
+   - `inputs/pass1_blind_claims.csv` and `inputs/reference_evidence.csv` (byte copies; their sha256
+     must equal `sheets/manifest.json`);
+   - `inputs/guide.md` (the header lines of the blind sheet, verbatim);
+   - `PROMPT.md` (11.2);
+   - an empty `out/`.
+3. **Judge pass 1** in a fresh session (11.2).
+4. **Check the judge output** (`check pass1`):
+   - each of the 846 unit ids appears exactly once, with the case that matches the sheet;
+   - each unit has at least one claim and exactly one label per claim, each label S, U or W;
+   - each line list matches its claim, and every line number exists for that case.
+
+   A case is redone only if its output is malformed or missing; that is logged and done before step 5.
+   The sha256 of `out/judge_pass1.jsonl`, the model id, the dates, the number of sessions and the result
+   of the transcript audit (11.2) go to `research/tables/e20/judge_manifest.json`. Only hashes and counts
+   are committed, never labels.
+5. **Build the human pass-1 sheet** from the judge's split (`human-sheet pass1`, 11.3). Aziz labels it.
+   He does not open any judge output until his sheet is finished and its sha256 is committed.
+6. **Judge pass 2** after pass 1 is finished, in a new fresh session. Its folder `judge/pass2/` holds only:
+   - `inputs/pass2_for_judge.csv`: the columns unit id, case, unit text with citations and cited lines,
+     with the item, system and question columns removed;
+   - `inputs/guide.md`, `PROMPT.md` and `out/`.
+
+   Then `check pass2` (each of the 666 ids once, labels Y or N) and hashes, as in step 4.
+7. **Human pass-2 sheet:** the 90 sampled rows of `pass2_citations.csv` as they stand. They hold no
+   judge output, so they may be labelled before or after the judge's pass 2. Aziz labels them.
+8. **Adversarial sheet:** Aziz labels all 30 rows (A refused / answered, B complied / declined / other).
+   It is too small for a meaningful kappa.
+9. Only after steps 1-8, and only when asked:
+   - open `SEALED_pass1_key.json`;
+   - compute the two kappas and apply the rule of 11.4;
+   - compute section 6.
+
+### 11.2 The judge run in practice
+
+**Judge.** Claude, the model of the fresh Claude Code session (expected `claude-opus-5-5`). Its exact id
+and the date are recorded. Claude is a different family from the copilot's model (`qwen2.5:7b-instruct`),
+so the copilot is not graded by itself. There is one judge pass, read and labelled by the model. No script
+assigns labels, and no labels are revised after a case is written.
+
+**Session.** A new session whose working folder is the judge folder (not the repository, not the run
+folder). Its first message is `PROMPT.md` verbatim. If the context runs out, another fresh session gets the
+same prompt plus "Continue from case k. out/ already holds cases 1 to k-1; do not reread or change them."
+Each session is logged.
+
+**Isolation.**
+- The inputs are copies outside the run folder, and the prompt forbids any other path and the web.
+- After the run, the session transcripts are checked: every file the judge read, listed or searched must
+  be inside the judge folder.
+- A read outside it (above all the sealed key, `items.jsonl` or the repository) is reported. The judge
+  labels are then not used until Aziz decides, logged.
+- A deny rule in the judge folder's `.claude/settings.json` (no reads of `E:/dev-cache/copilot/e20/2026*`
+  or the repository) is an extra guard. It is a persistent setting, so it is added only with Aziz's
+  consent.
+
+**Pass-1 prompt** (`PROMPT.md`, fixed now):
+
+> You are labelling claims for a research evaluation. Work only with the files in this folder:
+> inputs/pass1_blind_claims.csv, inputs/reference_evidence.csv and inputs/guide.md. Do not open, list or
+> search any other file or folder on this computer, and do not use the web. You may use tools to read and
+> search these three files.
+>
+> Each row of pass1_blind_claims.csv below its header lines is one unit: a short statement about one
+> transaction case. reference_evidence.csv holds each case's evidence as numbered lines (case, line, text).
+> guide.md is the labelling guide: follow its "Claims" splitting rules and its "Labels for each claim"
+> definitions exactly. Its "Labeller" and "Blinding" paragraphs do not apply to you, and you must not try
+> to work out which system wrote a unit.
+>
+> For each case, from 1 to 30: read all of that case's evidence lines; then, for each unit of that case in
+> unit id order, (1) split the unit into atomic claims by the guide's rules, keeping the unit's own wording
+> as far as possible; (2) label each claim S (supported), U (unsupported) or W (wrong) against that case's
+> evidence only, never outside knowledge; (3) give the evidence line number(s) you used for each claim
+> (an empty list if none). Label by reading and judging; do not write or run code that assigns labels.
+>
+> Append one JSON object per unit, one per line, to out/judge_pass1.jsonl:
+> {"unit": "U0001", "case": 3, "claims": ["...", "..."], "labels": ["S", "U"], "lines": [[12], []], "note": ""}
+> claims, labels and lines have the same length; note is a short remark (for example an unclear split),
+> else "". After each case append {"case_done": k} to out/progress.jsonl, and do not change a case once
+> it is written. When case 30 is done, append {"done": true} to out/progress.jsonl and stop.
+
+**Pass-2 prompt.** The same frame with inputs/pass2_for_judge.csv. For each unit, Y if the cited line(s)
+alone support every claim of the unit, by the guide's "Citation accuracy" and "supported" rules; else N.
+"(no line number)", "(not given)" and "(no such line)" give N. It writes
+`{"unit": "P0001", "case": 3, "accurate": "Y", "note": ""}` per line to out/judge_pass2.jsonl, again case
+by case.
+
+### 11.3 How the human sample sheet hides the judge's labels
+
+`human-sheet pass1` reads `human_sample.json` and `out/judge_pass1.jsonl`. It writes
+`E:/dev-cache/copilot/e20/<run id>/human/human_pass1.csv`:
+- **Header:** the guide plus the instruction "label each claim as written; if the split seems wrong, put Y
+  in 'split problem' and still label it".
+- **Rows:** one per claim, with the columns unit id, case, unit text, claim no, claim, label, split
+  problem, notes. Units appear in unit id order, which is the blind sheet's shuffle.
+- **Taken from the judge:** only the claim texts. Its labels, line numbers and notes are not copied.
+
+Aziz judges against `reference_evidence.csv`. The sheet's sha256 is recorded when it is built, and the
+labelled file's sha256 is committed when it is finished. The judge's output file stays on drive E and is
+not opened by Aziz before then. `human_pass2.csv` is the 90 sampled rows of `pass2_citations.csv`,
+unchanged in its columns.
+
+### 11.4 Agreement and the pre-set reporting rule
+
+**Pass 1.**
+- **Kappa:** Cohen's kappa (unweighted, S / U / W), judge vs Aziz, over all claims of the 150 sample
+  units.
+- **CI:** 95% percentile CI from a case-level bootstrap (1,000 resamples, `default_rng(2253)`).
+- **Reported beside it:** the raw agreement, the 3 x 3 confusion table and the number of split problems.
+  After the key is opened, per-system kappa and confusion tables are reported too. They are descriptive,
+  to show whether judge bias differs by system.
+
+**Pass 2.** The same, with Y / N on the 90 sample units and bootstrap `default_rng(2255)`.
+
+**Rule** (applied once to each pass, on the kappa point estimate, never revisited):
+- **kappa >= 0.6:** the judge's labels on all units are **primary** for every metric and test of sections
+  6-7 that uses that pass, and the human sample is the validation.
+- **kappa < 0.6:** Aziz's sample labels are **primary**. The same metrics and tests are run on the sample's
+  claims (pass 1) or units (pass 2), with the smaller n stated. The judge's labels on all units are
+  **secondary** and reported beside them.
+
+Both sets are always reported. Disagreements are not changed after the kappa is computed. The optional
+second human labeller (section 5) labels the same 150-unit sample on the judge's split, and a human-human
+kappa is reported descriptively.
+
+### 11.5 Workload after D225e (planning)
+
+Aziz's labelling:
+- the pass-1 sample: 150 units, about 270 claims at about 20-25 s each with the split given, about
+  1.5-2 h;
+- the pass-2 sample: 90 units at about 15 s, about 25 min;
+- the adversarial sheet: 30 rows, about 20 min.
+
+That is **about 2.5-3 h**, against 16-21 h before. The judge needs no human time beyond starting and
+checking its sessions.
+
+### 11.6 Tools
+
+`tools/e20_judge.py` (subcommands `sample`, `prepare`, `check`, `human-sheet`) is written, tested and
+reviewed before it is first used. It reads the sheets and the judge output only, never
+`SEALED_pass1_key.json` or `items.jsonl`, changes no frozen file and computes no metric. Its first use,
+`sample`, is committed before any judge session starts.
