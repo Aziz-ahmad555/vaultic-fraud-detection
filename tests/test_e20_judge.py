@@ -325,3 +325,43 @@ def test_the_human_pass2_sheet_is_the_sampled_rows_unchanged(run, tmp_path):
 def test_the_tool_never_reads_the_sealed_key_or_the_item_records():
     src = (ROOT / "tools/e20_judge.py").read_text("utf-8")
     assert "SEALED" not in src and "items.jsonl" not in src and "load_records" not in src
+
+
+def test_the_audit_counts_each_real_call_once_and_lists_the_d225g_deviations(run, tmp_path):
+    root = run.parent / "judge"
+    folder = root / "pass1"
+    _judge_out(run, folder, "pass1")
+    tdir = tmp_path / "t"
+    tdir.mkdir()
+    write = {"type": "tool_use", "id": "toolu_1", "name": "Write",
+             "input": {"file_path": str(folder / "out/case_01.jsonl")}}  # fmt: skip
+    plan = {
+        "type": "tool_use",
+        "id": "toolu_2",
+        "name": "mcp__ccd_turn__update_plan",
+        "input": {"items": []},
+    }
+    entries = [
+        {"type": "assistant", "message": {"role": "assistant", "model": "claude-opus-5-5", "content": [write]}},
+        {"type": "assistant", "message": {"role": "assistant", "model": "claude-opus-5-5", "content": [write]}},
+        {"type": "api-request-blob", "message": {"role": "assistant", "content": [write, plan]}},
+        {"type": "assistant", "message": {"role": "assistant", "model": "claude-opus-5-5", "content": [plan]}},
+        {"type": "api-request-blob", "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "toolu_9", "name": "Bash", "input": {"command": "x"}}]}},
+    ]  # fmt: skip
+    (tdir / "s.jsonl").write_text("\n".join(json.dumps(e) for e in entries), "utf-8")
+    audit = judge.audit_transcripts(folder, tdir, judge.DECLARED["pass1"])
+    assert (
+        audit["tool_calls"] == 2 and audit["violations"] == []
+    )  # a repeat record is not a new call
+    assert [d["tool"] for d in audit["declared_deviations"]] == ["mcp__ccd_turn__update_plan"]
+    assert (
+        judge.check("pass1", run, root, tdir)["audit"]["declared_deviations"][0]["decision"]
+        == "D225g"
+    )
+    # the same call is a violation for pass 2, where the tool is denied
+    assert any(
+        "mcp__ccd_turn__update_plan" in v
+        for v in judge.audit_transcripts(folder, tdir)["violations"]
+    )
+    assert "mcp__ccd_turn" in judge.DENIED_TOOLS

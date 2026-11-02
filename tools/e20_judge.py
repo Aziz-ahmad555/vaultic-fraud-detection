@@ -59,8 +59,11 @@ DENIED_TOOLS = [
     "mcp__ccd_session", "mcp__ccd_session_mgmt", "mcp__ccd_host", "mcp__ccd_directory", "mcp__ccd_view",
     "mcp__ccd_window", "mcp__ccd_sidebar", "mcp__ccd_settings", "mcp__ccd_pr", "mcp__ccd_connectors",
     "mcp__scheduled-tasks", "mcp__mcp-registry", "mcp__remote-devices", "mcp__visualize",
-    "mcp__1a59c906-04da-521d-bda7-7f71b9f9e01c",
+    "mcp__1a59c906-04da-521d-bda7-7f71b9f9e01c", "mcp__ccd_turn",  # mcp__ccd_turn added by D225g
 ]  # fmt: skip
+# D225g: two desktop-app interface calls of the pass-1 judge (no file access, no labels), accepted as a
+# declared deviation; listed in the audit record, not counted as violations, and denied for pass 2
+DECLARED = {"pass1": {"mcp__ccd_turn__update_plan", "mcp__ccd_turn__wrap_up"}}
 AUDIT_TOOLS = {"Read", "Grep", "Glob", "Write", "Edit", "MultiEdit", "TodoWrite", "TaskCreate", "TaskUpdate",
                "TaskList", "TaskGet", "ToolSearch"}  # fmt: skip
 WRITE_TOOLS = {"Write", "Edit", "MultiEdit"}
@@ -317,10 +320,12 @@ def _inside(path_text: str, root: Path, cwd: Path) -> bool:
         return False
 
 
-def audit_transcripts(folder: Path, tdir: Path) -> dict:
-    """Every tool call of the judge's sessions: allowed tool, paths inside the folder, writes in out/."""
+def audit_transcripts(folder: Path, tdir: Path, declared: set[str] = frozenset()) -> dict:
+    """Every tool call of the judge's sessions: allowed tool, paths inside the folder, writes in out/.
+    Only real assistant entries count, each tool_use id once: the transcript also holds request records
+    (api-request-blob and others) that repeat earlier calls (D225g)."""
     files = sorted(tdir.glob("*.jsonl")) if tdir.exists() else []
-    violations, models, calls = [], set(), 0
+    violations, models, calls, seen, deviations = [], set(), 0, set(), []
     for f in files:
         for raw in f.read_text("utf-8").splitlines():
             try:
@@ -328,14 +333,23 @@ def audit_transcripts(folder: Path, tdir: Path) -> dict:
             except json.JSONDecodeError:
                 continue
             msg = entry.get("message") or {}
-            if msg.get("role") == "assistant" and msg.get("model"):
+            if entry.get("type") != "assistant" or msg.get("role") != "assistant":
+                continue
+            if msg.get("model"):
                 models.add(msg["model"])
             content = msg.get("content")
             for item in content if isinstance(content, list) else []:
                 if not isinstance(item, dict) or item.get("type") != "tool_use":
                     continue
+                if item.get("id") is not None:
+                    if item["id"] in seen:
+                        continue
+                    seen.add(item["id"])
                 calls += 1
                 tool, args = item.get("name", ""), item.get("input") or {}
+                if tool in declared:
+                    deviations.append({"tool": tool, "input": args, "decision": "D225g"})
+                    continue
                 if tool not in AUDIT_TOOLS:
                     violations.append(f"{f.name}: tool {tool} used")
                     continue
@@ -350,7 +364,7 @@ def audit_transcripts(folder: Path, tdir: Path) -> dict:
     if not files:
         violations.append(f"no session transcript found in {tdir}")
     return {"transcripts": [f.name for f in files], "tool_calls": calls, "models": sorted(models),
-            "violations": violations}  # fmt: skip
+            "declared_deviations": deviations, "violations": violations}  # fmt: skip
 
 
 def check_output(name: str, folder: Path, sheet_rows: list[dict], evidence: dict[int, set[int]] | None
@@ -431,7 +445,7 @@ def check(name: str, run_dir: Path, judge_root: Path, tdir: Path | None = None) 
         read_evidence(checked_sheet(run_dir, "reference_evidence.csv")) if name == "pass1" else None
     )
     problems, joined = check_output(name, folder, rows, evidence)
-    audit = audit_transcripts(folder, tdir or transcript_dir(folder))
+    audit = audit_transcripts(folder, tdir or transcript_dir(folder), DECLARED.get(name, set()))
     problems += audit["violations"]
     if problems:
         raise JudgeToolError(f"check {name} failed:\n- " + "\n- ".join(problems))
