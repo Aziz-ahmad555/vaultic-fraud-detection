@@ -107,6 +107,14 @@
    "units": 150,
    "rows": 368,
    "built": "2026-11-02T00:23:16+00:00"
+  },
+  "labelling_xlsx": {
+   "file": "E:\\dev-cache\\copilot\\e20\\20261026-220704-227d24\\human\\human_pass1_labelling.xlsx",
+   "sha256_at_build": "afaf63850ca6ac290acd86838f2d0f62ee2d4ffc9d3878ff945769231396cd9b",
+   "blank": "E:\\dev-cache\\copilot\\e20\\20261026-220704-227d24\\human\\human_pass1_blank.csv",
+   "blank_sha256": "9f099448002b35275d1874bbe5b98fd4739e5341731b4e6438ebfd21bd4ff053",
+   "rows": 368,
+   "built": "2026-11-02T10:28:31+00:00"
   }
  },
  "pass2": {
