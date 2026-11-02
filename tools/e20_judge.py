@@ -8,6 +8,8 @@ Run from the repository root:
     python tools/e20_judge.py prepare pass1|pass2
     python tools/e20_judge.py check pass1|pass2 [--transcripts DIR]
     python tools/e20_judge.py human-sheet pass1|pass2
+    python tools/e20_judge.py export-xlsx pass1   (D225h: the labelling workbook)
+    python tools/e20_judge.py import-xlsx pass1   (D225h: its labels back into human_pass1.csv)
 """
 
 from __future__ import annotations
@@ -508,10 +510,197 @@ def human_sheet(name: str, run_dir: Path, sample_file: Path, manifest: dict) -> 
             "built": datetime.now(UTC).isoformat(timespec="seconds")}  # fmt: skip
 
 
+# ---- labelling workbook (D225h) ------------------------------------------------------------------
+XLSX_NAME, BLANK_NAME = "human_pass1_labelling.xlsx", "human_pass1_blank.csv"
+EDITABLE = ("label", "split problem", "notes")
+FIRST_ROW = 3  # row 1: the counter, row 2: the column names
+
+
+def _text(cell, value) -> None:
+    """A text cell that stays text (openpyxl would turn a leading '=' into a formula)."""
+    cell.value = value
+    cell.data_type = "s"
+
+
+def _blank(run_dir: Path, manifest: dict) -> Path:
+    """The untouched pass-1 sheet: human_pass1.csv while it is still the recorded blank, else its copy."""
+    want = manifest.get("pass1", {}).get("human_sheet", {}).get("sha256")
+    human = run_dir / "human"
+    copy = human / BLANK_NAME
+    if copy.exists():
+        if file_sha256(copy) != want:
+            raise JudgeToolError(f"{copy} is not the recorded blank sheet")
+        return copy
+    if not want or file_sha256(human / "human_pass1.csv") != want:
+        raise JudgeToolError(
+            "human_pass1.csv is not the recorded blank sheet; nothing is built from it"
+        )
+    shutil.copyfile(human / "human_pass1.csv", copy)
+    return copy
+
+
+def export_xlsx(run_dir: Path, manifest: dict) -> dict:
+    """D225h: a protected workbook over the blank pass-1 sheet; no connections, nothing can refresh."""
+    from openpyxl import Workbook
+    from openpyxl.formatting.rule import FormulaRule
+    from openpyxl.styles import Alignment, Font, PatternFill, Protection
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    out = run_dir / "human" / XLSX_NAME
+    if out.exists():
+        raise JudgeToolError(f"{out} exists; it may hold labels and is never overwritten")
+    blank = _blank(run_dir, manifest)
+    header, rows = read_sheet(blank, HUMAN_P1_COLUMNS)
+    _, evidence = read_sheet(
+        checked_sheet(run_dir, "reference_evidence.csv"), ["case", "line", "text"]
+    )
+    rows = sorted(rows, key=lambda r: (int(r["case"]), r["unit id"], int(r["claim no"])))
+    wrap, bold = Alignment(wrap_text=True, vertical="top"), Font(bold=True)
+    wb = Workbook()
+    wb.calculation.fullCalcOnLoad = True
+
+    guide = wb.active
+    guide.title = "Guide"
+    guide.column_dimensions["A"].width = 130
+    for i, line in enumerate(header, 1):
+        _text(guide.cell(i, 1), line)
+        guide.cell(i, 1).alignment = wrap
+    guide.protection.sheet = True
+
+    ws = wb.create_sheet("Claims")
+    n, last = len(rows), FIRST_ROW + len(rows) - 1
+    f = f"F{FIRST_ROW}:F{last}"
+    ws["A1"] = f'="labelled "&(COUNTIF({f},"S")+COUNTIF({f},"U")+COUNTIF({f},"W"))&" of {n}"'
+    ws["A1"].font = Font(bold=True, size=13)
+    for c, name in enumerate(HUMAN_P1_COLUMNS, 1):
+        _text(ws.cell(2, c), name)
+        ws.cell(2, c).font = bold
+    for i, r in enumerate(rows, FIRST_ROW):
+        for c, name in enumerate(HUMAN_P1_COLUMNS, 1):
+            cell = ws.cell(i, c)
+            if name in ("case", "claim no"):
+                cell.value = int(r[name])
+            elif name in EDITABLE:
+                cell.protection = Protection(locked=False)
+            else:
+                _text(cell, r[name])
+            cell.alignment = wrap
+    for col, width in zip("ABCDEFGH", (9, 6, 60, 7, 50, 7, 9, 30), strict=True):
+        ws.column_dimensions[col].width = width
+    ws.freeze_panes = f"A{FIRST_ROW}"
+    label = DataValidation(type="list", formula1='"S,U,W"', allow_blank=True, showErrorMessage=True,
+                           errorTitle="label", error="Only S, U or W.")  # fmt: skip
+    split = DataValidation(type="list", formula1='"Y"', allow_blank=True, showErrorMessage=True,
+                           errorTitle="split problem", error="Only Y, or leave it blank.")  # fmt: skip
+    label.add(f)
+    split.add(f"G{FIRST_ROW}:G{last}")
+    ws.add_data_validation(label)
+    ws.add_data_validation(split)
+    ws.conditional_formatting.add(
+        f"A{FIRST_ROW}:H{last}",
+        FormulaRule(formula=[f'$F{FIRST_ROW}=""'], fill=PatternFill("solid", fgColor="FFF2CC")),
+    )
+    ws.protection.sheet = True
+    ws.protection.formatColumns = ws.protection.formatRows = False  # widths may be changed
+
+    ev = wb.create_sheet("Evidence")
+    for c, name in enumerate(("case", "line", "text"), 1):
+        _text(ev.cell(1, c), name)
+        ev.cell(1, c).font = bold
+    for i, r in enumerate(evidence, 2):
+        ev.cell(i, 1).value, ev.cell(i, 2).value = int(r["case"]), int(r["line"])
+        _text(ev.cell(i, 3), r["text"])
+        ev.cell(i, 3).alignment = wrap
+    ev.column_dimensions["C"].width = 120
+    ev.freeze_panes = "A2"
+    ev.auto_filter.ref = f"A1:C{len(evidence) + 1}"
+    ev.protection.sheet = True
+    ev.protection.autoFilter = False  # filtering stays allowed on the protected sheet
+    ev.protection.formatColumns = ev.protection.formatRows = False
+
+    wb.active = wb.index(ws)
+    wb.save(out)
+    return {"file": str(out), "sha256_at_build": file_sha256(out), "blank": str(blank),
+            "blank_sha256": file_sha256(blank), "rows": n,
+            "built": datetime.now(UTC).isoformat(timespec="seconds")}  # fmt: skip
+
+
+def _cell_text(v) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
+    return str(v)
+
+
+def import_xlsx(run_dir: Path, manifest: dict) -> dict:
+    """D225h: the workbook's labels back into human_pass1.csv, refused unless nothing but label /
+    split problem / notes changed and every label is S, U or W."""
+    from openpyxl import load_workbook
+
+    blank = _blank(run_dir, manifest)
+    header, rows = read_sheet(blank, HUMAN_P1_COLUMNS)
+    ws = load_workbook(run_dir / "human" / XLSX_NAME)["Claims"]
+    if [_cell_text(c.value) for c in ws[2][: len(HUMAN_P1_COLUMNS)]] != HUMAN_P1_COLUMNS:
+        raise JudgeToolError("Claims: the column row has changed")
+    got, problems = {}, []
+    for i, cells in enumerate(
+        ws.iter_rows(min_row=FIRST_ROW, max_col=len(HUMAN_P1_COLUMNS)), FIRST_ROW
+    ):
+        r = dict(zip(HUMAN_P1_COLUMNS, (_cell_text(c.value) for c in cells), strict=True))
+        if not any(r.values()):
+            continue
+        key = (r["unit id"], r["claim no"])
+        if key in got:
+            problems.append(f"row {i}: {key} appears twice")
+        got[key] = (i, r)
+    want = {(r["unit id"], r["claim no"]): r for r in rows}
+    for key in sorted(set(want) - set(got)):
+        problems.append(f"{key} is missing")
+    for key in sorted(set(got) - set(want)):
+        problems.append(f"row {got[key][0]}: {key} is not in the blank sheet")
+    for key in sorted(set(want) & set(got)):
+        i, r = got[key]
+        for name in ("case", "unit text", "claim"):
+            if r[name] != want[key][name]:
+                problems.append(f"row {i}: {name} changed")
+        if r["label"].strip() not in ("S", "U", "W"):
+            problems.append(f"row {i}: label must be S, U or W (is {r['label'] or 'empty'!r})")
+        if r["split problem"].strip() not in ("", "Y"):
+            problems.append(f"row {i}: split problem must be Y or blank")
+    if problems:
+        shown = problems[:40] + (
+            [f"... and {len(problems) - 40} more"] if len(problems) > 40 else []
+        )
+        raise JudgeToolError("import-xlsx pass1 refused:\n- " + "\n- ".join(shown))
+    path = run_dir / "human/human_pass1.csv"
+    allowed = {
+        manifest["pass1"]["human_sheet"]["sha256"],
+        manifest["pass1"].get("human_labels", {}).get("sha256"),
+    }
+    if file_sha256(path) not in allowed:
+        raise JudgeToolError(f"{path} is neither the blank nor the last import; not overwritten")
+    out_rows = []
+    for r in rows:
+        g = got[(r["unit id"], r["claim no"])][1]
+        out_rows.append([r["unit id"], r["case"], r["unit text"], r["claim no"], r["claim"],
+                         g["label"].strip(), g["split problem"].strip(), g["notes"]])  # fmt: skip
+    tmp = path.with_suffix(".csv.tmp")
+    tmp.unlink(missing_ok=True)
+    write_sheet(tmp, header, HUMAN_P1_COLUMNS, out_rows)
+    tmp.replace(path)
+    return {"file": str(path), "sha256": file_sha256(path), "rows": len(out_rows),
+            "split_problems": sum(1 for x in out_rows if x[6] == "Y"),
+            "imported": datetime.now(UTC).isoformat(timespec="seconds")}  # fmt: skip
+
+
 # ---- command line --------------------------------------------------------------------------------
 def main(argv=None) -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("command", choices=["sample", "prepare", "check", "human-sheet"])
+    p.add_argument(
+        "command",
+        choices=["sample", "prepare", "check", "human-sheet", "export-xlsx", "import-xlsx"],
+    )
     p.add_argument("which", nargs="?", choices=list(PASSES))
     p.add_argument("--run-dir", type=Path)
     p.add_argument("--judge-root", type=Path, default=E20_ROOT / "judge")
@@ -543,6 +732,15 @@ def main(argv=None) -> None:
                 a.which, run_dir, a.judge_root, a.transcripts
             )
             print(f"check {a.which}: passed ({manifest[a.which]['check']['units']} units)")
+        elif a.command in ("export-xlsx", "import-xlsx"):
+            if a.which != "pass1":
+                p.error(f"{a.command} is for pass1 only")
+            if a.command == "export-xlsx":
+                rec = manifest["pass1"]["labelling_xlsx"] = export_xlsx(run_dir, manifest)
+                print(f"workbook: {rec['file']} ({rec['rows']} claims)")
+            else:
+                rec = manifest["pass1"]["human_labels"] = import_xlsx(run_dir, manifest)
+                print(f"imported {rec['rows']} labelled claims into {rec['file']}")
         else:
             manifest.setdefault(a.which, {})["human_sheet"] = human_sheet(a.which, run_dir, sample_file,
                                                                           manifest)  # fmt: skip

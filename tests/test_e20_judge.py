@@ -365,3 +365,132 @@ def test_the_audit_counts_each_real_call_once_and_lists_the_d225g_deviations(run
         for v in judge.audit_transcripts(folder, tdir)["violations"]
     )
     assert "mcp__ccd_turn" in judge.DENIED_TOOLS
+
+
+def _labelled_run(run, tmp_path):
+    """A run whose blank human pass-1 sheet is built, as after 'human-sheet pass1'."""
+    _, sample_file = _sample(run, tmp_path)
+    root = run.parent / "judge"
+    _judge_out(run, root / "pass1", "pass1")
+    _transcript(tmp_path / "t", [])
+    manifest = {"pass1": {"check": judge.check("pass1", run, root, tmp_path / "t")}}
+    manifest["pass1"]["human_sheet"] = judge.human_sheet("pass1", run, sample_file, manifest)
+    return manifest
+
+
+def _fill(xlsx, fill):
+    from openpyxl import load_workbook
+
+    wb = load_workbook(xlsx)
+    ws = wb["Claims"]
+    for row in ws.iter_rows(min_row=judge.FIRST_ROW):
+        fill(row)
+    wb.save(xlsx)
+
+
+def test_the_labelling_workbook_is_protected_validated_and_has_no_connections(run, tmp_path):
+    import zipfile
+
+    from openpyxl import load_workbook
+
+    manifest = _labelled_run(run, tmp_path)
+    rec = judge.export_xlsx(run, manifest)
+    xlsx = Path(rec["file"])
+    assert (
+        xlsx.name == "human_pass1_labelling.xlsx" and (run / "human/human_pass1_blank.csv").exists()
+    )
+    names = zipfile.ZipFile(xlsx).namelist()
+    assert not any(
+        k in n for n in names for k in ("connection", "queryTable", "externalLink", "vbaProject")
+    )
+    wb = load_workbook(xlsx)
+    assert wb.sheetnames == ["Guide", "Claims", "Evidence"]
+    guide = [c.value for c in wb["Guide"]["A"]]
+    header, rows = judge.read_sheet(run / "human/human_pass1.csv", judge.HUMAN_P1_COLUMNS)
+    assert [g or "" for g in guide] == header  # word for word
+    ws = wb["Claims"]
+    n = len(rows)
+    assert (
+        ws["A1"].value.startswith('="labelled "&(COUNTIF(F3:F') and f'" of {n}"' in ws["A1"].value
+    )
+    assert [c.value for c in ws[2]] == judge.HUMAN_P1_COLUMNS and ws.freeze_panes == "A3"
+    got = [(ws.cell(i, 2).value, ws.cell(i, 1).value) for i in range(3, 3 + n)]
+    assert got == sorted(got) and ws.cell(3 + n, 1).value is None  # by case, then unit id
+    assert ws.protection.sheet and wb["Evidence"].protection.sheet and wb["Guide"].protection.sheet
+    for i in (3, 2 + n):
+        assert all(ws.cell(i, c).protection.locked for c in range(1, 6))  # ids, case, texts locked
+        assert not any(ws.cell(i, c).protection.locked for c in range(6, 9))  # label, split, notes
+    dv = {v.formula1: str(v.sqref) for v in ws.data_validations.dataValidation}
+    assert dv == {'"S,U,W"': f"F3:F{2 + n}", '"Y"': f"G3:G{2 + n}"}
+    rules = [r for cf in ws.conditional_formatting for r in cf.rules]
+    assert rules and rules[0].formula == ['$F3=""']
+    ev = wb["Evidence"]
+    assert (
+        ev.auto_filter.ref == f"A1:C{1 + 5 * len(UNITS_PER_CASE)}"
+        and ev.protection.autoFilter is False
+    )
+    assert [c.value for c in ev[1]] == ["case", "line", "text"] and ev["C2"].value == "evidence 1.1"
+    with pytest.raises(judge.JudgeToolError, match="never overwritten"):
+        judge.export_xlsx(run, manifest)
+
+
+def test_import_xlsx_writes_the_labels_back_with_the_same_checks(run, tmp_path):
+    manifest = _labelled_run(run, tmp_path)
+    blank_sha = manifest["pass1"]["human_sheet"]["sha256"]
+    xlsx = Path(judge.export_xlsx(run, manifest)["file"])
+
+    def label_all(row):
+        row[5].value = "S" if row[3].value == 1 else "U"  # mocked labels
+        row[6].value = "Y" if row[0].value == "U0001" else None
+        row[7].value = "note"
+
+    _fill(xlsx, label_all)
+    rec = judge.import_xlsx(run, manifest)
+    header, rows = judge.read_sheet(run / "human/human_pass1.csv", judge.HUMAN_P1_COLUMNS)
+    _, blank = judge.read_sheet(run / "human/human_pass1_blank.csv", judge.HUMAN_P1_COLUMNS)
+    assert [(r["unit id"], r["claim no"], r["claim"]) for r in rows] == [
+        (r["unit id"], r["claim no"], r["claim"]) for r in blank
+    ]  # the blank's order and text
+    assert all(r["label"] in ("S", "U") and r["notes"] == "note" for r in rows)
+    assert rec["rows"] == len(blank) and rec["sha256"] != blank_sha
+    assert rec["split_problems"] == sum(1 for r in blank if r["unit id"] == "U0001")
+    manifest["pass1"]["human_labels"] = rec
+    assert (
+        judge.import_xlsx(run, manifest)["sha256"] == rec["sha256"]
+    )  # re-import of the same workbook
+
+
+@pytest.mark.parametrize(("change", "message"), [
+    (lambda row: None, "label must be S, U or W"),  # nothing labelled
+    (lambda row: setattr(row[5], "value", "X"), "label must be S, U or W"),
+    (lambda row: (setattr(row[5], "value", "S"), setattr(row[6], "value", "N")), "split problem must be Y"),
+    (lambda row: (setattr(row[5], "value", "S"), setattr(row[4], "value", row[4].value + " edited")),
+     "claim changed"),
+    (lambda row: (setattr(row[5], "value", "S"), setattr(row[2], "value", "other text")), "unit text changed"),
+    (lambda row: (setattr(row[5], "value", "S"), setattr(row[0], "value", "U9999")), "is missing"),
+])  # fmt: skip
+def test_import_xlsx_refuses_any_other_change(run, tmp_path, change, message):
+    manifest = _labelled_run(run, tmp_path)
+    xlsx = Path(judge.export_xlsx(run, manifest)["file"])
+    before = judge.file_sha256(run / "human/human_pass1.csv")
+    _fill(xlsx, change)
+    with pytest.raises(judge.JudgeToolError, match=message):
+        judge.import_xlsx(run, manifest)
+    assert judge.file_sha256(run / "human/human_pass1.csv") == before  # nothing written
+
+
+def test_export_xlsx_refuses_a_sheet_that_is_no_longer_the_blank(run, tmp_path):
+    manifest = _labelled_run(run, tmp_path)
+    with open(run / "human/human_pass1.csv", "a", encoding="utf-8") as f:
+        f.write("U0001,1,x,1,x,S,,\n")
+    with pytest.raises(judge.JudgeToolError, match="not the recorded blank"):
+        judge.export_xlsx(run, manifest)
+
+
+def test_a_text_starting_with_an_equals_sign_stays_text(tmp_path):
+    from openpyxl import Workbook, load_workbook
+
+    wb = Workbook()
+    judge._text(wb.active["A1"], "=1+1 is not a formula")
+    wb.save(tmp_path / "x.xlsx")
+    assert load_workbook(tmp_path / "x.xlsx").active["A1"].value == "=1+1 is not a formula"
