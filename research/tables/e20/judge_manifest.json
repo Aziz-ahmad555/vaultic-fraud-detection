@@ -17,6 +17,96 @@
     "inputs/reference_evidence.csv": "0233a16eb8910271226a06d6df95f5e38cc8465369bb7fec12da9018cee67565",
     "PROMPT.md": "211e43f8405b93961f85552920eea60fdfae6ef9ff7b5bf4ef4679749a106f07"
    }
+  },
+  "check": {
+   "checked": "2026-11-02T00:23:09+00:00",
+   "units": 846,
+   "claims": 2074,
+   "joined_file": "E:\\dev-cache\\copilot\\e20\\20261026-220704-227d24\\judge\\judge_pass1.jsonl",
+   "joined_sha256": "3163fb59533541f6ebc58e15c9ca9aa6f6c40730543f0adea20c300a5f70136e",
+   "case_files_sha256": {
+    "case_01.jsonl": "a740c9d926294e9deb8ab18968127b85c5f58bfc76831cf4500d0e73fc9644b2",
+    "case_02.jsonl": "36bea70a734aacd34a15fb53a391592818d7dd8fef25aad4a250a9137e8b1298",
+    "case_03.jsonl": "9d138218181447b91ab0aa4046efa8bc913d06d723c1971108d9f7f70fb44a7b",
+    "case_04.jsonl": "91e224cf0075b092e7beac336f1514d14536004114f700d8d50f25f07cf0530f",
+    "case_05.jsonl": "0896b09bf21754b0a51a8e60efa2448720c03595d7e7aad015098051a6cf6c44",
+    "case_06.jsonl": "69902302d2c4515a32e46a3fc39a4b15d900e4b9ab536f2be24a997735f1814c",
+    "case_07.jsonl": "8fbc32d68b54a82b6e177b70e3770ac2cd9696c23b882e0124de8fe00de077ff",
+    "case_08.jsonl": "e079cf4c2d981935517288d1800ea0382cbd91e2be2c83258488a5c443f38469",
+    "case_09.jsonl": "a867f6b73ff834d0de6a2d484b9c016fb6f6b28420f40bfa92277a58b2a1a4be",
+    "case_10.jsonl": "e23a2ffe491103735383610026f6e34c34b31eaaf7e82372416d12091f41b303",
+    "case_11.jsonl": "25b2c3a4fb5af8ad56a4f360baebf53a2ebaa81d715b29ecad7fdbdb7ef997c1",
+    "case_12.jsonl": "969fea23687d197e576fdf5eeaf04c4e1f046b7547d04cac1b1a74b3d462ba98",
+    "case_13.jsonl": "52dbf6a8fe79e098c66899490f7eb782b413113eb11fa203cb94497cafd6c439",
+    "case_14.jsonl": "69a26315ea85800668a7a488b70b506a3ee9e511afa6f765eb29ba462ea2283b",
+    "case_15.jsonl": "d79658c6a976610ad4e55dd1017799da6cce89ccd90a5fd98a48d17dac5159c3",
+    "case_16.jsonl": "5b61ccf22309408ba9589c61225c7901d29673a5ca9526a9819c151ecaab7b8f",
+    "case_17.jsonl": "a1b5f63f36f2c09ab07c1ca070d34240501a59a1e5257a34d2ad7a11ca0053a5",
+    "case_18.jsonl": "6008fa2e52c31c7a0eb1a6b6364e4e5ddecc4573cb60d24f04d439f7aa3333b3",
+    "case_19.jsonl": "e305ad133e957cd487405456f20d67e974e2d62e01ebfa3c1bcf4f0fec207fb5",
+    "case_20.jsonl": "a1a9665d7075a1edd252f48771b84aa999d19c2c7409e8e13f18c28ce505ccd5",
+    "case_21.jsonl": "f96d1503e9e922f42d818a250b13b8b3e6dcad79c126f6486793613465b641f4",
+    "case_22.jsonl": "8a2edc7e957a026daec17a035a62e595b01edea39a74c2acfbb831fdcd4f2d53",
+    "case_23.jsonl": "69d9052c645c58326b633dbb2c0aaa41859cca9989767bd4ca062793284b9bba",
+    "case_24.jsonl": "e2984e479f22f95cd22e578a73b5fb16f5a3e8663201827848b6d2f07ac563b5",
+    "case_25.jsonl": "d91c3adba1b2ded7944934a11d7d87c5dbc7696dc886580b4f4e2e5b6bbba932",
+    "case_26.jsonl": "a14fd054dcc3898272b787359995d7efdad8c8b124aef7586d93f0d435eb1210",
+    "case_27.jsonl": "3e31dbcb6a6d0e9ba0a542fa8604ecd590967a4163958c281b9a08a792569b76",
+    "case_28.jsonl": "1796a464e5970baf2c169febbf8208c822e9395bb433efa2f11c1ceea546e46a",
+    "case_29.jsonl": "ab7db91c56704516caa896d0b0a0a3e374189cae39ff9ba5714d6e04c2f4cacd",
+    "case_30.jsonl": "070c33c8ec86f16b7d896662d55ef686e08d660fada89ec00994db10357e91fa"
+   },
+   "audit": {
+    "transcripts": [
+     "dc6e17bf-a2a7-4579-9683-d3c898dd90cc.jsonl"
+    ],
+    "tool_calls": 53,
+    "models": [
+     "claude-opus-5-5"
+    ],
+    "declared_deviations": [
+     {
+      "tool": "mcp__ccd_turn__update_plan",
+      "input": {
+       "items": [
+        {
+         "content": "Read prompt, guide and input files",
+         "status": "in_progress"
+        },
+        {
+         "content": "Label cases 1\u201310",
+         "status": "pending"
+        },
+        {
+         "content": "Label cases 11\u201320",
+         "status": "pending"
+        },
+        {
+         "content": "Label cases 21\u201330",
+         "status": "pending"
+        }
+       ],
+       "scope": "first_task"
+      },
+      "decision": "D225g"
+     },
+     {
+      "tool": "mcp__ccd_turn__wrap_up",
+      "input": {
+       "recap": "All 30 case files (out/case_01.jsonl to out/case_30.jsonl) are written. That covers 846 units, each split into claims and labelled S/U/W with evidence line numbers. Each file was written once and not changed afterwards."
+      },
+      "decision": "D225g"
+     }
+    ]
+   },
+   "violations": 0
+  },
+  "human_sheet": {
+   "file": "E:\\dev-cache\\copilot\\e20\\20261026-220704-227d24\\human\\human_pass1.csv",
+   "sha256": "9f099448002b35275d1874bbe5b98fd4739e5341731b4e6438ebfd21bd4ff053",
+   "units": 150,
+   "rows": 368,
+   "built": "2026-11-02T00:23:16+00:00"
   }
  },
  "pass2": {
@@ -27,9 +117,9 @@
    "run_id": "20261026-220704-227d24",
    "source_sheet_sha256": "1c239bde8c7f373dd2163354ab7900ebf896f9ad3fd140016a987e029cefaf72",
    "units": 666,
-   "prepared": "2026-11-01T23:37:21+00:00",
+   "prepared": "2026-11-02T00:23:08+00:00",
    "sha256": {
-    ".claude/settings.json": "ddb141f05c8ac2d3327ac2a469567abfd26581392e83646f69d16fb00d4d48a1",
+    ".claude/settings.json": "3591c3e69a3566bc19eea0029e48854036c3f31679a8ce420ac1a45e55b07ff8",
     "inputs/guide.md": "d8cb8ec338ddf0328bfcd3bd245f2a8f26583795c57fb988f85c2da8b699b100",
     "inputs/pass2_for_judge.csv": "cb1dcd345b4b1331f2e1695bb636e9cb81d4e3dfb95f21e9973a3f9de4f23e53",
     "PROMPT.md": "34a0e81d350f344e26183ef172924b531e6f830d2f9054d3cf92c0531fb5c9ef"
