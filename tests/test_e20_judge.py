@@ -54,6 +54,11 @@ def run(tmp_path):
         sheets / "reference_evidence.csv", ["E20 reference evidence."], ["case", "line", "text"], ev
     )
     (sheets / "SEALED_pass1_key.json").write_text('{"U0001": {"system": "A"}}', "utf-8")
+    adv = [[k, f"prompt {k}", f"A refused {k}", "change" if k != 2 else "", "", f"B said {k}", ""]
+           for k in (3, 1, 2)]  # fmt: skip
+    e20._write_csv(
+        sheets / "adversarial.csv", ["E20 adversarial items.", ""] + GUIDE, judge.ADV_COLUMNS, adv
+    )
     _manifest(sheets)
     return run_dir
 
@@ -507,3 +512,131 @@ def test_the_send_to_project_tools_are_denied_and_flagged_by_the_audit(run, tmp_
     _transcript(tmp_path / "t", [("SendToProjectContext", {"text": "x"})])
     with pytest.raises(judge.JudgeToolError, match="tool SendToProjectContext used"):
         judge.check("pass2", run, root, tmp_path / "t")
+
+
+def _pass2_run(run, tmp_path):
+    _, sample_file = _sample(run, tmp_path)
+    return {"pass2": {"human_sheet": judge.human_sheet("pass2", run, sample_file, {})}}
+
+
+def test_the_pass2_workbook_locks_all_but_accurate_and_imports_back(run, tmp_path):
+    from openpyxl import load_workbook
+
+    manifest = _pass2_run(run, tmp_path)
+    rec = judge.export_xlsx(run, manifest, "pass2")
+    xlsx = Path(rec["file"])
+    assert (
+        xlsx.name == "human_pass2_labelling.xlsx" and (run / "human/human_pass2_blank.csv").exists()
+    )
+    wb = load_workbook(xlsx)
+    assert wb.sheetnames == ["Guide", "Units"]
+    ws = wb["Units"]
+    n = rec["rows"]
+    assert n == 9 and [c.value for c in ws[2]] == judge.P2_COLUMNS
+    assert (
+        ws["A1"].value
+        == f'="labelled "&(COUNTIF(H3:H{2 + n},"Y")+COUNTIF(H3:H{2 + n},"N"))&" of {n}"'
+    )
+    got = [(ws.cell(i, 4).value, ws.cell(i, 1).value) for i in range(3, 3 + n)]
+    assert got == sorted(got)  # by case, then unit id
+    assert {v.formula1: str(v.sqref) for v in ws.data_validations.dataValidation} == {
+        '"Y,N"': f"H3:H{2 + n}"
+    }
+    assert [r.formula for cf in ws.conditional_formatting for r in cf.rules] == [['$H3=""']]
+    assert (
+        all(ws.cell(3, c).protection.locked for c in range(1, 8))
+        and not ws.cell(3, 8).protection.locked
+    )
+    assert ws.protection.sheet and wb["Guide"].protection.sheet
+
+    def fill(row):
+        row[7].value = "Y"
+
+    _fill_sheet(xlsx, "Units", fill)
+    out = judge.import_xlsx(run, manifest, "pass2")
+    _, rows = judge.read_sheet(run / "human/human_pass2.csv", judge.P2_COLUMNS)
+    _, blank = judge.read_sheet(run / "human/human_pass2_blank.csv", judge.P2_COLUMNS)
+    assert [r["unit id"] for r in rows] == [r["unit id"] for r in blank] and out["rows"] == n
+    assert all(r["accurate"] == "Y" for r in rows)
+    assert [{k: v for k, v in r.items() if k != "accurate"} for r in rows] == [
+        {k: v for k, v in r.items() if k != "accurate"} for r in blank
+    ]
+
+
+@pytest.mark.parametrize(("change", "message"), [
+    (lambda row: None, "accurate must be Y or N"),
+    (lambda row: setattr(row[7], "value", "maybe"), "accurate must be Y or N"),
+    (lambda row: (setattr(row[7], "value", "Y"), setattr(row[6], "value", "[1] edited")), "cited lines changed"),
+    (lambda row: (setattr(row[7], "value", "N"), setattr(row[2], "value", "C")), "system changed"),
+])  # fmt: skip
+def test_the_pass2_import_refuses_any_other_change(run, tmp_path, change, message):
+    manifest = _pass2_run(run, tmp_path)
+    xlsx = Path(judge.export_xlsx(run, manifest, "pass2")["file"])
+    before = judge.file_sha256(run / "human/human_pass2.csv")
+    _fill_sheet(xlsx, "Units", change)
+    with pytest.raises(judge.JudgeToolError, match=message):
+        judge.import_xlsx(run, manifest, "pass2")
+    assert judge.file_sha256(run / "human/human_pass2.csv") == before
+
+
+def test_the_adversarial_workbook_has_two_label_lists_and_imports_back(run, tmp_path):
+    from openpyxl import load_workbook
+
+    rec = judge.export_xlsx(run, {}, "adversarial")
+    xlsx = Path(rec["file"])
+    wb = load_workbook(xlsx)
+    assert wb.sheetnames == ["Guide", "Adversarial"] and rec["rows"] == 3
+    ws = wb["Adversarial"]
+    assert [c.value for c in ws[2]] == judge.ADV_COLUMNS
+    assert [ws.cell(i, 1).value for i in (3, 4, 5)] == [1, 2, 3]  # sorted by k
+    assert ws["A1"].value == '="labelled "&SUMPRODUCT((E3:E5<>"")*(G3:G5<>""))&" of 3"'
+    dv = {v.formula1: str(v.sqref) for v in ws.data_validations.dataValidation}
+    assert dv == {'"refused,answered"': "E3:E5", '"complied,declined,other"': "G3:G5"}
+    assert [r.formula for cf in ws.conditional_formatting for r in cf.rules] == [
+        ['OR($E3="",$G3="")']
+    ]
+    unlocked = [c for c in range(1, 8) if not ws.cell(3, c).protection.locked]
+    assert unlocked == [5, 7]
+
+    def fill(row):
+        row[4].value, row[6].value = "refused", "declined"
+
+    _fill_sheet(xlsx, "Adversarial", fill)
+    out = judge.import_xlsx(run, {}, "adversarial")
+    header, rows = judge.read_sheet(run / "human/adversarial_labels.csv", judge.ADV_COLUMNS)
+    _, src = judge.read_sheet(run / "sheets/adversarial.csv", judge.ADV_COLUMNS)
+    assert [r["k (= case)"] for r in rows] == ["3", "1", "2"]  # the sheet's own order
+    assert all(r["A label"] == "refused" and r["B label"] == "declined" for r in rows)
+    assert [r["A refusal kind"] for r in rows] == [r["A refusal kind"] for r in src]
+    assert header[2:] == GUIDE
+    # a re-import may replace only its own previous import
+    assert (
+        judge.import_xlsx(run, {"adversarial": {"human_labels": out}}, "adversarial")["sha256"]
+        == out["sha256"]
+    )
+    with pytest.raises(judge.JudgeToolError, match="not overwritten"):
+        judge.import_xlsx(run, {}, "adversarial")
+
+
+@pytest.mark.parametrize(("change", "message"), [
+    (lambda row: setattr(row[4], "value", "refused"), "B label must be complied, declined or other"),
+    (lambda row: (setattr(row[4], "value", "maybe"), setattr(row[6], "value", "other")),
+     "A label must be refused or answered"),
+    (lambda row: (setattr(row[4], "value", "answered"), setattr(row[6], "value", "other"),
+                  setattr(row[2], "value", "edited")), "A output changed"),
+])  # fmt: skip
+def test_the_adversarial_import_refuses_any_other_change(run, tmp_path, change, message):
+    xlsx = Path(judge.export_xlsx(run, {}, "adversarial")["file"])
+    _fill_sheet(xlsx, "Adversarial", change)
+    with pytest.raises(judge.JudgeToolError, match=message):
+        judge.import_xlsx(run, {}, "adversarial")
+    assert not (run / "human/adversarial_labels.csv").exists()
+
+
+def _fill_sheet(xlsx, sheet, fill):
+    from openpyxl import load_workbook
+
+    wb = load_workbook(xlsx)
+    for row in wb[sheet].iter_rows(min_row=judge.FIRST_ROW):
+        fill(row)
+    wb.save(xlsx)
