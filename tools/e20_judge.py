@@ -62,6 +62,7 @@ DENIED_TOOLS = [
     "mcp__ccd_window", "mcp__ccd_sidebar", "mcp__ccd_settings", "mcp__ccd_pr", "mcp__ccd_connectors",
     "mcp__scheduled-tasks", "mcp__mcp-registry", "mcp__remote-devices", "mcp__visualize",
     "mcp__1a59c906-04da-521d-bda7-7f71b9f9e01c", "mcp__ccd_turn",  # mcp__ccd_turn added by D225g
+    "SendToProject", "SendToProjectContext",  # added by D225i
 ]  # fmt: skip
 # D225g: two desktop-app interface calls of the pass-1 judge (no file access, no labels), accepted as a
 # declared deviation; listed in the audit record, not counted as violations, and denied for pass 2

@@ -154,6 +154,9 @@ def test_prepare_builds_an_isolated_folder_with_the_deny_rule(run, tmp_path):
         "Agent",
         "mcp__Claude_Browser",
         "mcp__terminal",
+        "mcp__ccd_turn",  # D225g
+        "SendToProject",  # D225i
+        "SendToProjectContext",  # D225i
     ):
         assert tool in deny
     assert (
@@ -494,3 +497,13 @@ def test_a_text_starting_with_an_equals_sign_stays_text(tmp_path):
     judge._text(wb.active["A1"], "=1+1 is not a formula")
     wb.save(tmp_path / "x.xlsx")
     assert load_workbook(tmp_path / "x.xlsx").active["A1"].value == "=1+1 is not a formula"
+
+
+def test_the_send_to_project_tools_are_denied_and_flagged_by_the_audit(run, tmp_path):
+    """D225i: blocked by the deny rule, and still a violation if a transcript shows one."""
+    assert {"SendToProject", "SendToProjectContext"} <= set(judge.DENIED_TOOLS)
+    root = run.parent / "judge"
+    _judge_out(run, root / "pass2", "pass2")
+    _transcript(tmp_path / "t", [("SendToProjectContext", {"text": "x"})])
+    with pytest.raises(judge.JudgeToolError, match="tool SendToProjectContext used"):
+        judge.check("pass2", run, root, tmp_path / "t")
