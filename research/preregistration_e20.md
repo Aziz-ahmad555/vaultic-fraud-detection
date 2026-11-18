@@ -1,4 +1,4 @@
-# Pre-registration: E20, copilot evaluation (D225, amended by D225a, D225b, D225c, D225d, D225e and D225f)
+# Pre-registration: E20, copilot evaluation (D225, amended by D225a, D225b, D225c, D225d, D225e, D225f and D225j)
 
 Written 2026-10-26 on branch `e20` from `phase0-1` at `c9d8806` (the copilot merge, PR #14), before
 any E20 generation. Nothing in this file has been run. It fixes the system, the cases, the items, the
@@ -450,6 +450,15 @@ assigns labels, and no labels are revised after a case is written.
 folder). Its first message is `PROMPT.md` verbatim. If the context runs out, another fresh session gets the
 same prompt plus "Continue from case k. out/ already holds case files for cases 1 to k-1; do not change
 them." Each session is logged.
+
+**Redo of one case (D225j).** A case whose file is incomplete is redone in a fresh session in the same
+folder. The incomplete file is first moved, unchanged, into the run folder. The fresh session gets
+`PROMPT.md` verbatim plus this fixed line, shown here for pass 2, case 8 (23 units, P0160 to P0182):
+
+> Redo case 8 only. out/ already holds the files of every other case: do not read, list or change them.
+> pass2_for_judge.csv is long and a single read can be cut off: read it in parts until you have read every
+> row whose case is 8 (23 units, P0160 to P0182), then write out/case_08.jsonl once, with all 23 units in
+> unit id order, reply DONE and stop.
 
 **Isolation (D225f).**
 - The inputs are copies outside the run folder.

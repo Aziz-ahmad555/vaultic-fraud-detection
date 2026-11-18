@@ -158,6 +158,22 @@
     "transcript_sha256": "20d9cbf6a09c190d491dfce3867ee7509d328d0d06a592470e92ccb2e0d754dc",
     "checked": "2026-11-18, recorded at Aziz's request"
    }
+  ],
+  "incomplete": [
+   {
+    "decision": "D225j",
+    "case": 8,
+    "units_written": 21,
+    "units_in_case": 23,
+    "missing": [
+     "P0181",
+     "P0182"
+    ],
+    "moved_to": "E:\\dev-cache\\copilot\\e20\\20261026-220704-227d24\\judge\\pass2_incomplete_case_08.jsonl",
+    "sha256": "783930c8a2890bebcda152e3f14c62bbe247a12409df39191e28072627247367",
+    "session": "f6f3e33d-3652-46f8-88db-26980d519909",
+    "cause": "the first Read of pass2_for_judge.csv was cut off by size before P0181; case 8 was written from the rows read"
+   }
   ]
  }
 }
