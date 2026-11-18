@@ -139,6 +139,25 @@
     "inputs/pass2_for_judge.csv": "cb1dcd345b4b1331f2e1695bb636e9cb81d4e3dfb95f21e9973a3f9de4f23e53",
     "PROMPT.md": "34a0e81d350f344e26183ef172924b531e6f830d2f9054d3cf92c0531fb5c9ef"
    }
-  }
+  },
+  "other_sessions": [
+   {
+    "session": "aadcc595-503d-4d6a-95dc-40568f9c136e",
+    "title": "Citation accuracy evaluation",
+    "note": "opened by accident before the real pass-2 run, with the pass-2 prompt, in E:/old work/fyp 11 (Auto mode, claude-opus-5-5), 2026-11-18T17:30:16Z to 17:30:55Z; abandoned",
+    "tool_calls": {
+     "Read": 2,
+     "Glob": 1,
+     "mcp__ccd_turn__update_plan": 1,
+     "mcp__ccd_turn__wrap_up": 1
+    },
+    "reads": "E:/old work/fyp 11/inputs/guide.md and E:/old work/fyp 11/PROMPT.md: both 'File does not exist' (errors); no pass-2 input, sheet, sealed key or run file read",
+    "glob": "pattern '*' in E:/old work/fyp 11: timed out after 20 s with no result",
+    "writes": 0,
+    "labels": 0,
+    "transcript_sha256": "20d9cbf6a09c190d491dfce3867ee7509d328d0d06a592470e92ccb2e0d754dc",
+    "checked": "2026-11-18, recorded at Aziz's request"
+   }
+  ]
  }
 }
