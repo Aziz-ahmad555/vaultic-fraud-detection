@@ -115,6 +115,13 @@
    "blank_sha256": "9f099448002b35275d1874bbe5b98fd4739e5341731b4e6438ebfd21bd4ff053",
    "rows": 368,
    "built": "2026-11-02T10:28:31+00:00"
+  },
+  "human_labels": {
+   "file": "E:\\dev-cache\\copilot\\e20\\20261026-220704-227d24\\human\\human_pass1.csv",
+   "sha256": "1950286dc8e10f8b6110ee13659770ce34ba9f3061a2ec9ee0d20d598b6a2162",
+   "rows": 368,
+   "split_problems": 0,
+   "imported": "2026-11-18T16:42:37+00:00"
   }
  },
  "pass2": {
