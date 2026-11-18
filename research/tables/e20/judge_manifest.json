@@ -174,6 +174,99 @@
     "session": "f6f3e33d-3652-46f8-88db-26980d519909",
     "cause": "the first Read of pass2_for_judge.csv was cut off by size before P0181; case 8 was written from the rows read"
    }
-  ]
+  ],
+  "check": {
+   "checked": "2026-11-18T17:53:13+00:00",
+   "units": 666,
+   "claims": null,
+   "joined_file": "E:\\dev-cache\\copilot\\e20\\20261026-220704-227d24\\judge\\judge_pass2.jsonl",
+   "joined_sha256": "52f93a52f69bf77526aa56abb1c6dd61d0d8a667de4540025a20697ac7281f5a",
+   "case_files_sha256": {
+    "case_01.jsonl": "1cf987eb8d3293e8ee63fdd4a854fa52886245ede623ee57442bb61a6fe3dbd2",
+    "case_02.jsonl": "bf7d3eb3b4f5ff33e8f204504ff6d89c550b52ae6bf20495b5ce1c69aedc56b8",
+    "case_03.jsonl": "add625bf66d18eaab118a0d62776bb5c95ff7bbd1c0ad253c1dc17fbe60f7b53",
+    "case_04.jsonl": "87f7bbc22340e552737e5c5cca68ecdacc4ca76a22f56a005ffb8ec481915eaa",
+    "case_05.jsonl": "62a4f869d57c07bc2acc830d4839bd04933407436ed2bbb0626b45eaef927a94",
+    "case_06.jsonl": "adc49e0d7c3947bb480fe61c99fc2a4e1a13373cf8cc4a501c5f82e1c2981f7e",
+    "case_07.jsonl": "ff1e06ff0037587957b3d8fc1e126e21e7d91677836cc849b263bce572699e70",
+    "case_08.jsonl": "1f61b68d76ac8fd1cc28f5311a40c11b8df3dfd5223161af1386b676114e9248",
+    "case_09.jsonl": "156c4f16b0a9a41273f03f34ad257fd499ff203c8be8f01da3c146c6f5f57bc4",
+    "case_10.jsonl": "65134f7dcf2c0eb32a15597d70c919882dec95c53f89c8e9589ec3f396429e17",
+    "case_11.jsonl": "b15cfc895303aac07ad141f034be427d1ca1455c804bc7fe052d847f7af5086e",
+    "case_12.jsonl": "9ecb55999c2a34b93facd2608a368ba8edc2c2ab48840bc80271c6747b667e45",
+    "case_13.jsonl": "fb6465402bfcb563e6681a2b955c90748377736bfb748f5a83768611d240417d",
+    "case_14.jsonl": "d94d8a20d1540767daf83fd286d9761eb3f18d75712c855df8e9f3373ed3448a",
+    "case_15.jsonl": "699dd6fd589aa4bb8b773031f46321a807e9afa05c7cb41f53c07df7bd9a71c0",
+    "case_16.jsonl": "29c6bbe73a46f94724cd431a7533a73d5cf215e88259de46795da54aea6200f7",
+    "case_17.jsonl": "d450413f73acc1ab29f5c41b538f7e1f765ae88d661486a478e03e14ff62cd71",
+    "case_18.jsonl": "92e0b1e1816b442895af483701212d79926d87fec8283008cc9b6d76c5c3875d",
+    "case_19.jsonl": "9fc96e96e88a56cf3f994c6626586ff6adc886821d46e769652091e258e9a6cf",
+    "case_20.jsonl": "66700705fd526a207b3109ae2d26e7622c9f22080390d2bbf405778b8de9c73a",
+    "case_21.jsonl": "56e8c596d5af5f19ec0b9c21353ff605c84dac9480569d972a64f7704945b4a4",
+    "case_22.jsonl": "bbef6fbda0ae8221a5735ade4e40bfc01c4969b17817b7cbdcb0d9d230856fd1",
+    "case_23.jsonl": "5e8da979945f2fe333d153dfb3e207f8a817e488db0e0a99377f8758e12ef05d",
+    "case_24.jsonl": "5afd6912129e93ac42aadc45b2bb0097624674dc89369bae9a777c6eeb39e269",
+    "case_25.jsonl": "766500fc99e3ddee4becf7d813216a7bb1c0e4d4c451455bd636394ea91374d5",
+    "case_26.jsonl": "964c008ae7e5ea57f1d9da40befdb64a7a3ae4c8f48cf550128ee93421e552d1",
+    "case_27.jsonl": "183a2a02d9607f760208dedf46f25ed518aa812a2504d8fb01c9f606281cc83f",
+    "case_28.jsonl": "ac68fb7f2b74bad6129023ff94fe8efc84b18d3e3c9be783204c7f32cfc3b5a1",
+    "case_29.jsonl": "25d473e560ba389d73b8826895895fc297896fc9e69e050d1e9307e2222bec0d",
+    "case_30.jsonl": "83e1dc623ff6589edfea2114a65805ccaa3affb31bfa228769beb82ceb1e9d7f"
+   },
+   "audit": {
+    "transcripts": [
+     "770886a6-2c0b-4ad5-bc97-1d66a6d22a02.jsonl",
+     "f6f3e33d-3652-46f8-88db-26980d519909.jsonl"
+    ],
+    "tool_calls": 41,
+    "models": [
+     "claude-opus-5-5"
+    ],
+    "declared_deviations": []
+   },
+   "violations": 0
+  },
+  "sessions": [
+   {
+    "session": "f6f3e33d-3652-46f8-88db-26980d519909",
+    "role": "first run",
+    "permission_mode": "default (Ask)",
+    "cwd": "E:/dev-cache/copilot/e20/judge/pass2",
+    "time_utc": [
+     "2026-11-18T17:37:26Z",
+     "2026-11-18T17:42:15Z"
+    ],
+    "tool_calls": {
+     "Read": 5,
+     "Write": 30
+    }
+   },
+   {
+    "session": "770886a6-2c0b-4ad5-bc97-1d66a6d22a02",
+    "role": "case-8 redo (D225j)",
+    "permission_mode": "auto (declared deviation D225k)",
+    "cwd": "E:/dev-cache/copilot/e20/judge/pass2",
+    "time_utc": [
+     "2026-11-18T17:50:26Z",
+     "2026-11-18T17:50:57Z"
+    ],
+    "tool_calls": {
+     "Read": 4,
+     "Grep": 1,
+     "Write": 1
+    },
+    "wrote": [
+     "out/case_08.jsonl"
+    ]
+   }
+  ],
+  "redo_checks": {
+   "decision": "D225k",
+   "settings_unchanged_since_prepare": true,
+   "tools_offered_both_sessions": 17,
+   "denied_tools_offered": 0,
+   "claude_code_version": "2.1.325",
+   "other_29_case_files_identical_to_first_run_writes": true
+  }
  }
 }
