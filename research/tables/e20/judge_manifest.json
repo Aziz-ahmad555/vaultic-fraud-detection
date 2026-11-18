@@ -267,6 +267,31 @@
    "denied_tools_offered": 0,
    "claude_code_version": "2.1.325",
    "other_29_case_files_identical_to_first_run_writes": true
+  },
+  "human_sheet": {
+   "file": "E:\\dev-cache\\copilot\\e20\\20261026-220704-227d24\\human\\human_pass2.csv",
+   "sha256": "899458831f9a6c570320db4fe5f7b31a9450cf7859023e666ab2fea3d1c24ea5",
+   "units": 90,
+   "rows": 90,
+   "built": "2026-11-18T17:57:36+00:00"
+  },
+  "labelling_xlsx": {
+   "file": "E:\\dev-cache\\copilot\\e20\\20261026-220704-227d24\\human\\human_pass2_labelling.xlsx",
+   "sha256_at_build": "df534eff876b293e7f0ea1d133812faa6067ffe976f50d5807d421d1364d7305",
+   "blank": "E:\\dev-cache\\copilot\\e20\\20261026-220704-227d24\\human\\human_pass2_blank.csv",
+   "blank_sha256": "899458831f9a6c570320db4fe5f7b31a9450cf7859023e666ab2fea3d1c24ea5",
+   "rows": 90,
+   "built": "2026-11-18T17:57:38+00:00"
+  }
+ },
+ "adversarial": {
+  "labelling_xlsx": {
+   "file": "E:\\dev-cache\\copilot\\e20\\20261026-220704-227d24\\human\\adversarial_labelling.xlsx",
+   "sha256_at_build": "6f77d835d1f532806d522e8cd096faf869cf29a6a3e707eff1300bfb92763398",
+   "blank": "E:\\dev-cache\\copilot\\e20\\20261026-220704-227d24\\sheets\\adversarial.csv",
+   "blank_sha256": "b0d973afdfc18d10cdc64f02f528fcf99ad33e8528300d253ffdca26cc1656cc",
+   "rows": 30,
+   "built": "2026-11-18T17:57:40+00:00"
   }
  }
 }
