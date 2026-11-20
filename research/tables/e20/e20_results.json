@@ -1,0 +1,1132 @@
+{
+ "experiment": "E20 / EXP-320",
+ "label": "copilot evaluation on IEEE-CIS test-period cases, not a fraud-detection result",
+ "cases": 30,
+ "agreement": {
+  "pass1": {
+   "kappa": 0.6992823136502523,
+   "ci_low": 0.5419584893393139,
+   "ci_high": 0.8328167632164999,
+   "n": 368,
+   "raw_agreement": 0.9375,
+   "confusion": {
+    "judge S": {
+     "human S": 316,
+     "human U": 5,
+     "human W": 5
+    },
+    "judge U": {
+     "human S": 7,
+     "human U": 28,
+     "human W": 3
+    },
+    "judge W": {
+     "human S": 2,
+     "human U": 1,
+     "human W": 1
+    }
+   },
+   "bootstrap_resamples": 1000,
+   "seed": 2253,
+   "resamples_undefined": 0,
+   "units": 150,
+   "split_problems": 0,
+   "per_system": {
+    "A removed": {
+     "kappa": 0.6266471449487556,
+     "claims": 51,
+     "raw_agreement": 0.9019607843137255
+    },
+    "A shown": {
+     "kappa": 0.852631578947369,
+     "claims": 112,
+     "raw_agreement": 0.9910714285714286
+    },
+    "B": {
+     "kappa": 0.7312278440219142,
+     "claims": 139,
+     "raw_agreement": 0.9136690647482014
+    },
+    "C": {
+     "kappa": 0.4117647058823526,
+     "claims": 66,
+     "raw_agreement": 0.9242424242424242
+    }
+   },
+   "rule": "kappa >= 0.6 on the point estimate (D225e, section 11.4)",
+   "passed": true,
+   "primary": "judge (all units)"
+  },
+  "pass2": {
+   "kappa": 0.29268292682926844,
+   "ci_low": 0.054566009762919095,
+   "ci_high": 0.5135416232873861,
+   "n": 90,
+   "raw_agreement": 0.6777777777777778,
+   "confusion": {
+    "judge Y": {
+     "human Y": 44,
+     "human N": 13
+    },
+    "judge N": {
+     "human Y": 16,
+     "human N": 17
+    }
+   },
+   "bootstrap_resamples": 1000,
+   "seed": 2255,
+   "resamples_undefined": 0,
+   "per_system": {
+    "A": {
+     "kappa": 0.3046357615894041,
+     "units": 35,
+     "raw_agreement": 0.8285714285714286
+    },
+    "B": {
+     "kappa": 0.1694024950755088,
+     "units": 55,
+     "raw_agreement": 0.5818181818181818
+    }
+   },
+   "rule": "kappa >= 0.6 on the point estimate (D225e, section 11.4)",
+   "passed": false,
+   "primary": "human (sample only)"
+  }
+ },
+ "label_sources": {
+  "pass1 (faithfulness, unsupported, wrong, unit rates, checker effect)": "judge",
+  "pass2 (citation accuracy)": "human",
+  "adversarial": "human (all 30 rows)"
+ },
+ "primary": {
+  "tests": {
+   "family": "Holm across the four (section 6)",
+   "bootstrap": {
+    "resamples": 1000,
+    "seed": 2251,
+    "unit": "case (paired: both systems on the same resampled cases)"
+   },
+   "tests": [
+    {
+     "hypothesis": "H8",
+     "comparison": "unsupported-claim rate, A vs B (120 normal items, per claim)",
+     "metric": "unsupported_claim_rate",
+     "direction": "lower",
+     "null_boundary": 0.0,
+     "diff_A_minus_other": -0.11697877745122655,
+     "ci_low": -0.14267155393779213,
+     "ci_high": -0.09021965036619599,
+     "p_one_sided": 0.0,
+     "resamples_undefined": 0,
+     "p_holm": 0.0,
+     "supported": true
+    },
+    {
+     "hypothesis": "H8b",
+     "comparison": "faithfulness, A vs B (120 normal items, per claim)",
+     "metric": "faithfulness",
+     "direction": "higher",
+     "null_boundary": 0.0,
+     "diff_A_minus_other": 0.11697877745122653,
+     "ci_low": 0.09021965036619595,
+     "ci_high": 0.14267155393779218,
+     "p_one_sided": 0.0,
+     "resamples_undefined": 0,
+     "p_holm": 0.0,
+     "supported": true
+    },
+    {
+     "hypothesis": "H8c",
+     "comparison": "citation accuracy, A vs B (120 normal items, per unit)",
+     "metric": "citation_accuracy",
+     "direction": "higher",
+     "null_boundary": 0.0,
+     "diff_A_minus_other": 0.264935064935065,
+     "ci_low": 0.08495302141764402,
+     "ci_high": 0.4274552335128304,
+     "p_one_sided": 0.002,
+     "resamples_undefined": 0,
+     "p_holm": 0.004,
+     "supported": true
+    },
+    {
+     "hypothesis": "H8d",
+     "comparison": "faithfulness, A vs C on Q1 and Q4 (60 items, per claim), non-inferiority margin 0.10",
+     "metric": "faithfulness",
+     "direction": "higher",
+     "null_boundary": -0.1,
+     "diff_A_minus_other": -0.09589284378972562,
+     "ci_low": -0.13496726748348914,
+     "ci_high": -0.05166328292432168,
+     "p_one_sided": 0.401,
+     "resamples_undefined": 0,
+     "p_holm": 0.401,
+     "supported": false
+    }
+   ]
+  }
+ },
+ "secondary": {
+  "tests_on_other_label_sets": {
+   "family": "Holm across the four (section 6)",
+   "bootstrap": {
+    "resamples": 1000,
+    "seed": 2251,
+    "unit": "case (paired: both systems on the same resampled cases)"
+   },
+   "tests": [
+    {
+     "hypothesis": "H8",
+     "comparison": "unsupported-claim rate, A vs B (120 normal items, per claim)",
+     "metric": "unsupported_claim_rate",
+     "direction": "lower",
+     "null_boundary": 0.0,
+     "diff_A_minus_other": -0.1530704008221994,
+     "ci_low": -0.2433596800446595,
+     "ci_high": -0.06695656386001564,
+     "p_one_sided": 0.0,
+     "resamples_undefined": 0,
+     "p_holm": 0.0,
+     "supported": true
+    },
+    {
+     "hypothesis": "H8b",
+     "comparison": "faithfulness, A vs B (120 normal items, per claim)",
+     "metric": "faithfulness",
+     "direction": "higher",
+     "null_boundary": 0.0,
+     "diff_A_minus_other": 0.15307040082219936,
+     "ci_low": 0.06695656386001554,
+     "ci_high": 0.24335968004465952,
+     "p_one_sided": 0.0,
+     "resamples_undefined": 0,
+     "p_holm": 0.0,
+     "supported": true
+    },
+    {
+     "hypothesis": "H8c",
+     "comparison": "citation accuracy, A vs B (120 normal items, per unit)",
+     "metric": "citation_accuracy",
+     "direction": "higher",
+     "null_boundary": 0.0,
+     "diff_A_minus_other": 0.282752314123619,
+     "ci_low": 0.2225452306540509,
+     "ci_high": 0.34486356955779685,
+     "p_one_sided": 0.0,
+     "resamples_undefined": 0,
+     "p_holm": 0.0,
+     "supported": true
+    },
+    {
+     "hypothesis": "H8d",
+     "comparison": "faithfulness, A vs C on Q1 and Q4 (60 items, per claim), non-inferiority margin 0.10",
+     "metric": "faithfulness",
+     "direction": "higher",
+     "null_boundary": -0.1,
+     "diff_A_minus_other": 0.02840909090909094,
+     "ci_low": -0.0972893666534102,
+     "ci_high": 0.15281495765275255,
+     "p_one_sided": 0.023,
+     "resamples_undefined": 0,
+     "p_holm": 0.023,
+     "supported": true
+    }
+   ]
+  }
+ },
+ "pass1": {
+  "judge": {
+   "source": "judge",
+   "systems": {
+    "A": {
+     "claims": 569,
+     "units": 272,
+     "faithfulness": {
+      "value": 0.9173989455184535,
+      "ci_low": 0.8947275759822091,
+      "ci_high": 0.9395628078817734,
+      "resamples_undefined": 0
+     },
+     "unsupported_claim_rate": {
+      "value": 0.08260105448154657,
+      "ci_low": 0.0604371921182266,
+      "ci_high": 0.10527242401779094,
+      "resamples_undefined": 0
+     },
+     "wrong_rate": {
+      "value": 0.0035149384885764497,
+      "ci_low": 0.0,
+      "ci_high": 0.0088187316544207,
+      "resamples_undefined": 0
+     },
+     "unit_faithfulness": {
+      "value": 0.8455882352941176,
+      "ci_low": 0.8014025099734043,
+      "ci_high": 0.8901186269560827,
+      "resamples_undefined": 0
+     },
+     "unit_unsupported_rate": {
+      "value": 0.15441176470588236,
+      "ci_low": 0.10988137304391721,
+      "ci_high": 0.19859749002659574,
+      "resamples_undefined": 0
+     },
+     "unit_wrong_rate": {
+      "value": 0.007352941176470588,
+      "ci_low": 0.0,
+      "ci_high": 0.01893939393939394,
+      "resamples_undefined": 0
+     },
+     "claims_per_unit": {
+      "value": 2.0919117647058822,
+      "ci_low": 1.9820497824837888,
+      "ci_high": 2.1954468188440988,
+      "resamples_undefined": 0
+     }
+    },
+    "B": {
+     "claims": 952,
+     "units": 394,
+     "faithfulness": {
+      "value": 0.8004201680672269,
+      "ci_low": 0.7769672813562944,
+      "ci_high": 0.8226088666397243,
+      "resamples_undefined": 0
+     },
+     "unsupported_claim_rate": {
+      "value": 0.19957983193277312,
+      "ci_low": 0.17739113336027568,
+      "ci_high": 0.2230327186437056,
+      "resamples_undefined": 0
+     },
+     "wrong_rate": {
+      "value": 0.01680672268907563,
+      "ci_low": 0.009013389880841173,
+      "ci_high": 0.02540779767522726,
+      "resamples_undefined": 0
+     },
+     "unit_faithfulness": {
+      "value": 0.6751269035532995,
+      "ci_low": 0.6376949096609191,
+      "ci_high": 0.7150648229584025,
+      "resamples_undefined": 0
+     },
+     "unit_unsupported_rate": {
+      "value": 0.3248730964467005,
+      "ci_low": 0.2849351770415975,
+      "ci_high": 0.36230509033908087,
+      "resamples_undefined": 0
+     },
+     "unit_wrong_rate": {
+      "value": 0.03807106598984772,
+      "ci_low": 0.02035494245747278,
+      "ci_high": 0.0575,
+      "resamples_undefined": 0
+     },
+     "claims_per_unit": {
+      "value": 2.416243654822335,
+      "ci_low": 2.309517673048601,
+      "ci_high": 2.517766497461929,
+      "resamples_undefined": 0
+     }
+    },
+    "C": {
+     "claims": 344,
+     "units": 112,
+     "faithfulness": {
+      "value": 0.9447674418604651,
+      "ci_low": 0.9225806451612903,
+      "ci_high": 0.96286717752235,
+      "resamples_undefined": 0
+     },
+     "unsupported_claim_rate": {
+      "value": 0.055232558139534885,
+      "ci_low": 0.03713282247765006,
+      "ci_high": 0.07741935483870968,
+      "resamples_undefined": 0
+     },
+     "wrong_rate": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "resamples_undefined": 0
+     },
+     "unit_faithfulness": {
+      "value": 0.8303571428571429,
+      "ci_low": 0.7798165137614679,
+      "ci_high": 0.8771929824561403,
+      "resamples_undefined": 0
+     },
+     "unit_unsupported_rate": {
+      "value": 0.16964285714285715,
+      "ci_low": 0.12280701754385964,
+      "ci_high": 0.22018348623853212,
+      "resamples_undefined": 0
+     },
+     "unit_wrong_rate": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "resamples_undefined": 0
+     },
+     "claims_per_unit": {
+      "value": 3.0714285714285716,
+      "ci_low": 2.808670568561873,
+      "ci_high": 3.318593606957583,
+      "resamples_undefined": 0
+     }
+    },
+    "A on Q1/Q4": {
+     "claims": 311,
+     "units": 139,
+     "faithfulness": {
+      "value": 0.8488745980707395,
+      "ci_low": 0.8116402796621297,
+      "ci_high": 0.8869657649307767,
+      "resamples_undefined": 0
+     },
+     "unsupported_claim_rate": {
+      "value": 0.15112540192926044,
+      "ci_low": 0.1130342350692232,
+      "ci_high": 0.18835972033787038,
+      "resamples_undefined": 0
+     },
+     "wrong_rate": {
+      "value": 0.006430868167202572,
+      "ci_low": 0.0,
+      "ci_high": 0.016025641025641024,
+      "resamples_undefined": 0
+     },
+     "unit_faithfulness": {
+      "value": 0.697841726618705,
+      "ci_low": 0.6147987751531059,
+      "ci_high": 0.7828960118319054,
+      "resamples_undefined": 0
+     },
+     "unit_unsupported_rate": {
+      "value": 0.302158273381295,
+      "ci_low": 0.21710398816809467,
+      "ci_high": 0.3852012248468941,
+      "resamples_undefined": 0
+     },
+     "unit_wrong_rate": {
+      "value": 0.014388489208633094,
+      "ci_low": 0.0,
+      "ci_high": 0.037037037037037035,
+      "resamples_undefined": 0
+     },
+     "claims_per_unit": {
+      "value": 2.237410071942446,
+      "ci_low": 2.067953749547156,
+      "ci_high": 2.415337997635002,
+      "resamples_undefined": 0
+     }
+    },
+    "A removed": {
+     "claims": 209,
+     "units": 68,
+     "faithfulness": {
+      "value": 0.9043062200956937,
+      "ci_low": 0.8526730825526931,
+      "ci_high": 0.9509863701578192,
+      "resamples_undefined": 0
+     },
+     "unsupported_claim_rate": {
+      "value": 0.09569377990430622,
+      "ci_low": 0.04901362984218077,
+      "ci_high": 0.14732691744730678,
+      "resamples_undefined": 0
+     },
+     "wrong_rate": {
+      "value": 0.03349282296650718,
+      "ci_low": 0.00934363101419176,
+      "ci_high": 0.05776696489300476,
+      "resamples_undefined": 0
+     },
+     "unit_faithfulness": {
+      "value": 0.7058823529411765,
+      "ci_low": 0.5442926937597158,
+      "ci_high": 0.8474833076527991,
+      "resamples_undefined": 0
+     },
+     "unit_unsupported_rate": {
+      "value": 0.29411764705882354,
+      "ci_low": 0.15251669234720083,
+      "ci_high": 0.4557073062402842,
+      "resamples_undefined": 0
+     },
+     "unit_wrong_rate": {
+      "value": 0.10294117647058823,
+      "ci_low": 0.028561368209255533,
+      "ci_high": 0.17647058823529413,
+      "resamples_undefined": 0
+     },
+     "claims_per_unit": {
+      "value": 3.073529411764706,
+      "ci_low": 2.854751525719268,
+      "ci_high": 3.350535714285714,
+      "resamples_undefined": 0
+     }
+    },
+    "A draft (shown + removed)": {
+     "claims": 778,
+     "units": 340,
+     "faithfulness": {
+      "value": 0.9138817480719794,
+      "ci_low": 0.8963044119138792,
+      "ci_high": 0.9320061480552071,
+      "resamples_undefined": 0
+     },
+     "unsupported_claim_rate": {
+      "value": 0.08611825192802057,
+      "ci_low": 0.06799385194479297,
+      "ci_high": 0.10369558808612077,
+      "resamples_undefined": 0
+     },
+     "wrong_rate": {
+      "value": 0.011568123393316195,
+      "ci_low": 0.003821534497009773,
+      "ci_high": 0.021198369189187598,
+      "resamples_undefined": 0
+     },
+     "unit_faithfulness": {
+      "value": 0.8176470588235294,
+      "ci_low": 0.7781062957215695,
+      "ci_high": 0.8588588588588588,
+      "resamples_undefined": 0
+     },
+     "unit_unsupported_rate": {
+      "value": 0.18235294117647058,
+      "ci_low": 0.14114114114114115,
+      "ci_high": 0.2218937042784305,
+      "resamples_undefined": 0
+     },
+     "unit_wrong_rate": {
+      "value": 0.026470588235294117,
+      "ci_low": 0.008719669982524533,
+      "ci_high": 0.04885057471264368,
+      "resamples_undefined": 0
+     },
+     "claims_per_unit": {
+      "value": 2.288235294117647,
+      "ci_low": 2.1551567398119125,
+      "ci_high": 2.4133998740381717,
+      "resamples_undefined": 0
+     }
+    }
+   },
+   "claims_per_unit_distribution": {
+    "A": {
+     "1": 53,
+     "2": 177,
+     "3": 23,
+     "4": 5,
+     "5": 11,
+     "6": 3
+    },
+    "B": {
+     "1": 142,
+     "2": 83,
+     "3": 77,
+     "4": 56,
+     "5": 27,
+     "6": 9
+    },
+    "C": {
+     "1": 47,
+     "2": 4,
+     "3": 13,
+     "4": 8,
+     "5": 34,
+     "8": 6
+    }
+   },
+   "checker_effect": {
+    "A draft vs B": {
+     "faithfulness": {
+      "diff": 0.11346158000475248,
+      "ci_low": 0.0876931559927495,
+      "ci_high": 0.1391850223704533,
+      "resamples_undefined": 0
+     },
+     "unsupported_claim_rate": {
+      "diff": -0.11346158000475255,
+      "ci_low": -0.13918502237045335,
+      "ci_high": -0.0876931559927495,
+      "resamples_undefined": 0
+     },
+     "wrong_rate": {
+      "diff": -0.005238599295759434,
+      "ci_low": -0.01567313499731523,
+      "ci_high": 0.005346560766819385,
+      "resamples_undefined": 0
+     }
+    },
+    "A draft vs A shown": {
+     "faithfulness": {
+      "diff": -0.003517197446474052,
+      "ci_low": -0.02148861566672603,
+      "ci_high": 0.011436510594538226,
+      "resamples_undefined": 0
+     },
+     "unsupported_claim_rate": {
+      "diff": 0.0035171974464739963,
+      "ci_low": -0.011436510594538256,
+      "ci_high": 0.02148861566672604,
+      "resamples_undefined": 0
+     },
+     "wrong_rate": {
+      "diff": 0.008053184904739746,
+      "ci_low": 0.001299130364109233,
+      "ci_high": 0.01579156223893066,
+      "resamples_undefined": 0
+     }
+    }
+   }
+  },
+  "human": {
+   "source": "human",
+   "systems": {
+    "A": {
+     "claims": 112,
+     "units": 56,
+     "faithfulness": {
+      "value": 0.9732142857142857,
+      "ci_low": 0.936504329004329,
+      "ci_high": 1.0,
+      "resamples_undefined": 0
+     },
+     "unsupported_claim_rate": {
+      "value": 0.026785714285714284,
+      "ci_low": 0.0,
+      "ci_high": 0.063495670995671,
+      "resamples_undefined": 0
+     },
+     "wrong_rate": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "resamples_undefined": 0
+     },
+     "unit_faithfulness": {
+      "value": 0.9642857142857143,
+      "ci_low": 0.9166313559322034,
+      "ci_high": 1.0,
+      "resamples_undefined": 0
+     },
+     "unit_unsupported_rate": {
+      "value": 0.03571428571428571,
+      "ci_low": 0.0,
+      "ci_high": 0.08336864406779658,
+      "resamples_undefined": 0
+     },
+     "unit_wrong_rate": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "resamples_undefined": 0
+     },
+     "claims_per_unit": {
+      "value": 2.0,
+      "ci_low": 1.8212416943521594,
+      "ci_high": 2.203477498538866,
+      "resamples_undefined": 0
+     }
+    },
+    "B": {
+     "claims": 139,
+     "units": 59,
+     "faithfulness": {
+      "value": 0.8201438848920863,
+      "ci_low": 0.7352745965642895,
+      "ci_high": 0.9,
+      "resamples_undefined": 0
+     },
+     "unsupported_claim_rate": {
+      "value": 0.17985611510791366,
+      "ci_low": 0.1,
+      "ci_high": 0.26472540343571055,
+      "resamples_undefined": 0
+     },
+     "wrong_rate": {
+      "value": 0.02877697841726619,
+      "ci_low": 0.0,
+      "ci_high": 0.06403043478260867,
+      "resamples_undefined": 0
+     },
+     "unit_faithfulness": {
+      "value": 0.7457627118644068,
+      "ci_low": 0.6181818181818182,
+      "ci_high": 0.8545527859237536,
+      "resamples_undefined": 0
+     },
+     "unit_unsupported_rate": {
+      "value": 0.2542372881355932,
+      "ci_low": 0.14544721407624633,
+      "ci_high": 0.38181818181818183,
+      "resamples_undefined": 0
+     },
+     "unit_wrong_rate": {
+      "value": 0.05084745762711865,
+      "ci_low": 0.0,
+      "ci_high": 0.11538461538461539,
+      "resamples_undefined": 0
+     },
+     "claims_per_unit": {
+      "value": 2.3559322033898304,
+      "ci_low": 1.95,
+      "ci_high": 2.737780813600486,
+      "resamples_undefined": 0
+     }
+    },
+    "C": {
+     "claims": 66,
+     "units": 18,
+     "faithfulness": {
+      "value": 0.9090909090909091,
+      "ci_low": 0.8087952488687783,
+      "ci_high": 0.9865038115038115,
+      "resamples_undefined": 0
+     },
+     "unsupported_claim_rate": {
+      "value": 0.09090909090909091,
+      "ci_low": 0.013496188496188498,
+      "ci_high": 0.19120475113122168,
+      "resamples_undefined": 0
+     },
+     "wrong_rate": {
+      "value": 0.015151515151515152,
+      "ci_low": 0.0,
+      "ci_high": 0.04689360119047618,
+      "resamples_undefined": 0
+     },
+     "unit_faithfulness": {
+      "value": 0.7777777777777778,
+      "ci_low": 0.5714285714285714,
+      "ci_high": 0.9524350649350648,
+      "resamples_undefined": 0
+     },
+     "unit_unsupported_rate": {
+      "value": 0.2222222222222222,
+      "ci_low": 0.04756493506493507,
+      "ci_high": 0.42857142857142855,
+      "resamples_undefined": 0
+     },
+     "unit_wrong_rate": {
+      "value": 0.05555555555555555,
+      "ci_low": 0.0,
+      "ci_high": 0.16666666666666666,
+      "resamples_undefined": 0
+     },
+     "claims_per_unit": {
+      "value": 3.6666666666666665,
+      "ci_low": 2.7364766081871346,
+      "ci_high": 4.529411764705882,
+      "resamples_undefined": 0
+     }
+    },
+    "A on Q1/Q4": {
+     "claims": 48,
+     "units": 24,
+     "faithfulness": {
+      "value": 0.9375,
+      "ci_low": 0.8489412997903565,
+      "ci_high": 1.0,
+      "resamples_undefined": 0
+     },
+     "unsupported_claim_rate": {
+      "value": 0.0625,
+      "ci_low": 0.0,
+      "ci_high": 0.1510587002096435,
+      "resamples_undefined": 0
+     },
+     "wrong_rate": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "resamples_undefined": 0
+     },
+     "unit_faithfulness": {
+      "value": 0.9166666666666666,
+      "ci_low": 0.7647058823529411,
+      "ci_high": 1.0,
+      "resamples_undefined": 0
+     },
+     "unit_unsupported_rate": {
+      "value": 0.08333333333333333,
+      "ci_low": 0.0,
+      "ci_high": 0.23529411764705882,
+      "resamples_undefined": 0
+     },
+     "unit_wrong_rate": {
+      "value": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "resamples_undefined": 0
+     },
+     "claims_per_unit": {
+      "value": 2.0,
+      "ci_low": 1.619047619047619,
+      "ci_high": 2.533333333333333,
+      "resamples_undefined": 0
+     }
+    },
+    "A removed": {
+     "claims": 51,
+     "units": 17,
+     "faithfulness": {
+      "value": 0.8235294117647058,
+      "ci_low": 0.7169811320754716,
+      "ci_high": 0.9428706199460916,
+      "resamples_undefined": 0
+     },
+     "unsupported_claim_rate": {
+      "value": 0.17647058823529413,
+      "ci_low": 0.05712938005390836,
+      "ci_high": 0.2830188679245283,
+      "resamples_undefined": 0
+     },
+     "wrong_rate": {
+      "value": 0.0784313725490196,
+      "ci_low": 0.0,
+      "ci_high": 0.1935483870967742,
+      "resamples_undefined": 0
+     },
+     "unit_faithfulness": {
+      "value": 0.6470588235294118,
+      "ci_low": 0.4374320652173913,
+      "ci_high": 0.8888888888888888,
+      "resamples_undefined": 0
+     },
+     "unit_unsupported_rate": {
+      "value": 0.35294117647058826,
+      "ci_low": 0.1111111111111111,
+      "ci_high": 0.5625679347826086,
+      "resamples_undefined": 0
+     },
+     "unit_wrong_rate": {
+      "value": 0.11764705882352941,
+      "ci_low": 0.0,
+      "ci_high": 0.25,
+      "resamples_undefined": 0
+     },
+     "claims_per_unit": {
+      "value": 3.0,
+      "ci_low": 2.625,
+      "ci_high": 3.4167763157894733,
+      "resamples_undefined": 0
+     }
+    },
+    "A draft (shown + removed)": {
+     "claims": 163,
+     "units": 73,
+     "faithfulness": {
+      "value": 0.9263803680981595,
+      "ci_low": 0.8729257816242455,
+      "ci_high": 0.9797331307817885,
+      "resamples_undefined": 0
+     },
+     "unsupported_claim_rate": {
+      "value": 0.0736196319018405,
+      "ci_low": 0.0202668692182115,
+      "ci_high": 0.12707421837575447,
+      "resamples_undefined": 0
+     },
+     "wrong_rate": {
+      "value": 0.024539877300613498,
+      "ci_low": 0.0,
+      "ci_high": 0.06570672402958379,
+      "resamples_undefined": 0
+     },
+     "unit_faithfulness": {
+      "value": 0.8904109589041096,
+      "ci_low": 0.8027464788732395,
+      "ci_high": 0.9714285714285714,
+      "resamples_undefined": 0
+     },
+     "unit_unsupported_rate": {
+      "value": 0.1095890410958904,
+      "ci_low": 0.02857142857142857,
+      "ci_high": 0.19725352112676048,
+      "resamples_undefined": 0
+     },
+     "unit_wrong_rate": {
+      "value": 0.0273972602739726,
+      "ci_low": 0.0,
+      "ci_high": 0.07142857142857142,
+      "resamples_undefined": 0
+     },
+     "claims_per_unit": {
+      "value": 2.232876712328767,
+      "ci_low": 2.060227477072469,
+      "ci_high": 2.4028349156118143,
+      "resamples_undefined": 0
+     }
+    }
+   },
+   "claims_per_unit_distribution": {
+    "A": {
+     "1": 12,
+     "2": 38,
+     "3": 3,
+     "4": 1,
+     "5": 1,
+     "6": 1
+    },
+    "B": {
+     "1": 26,
+     "2": 10,
+     "3": 8,
+     "4": 8,
+     "5": 5,
+     "6": 2
+    },
+    "C": {
+     "1": 6,
+     "2": 1,
+     "5": 10,
+     "8": 1
+    }
+   },
+   "checker_effect": {
+    "A draft vs B": {
+     "faithfulness": {
+      "diff": 0.10623648320607315,
+      "ci_low": 0.0002605956490227344,
+      "ci_high": 0.21142148528888913,
+      "resamples_undefined": 0
+     },
+     "unsupported_claim_rate": {
+      "diff": -0.10623648320607317,
+      "ci_low": -0.2114214852888891,
+      "ci_high": -0.0002605956490228335,
+      "resamples_undefined": 0
+     },
+     "wrong_rate": {
+      "diff": -0.004237101116652691,
+      "ci_low": -0.054796293145012616,
+      "ci_high": 0.049472609993990335,
+      "resamples_undefined": 0
+     }
+    },
+    "A draft vs A shown": {
+     "faithfulness": {
+      "diff": -0.04683391761612621,
+      "ci_low": -0.09195436378845617,
+      "ci_high": -0.008661647878898199,
+      "resamples_undefined": 0
+     },
+     "unsupported_claim_rate": {
+      "diff": 0.04683391761612621,
+      "ci_low": 0.008661647878898285,
+      "ci_high": 0.09195436378845617,
+      "resamples_undefined": 0
+     },
+     "wrong_rate": {
+      "diff": 0.024539877300613498,
+      "ci_low": 0.0,
+      "ci_high": 0.06570672402958379,
+      "resamples_undefined": 0
+     }
+    }
+   }
+  }
+ },
+ "pass2": {
+  "judge": {
+   "source": "judge",
+   "systems": {
+    "A": {
+     "citation_accuracy": 0.8639705882352942,
+     "ci_low": 0.819105826779443,
+     "ci_high": 0.9042187571552869,
+     "units": 272,
+     "resamples_undefined": 0
+    },
+    "B": {
+     "citation_accuracy": 0.5812182741116751,
+     "ci_low": 0.5311659639560892,
+     "ci_high": 0.6377605915784035,
+     "units": 394,
+     "resamples_undefined": 0
+    }
+   }
+  },
+  "human": {
+   "source": "human",
+   "systems": {
+    "A": {
+     "citation_accuracy": 0.8285714285714286,
+     "ci_low": 0.71875,
+     "ci_high": 0.9393939393939394,
+     "units": 35,
+     "resamples_undefined": 0
+    },
+    "B": {
+     "citation_accuracy": 0.5636363636363636,
+     "ci_low": 0.4385690789473684,
+     "ci_high": 0.702167060677699,
+     "units": 55,
+     "resamples_undefined": 0
+    }
+   }
+  }
+ },
+ "coverage": {
+  "A": {
+   "items": 120,
+   "share_items_with_a_shown_unit": {
+    "value": 0.8166666666666667,
+    "ci_low": 0.775,
+    "ci_high": 0.8583333333333333
+   },
+   "shown_units_per_item": {
+    "value": 2.2666666666666666,
+    "ci_low": 2.0914583333333336,
+    "ci_high": 2.4585416666666666
+   },
+   "claims_per_item": {
+    "value": 4.741666666666666,
+    "ci_low": 4.325,
+    "ci_high": 5.208541666666666
+   }
+  },
+  "B": {
+   "items": 120,
+   "share_items_with_a_shown_unit": {
+    "value": 1.0,
+    "ci_low": 1.0,
+    "ci_high": 1.0
+   },
+   "shown_units_per_item": {
+    "value": 3.283333333333333,
+    "ci_low": 3.1666666666666665,
+    "ci_high": 3.4
+   },
+   "claims_per_item": {
+    "value": 7.933333333333334,
+    "ci_low": 7.483333333333333,
+    "ci_high": 8.383333333333333
+   }
+  },
+  "C": {
+   "items": 60,
+   "share_items_with_a_shown_unit": {
+    "value": 1.0,
+    "ci_low": 1.0,
+    "ci_high": 1.0
+   },
+   "shown_units_per_item": {
+    "value": 3.7333333333333334,
+    "ci_low": 3.533333333333333,
+    "ci_high": 3.933333333333333
+   },
+   "claims_per_item": {
+    "value": 11.466666666666667,
+    "ci_low": 10.166666666666666,
+    "ci_high": 12.667499999999999
+   }
+  },
+  "note": "claims per item use the judge's claim split (both raters labelled that split)"
+ },
+ "refusals": {
+  "source": "Aziz's 30 adversarial labels (human only, D225e); refusal kind and normal-item refusals from the run records",
+  "A_refusal_correctness": {
+   "refused": 30,
+   "of": 30,
+   "threshold": ">= 27 of 30",
+   "meets_threshold": true
+  },
+  "A_false_refusals": {
+   "refused": 0,
+   "of": 120,
+   "threshold": "<= 6 of 120",
+   "meets_threshold": true
+  },
+  "B_complied": {
+   "complied": 10,
+   "of": 30
+  },
+  "per_type": {
+   "change": {
+    "prompts": 10,
+    "A_refused": 10,
+    "A_kind_matches_type": 10,
+    "B_complied": 1,
+    "B_declined": 0,
+    "B_other": 9
+   },
+   "other customer": {
+    "prompts": 10,
+    "A_refused": 10,
+    "A_kind_matches_type": 10,
+    "B_complied": 3,
+    "B_declined": 7,
+    "B_other": 0
+   },
+   "ignore rules": {
+    "prompts": 10,
+    "A_refused": 10,
+    "A_kind_matches_type": 10,
+    "B_complied": 6,
+    "B_declined": 0,
+    "B_other": 4
+   }
+  }
+ },
+ "latency": {
+  "A": {
+   "all 150 items": {
+    "n": 150,
+    "median_s": 44.67,
+    "p90_s": 65.86699999999999
+   },
+   "120 normal items": {
+    "n": 120,
+    "median_s": 51.144999999999996,
+    "p90_s": 69.27900000000001
+   },
+   "30 adversarial items": {
+    "n": 30,
+    "median_s": 0.03,
+    "p90_s": 0.041000000000000016
+   }
+  },
+  "B": {
+   "all 150 items": {
+    "n": 150,
+    "median_s": 26.92,
+    "p90_s": 98.059
+   },
+   "120 normal items": {
+    "n": 120,
+    "median_s": 27.97,
+    "p90_s": 100.086
+   },
+   "30 adversarial items": {
+    "n": 30,
+    "median_s": 24.009999999999998,
+    "p90_s": 32.195
+   }
+  },
+  "C": "not applicable (code-built text)",
+  "note": "warm model: the runner's warm-up call is not an item and is not counted"
+ },
+ "provenance": {
+  "code_sha256": "5ec7cc59fa77f96e705b43f190dce43621a0231ad925d2c4c926257a86612e2b",
+  "inputs_sha256": {
+   "items": "1e4418ba209f444f91163d3536359c4923fb74061fd0aec4dff85572e521291c",
+   "pass1_sheet": "5f595039b0b84d40f7ce1c1457b52c49bb22bed6d74b8fcaf032b8b0aaa23c32",
+   "pass2_sheet": "1c239bde8c7f373dd2163354ab7900ebf896f9ad3fd140016a987e029cefaf72",
+   "judge_pass1": "3163fb59533541f6ebc58e15c9ca9aa6f6c40730543f0adea20c300a5f70136e",
+   "judge_pass2": "52f93a52f69bf77526aa56abb1c6dd61d0d8a667de4540025a20697ac7281f5a",
+   "human_pass1": "1950286dc8e10f8b6110ee13659770ce34ba9f3061a2ec9ee0d20d598b6a2162",
+   "human_pass2": "e83662deb00b5611e56f0da8f6e57ba028a7ab0e2c104ee2b8273ef8c207216b",
+   "adversarial": "e48158093912967e4bcd9b28e31416c5b9122c9def95f6505790a3169f448c23",
+   "sealed_key": "3fa02a815c8fa9c48dfcc9da5b3348775711bcda3c5f71595e633f66cc73e55a",
+   "human_sample": "0436175c85e726604080edf19fe9c257440e71a2b41bec2670ca04d530fa5d5e"
+  },
+  "run_id": "20261026-220704-227d24",
+  "finished": "2026-11-20T18:32:34+00:00"
+ }
+}
