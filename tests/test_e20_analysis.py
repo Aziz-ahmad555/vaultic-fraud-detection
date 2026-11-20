@@ -275,3 +275,85 @@ def test_the_markdown_tables_render_for_either_primary_label_set(flip):
     primary = "human" if flip else "judge"
     assert f"## Pass-1 metrics, {primary} labels (PRIMARY)" in md
     assert md.count("(PRIMARY)") == 1 + 2  # one pass-1 table, two pass-2 rows (A and B)
+
+
+def _with_c_faithfulness(d: dict, supported: int, total: int) -> dict:
+    """Give every C unit `total` claims, `supported` of them S (A on Q1/Q4 stays at 0.5)."""
+    for uid, k in d["key"].items():
+        if k["system"] == "C":
+            labels = ["S"] * supported + ["U"] * (total - supported)
+            d["judge1"][uid].update(
+                claims=[f"c{i}" for i in range(total)], labels=labels, lines=[[]] * total
+            )
+            row = next(r for r in d["human1"] if r["unit id"] == uid)
+            d["human1"] = [r for r in d["human1"] if r["unit id"] != uid] + [
+                {**row, "claim no": str(i), "label": lab} for i, lab in enumerate(labels, 1)
+            ]  # Aziz's mocked labels follow the judge's new split
+    return d
+
+
+@pytest.mark.parametrize(("supported", "diff", "expect"), [(11, -0.05, True), (13, -0.15, False)])
+def test_h8d_is_supported_only_when_the_whole_ci_is_above_the_minus_010_margin(
+    supported, diff, expect
+):
+    """D225p (b7): an A - C difference between -0.10 and 0 passes the non-inferiority test (A may be a
+    little worse than C), one below -0.10 does not."""
+    r = an.analyse(_with_c_faithfulness(_data(), supported, 20), CFG)
+    t = {x["hypothesis"]: x for x in r["primary"]["tests"]["tests"]}["H8d"]
+    assert t["diff_A_minus_other"] == pytest.approx(diff)
+    assert t["ci_low"] == pytest.approx(diff) and t["ci_high"] == pytest.approx(
+        diff
+    )  # equal rates per case
+    assert t["null_boundary"] == -0.10 and t["p_one_sided"] == (0.0 if expect else 1.0)
+    assert t["supported"] is expect
+
+
+def test_the_addendum_confusion_tables_empty_items_and_pass2_sample_check():
+    from vaultic.eval import e20_addendum as ad
+
+    d = _data()
+    first = next(r for r in d["items"] if r["system"] == "A" and r["slot"] == "Q2")
+    first["removed"] = [
+        {"text": "x", "why": "y"},
+        {"text": "z", "why": "y"},
+    ]  # emptied by the checker
+    r = ad.addendum(d)
+    conf = r["per_system_confusion"]
+    assert set(conf["pass1"]) == {"A shown", "A removed", "B", "C"} and set(conf["pass2"]) == {
+        "A",
+        "B",
+    }
+    assert conf["pass1"]["A shown"]["confusion"]["judge S"]["human S"] == 4  # one S claim per case
+    assert (
+        sum(sum(row.values()) for row in conf["pass1"]["B"]["confusion"].values())
+        == conf["pass1"]["B"]["n"]
+        == 12
+    )
+    q2 = r["a_empty_items"]["per_question"]["Q2"]
+    assert q2 == {
+        "items": 4,
+        "empty": 4,
+        "emptied_by_checker": 1,
+        "nothing_drafted": 3,
+        "facts_removed_in_emptied_items": 2,
+    }
+    assert (
+        r["a_empty_items"]["per_question"]["Q1"]["empty"] == 0
+        and r["a_empty_items"]["total"]["empty"] == 12
+    )
+    assert (
+        r["pass2_sample_check"]["equal"] is False and r["pass2_sample_check"]["extra"]
+    )  # nothing drawn in _data
+    d["sample"]["pass2"]["units"] = {"1": [x["unit id"] for x in d["human2"]]}
+    assert ad.pass2_sample_check(d)["equal"] is True
+    assert "## A's empty normal items" in ad.markdown(r)
+
+
+def test_the_frozen_analysis_module_is_unchanged_since_final_started():
+    """D225p: the review fixes leave e20_analysis.py exactly as at a9d2f34 (FINAL-STARTED D225n)."""
+    from vaultic.eval.e20 import lf_sha256
+
+    assert (
+        lf_sha256(Path(an.__file__))
+        == "5ec7cc59fa77f96e705b43f190dce43621a0231ad925d2c4c926257a86612e2b"
+    )
