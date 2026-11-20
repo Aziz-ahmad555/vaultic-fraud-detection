@@ -238,3 +238,84 @@ Checker effect (descriptive, differences with 95% CI, no test):
 | B | 120 normal items | 120 | 28.0 | 100.1 |
 | B | 30 adversarial items | 30 | 24.0 | 32.2 |
 | C | - | - | not applicable | not applicable |
+
+# Addendum (D225p)
+
+Added on 2026-11-21, **after** the final analysis and its independent review.
+- **Descriptive only:** not pre-registered, not tested and not used for any decision.
+- **Frozen code untouched:** the frozen analysis module (`a9d2f34`, sha256 `5ec7cc59…`) is unchanged. The
+  addendum script (`python -m vaultic.eval.e20_addendum`) reads the same verified inputs through that
+  module's loader.
+- **Outputs:** `research/tables/e20/addendum/e20_addendum.json` and `e20_addendum.md`, reproduced below.
+
+**Reading notes:**
+- **Removed units:** where the judge and Aziz differ on A's removed units, the judge said S and Aziz said W or
+  U on 4 claims, against 1 claim the other way. Aziz therefore found the removed facts less supported than
+  the judge did, which is why the checker effect on his sample is larger (see b1 in the summary).
+- **Pass 2, B:** the disagreement goes both ways: 9 units judge Y / Aziz N and 14 units judge N / Aziz Y.
+- **A's empty normal items:** 22 of 120. 17 were emptied by the checker (49 drafted facts removed) and 5 had
+  nothing drafted. 15 of the 17 emptied items are Q3 ("Has this customer done something like this
+  before?"). This is the content cost of the checker: 17 items show nothing although the model had drafted
+  facts.
+- **Pass-2 sample check:** the 90 units Aziz labelled are exactly the 90 drawn units. The frozen module
+  checks this for pass 1 only.
+
+### Per-system confusion (rows judge, columns Aziz)
+
+pass1, A removed (n = 51):
+
+| | human S | human U | human W |
+|---|---|---|---|
+| judge S | 41 | 1 | 3 |
+| judge U | 0 | 4 | 0 |
+| judge W | 1 | 0 | 1 |
+
+pass1, A shown (n = 112):
+
+| | human S | human U | human W |
+|---|---|---|---|
+| judge S | 108 | 0 | 0 |
+| judge U | 1 | 3 | 0 |
+| judge W | 0 | 0 | 0 |
+
+pass1, B (n = 139):
+
+| | human S | human U | human W |
+|---|---|---|---|
+| judge S | 108 | 1 | 1 |
+| judge U | 5 | 19 | 3 |
+| judge W | 1 | 1 | 0 |
+
+pass1, C (n = 66):
+
+| | human S | human U | human W |
+|---|---|---|---|
+| judge S | 59 | 3 | 1 |
+| judge U | 1 | 2 | 0 |
+| judge W | 0 | 0 | 0 |
+
+pass2, A (n = 35):
+
+| | human Y | human N |
+|---|---|---|
+| judge Y | 27 | 4 |
+| judge N | 2 | 2 |
+
+pass2, B (n = 55):
+
+| | human Y | human N |
+|---|---|---|
+| judge Y | 17 | 9 |
+| judge N | 14 | 15 |
+
+### A's empty normal items, per question
+
+| question | items | empty | emptied by the checker | nothing drafted | facts removed in emptied items |
+|---|---|---|---|---|---|
+| Q1 | 30 | 2 | 2 | 0 | 6 |
+| Q2 | 30 | 0 | 0 | 0 | 0 |
+| Q3 | 30 | 20 | 15 | 5 | 43 |
+| Q4 | 30 | 0 | 0 | 0 | 0 |
+| total | 120 | 22 | 17 | 5 | 49 |
+
+Pass-2 sample check: 90 labelled units, 90 drawn; equal: True.

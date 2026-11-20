@@ -1,0 +1,179 @@
+{
+ "decision": "D225p",
+ "status": "descriptive only; added after the final analysis and its review; not pre-registered, not tested, not used for any decision",
+ "per_system_confusion": {
+  "pass1": {
+   "A removed": {
+    "n": 51,
+    "confusion": {
+     "judge S": {
+      "human S": 41,
+      "human U": 1,
+      "human W": 3
+     },
+     "judge U": {
+      "human S": 0,
+      "human U": 4,
+      "human W": 0
+     },
+     "judge W": {
+      "human S": 1,
+      "human U": 0,
+      "human W": 1
+     }
+    }
+   },
+   "A shown": {
+    "n": 112,
+    "confusion": {
+     "judge S": {
+      "human S": 108,
+      "human U": 0,
+      "human W": 0
+     },
+     "judge U": {
+      "human S": 1,
+      "human U": 3,
+      "human W": 0
+     },
+     "judge W": {
+      "human S": 0,
+      "human U": 0,
+      "human W": 0
+     }
+    }
+   },
+   "B": {
+    "n": 139,
+    "confusion": {
+     "judge S": {
+      "human S": 108,
+      "human U": 1,
+      "human W": 1
+     },
+     "judge U": {
+      "human S": 5,
+      "human U": 19,
+      "human W": 3
+     },
+     "judge W": {
+      "human S": 1,
+      "human U": 1,
+      "human W": 0
+     }
+    }
+   },
+   "C": {
+    "n": 66,
+    "confusion": {
+     "judge S": {
+      "human S": 59,
+      "human U": 3,
+      "human W": 1
+     },
+     "judge U": {
+      "human S": 1,
+      "human U": 2,
+      "human W": 0
+     },
+     "judge W": {
+      "human S": 0,
+      "human U": 0,
+      "human W": 0
+     }
+    }
+   }
+  },
+  "pass2": {
+   "A": {
+    "n": 35,
+    "confusion": {
+     "judge Y": {
+      "human Y": 27,
+      "human N": 4
+     },
+     "judge N": {
+      "human Y": 2,
+      "human N": 2
+     }
+    }
+   },
+   "B": {
+    "n": 55,
+    "confusion": {
+     "judge Y": {
+      "human Y": 17,
+      "human N": 9
+     },
+     "judge N": {
+      "human Y": 14,
+      "human N": 15
+     }
+    }
+   }
+  }
+ },
+ "a_empty_items": {
+  "per_question": {
+   "Q1": {
+    "items": 30,
+    "empty": 2,
+    "emptied_by_checker": 2,
+    "nothing_drafted": 0,
+    "facts_removed_in_emptied_items": 6
+   },
+   "Q2": {
+    "items": 30,
+    "empty": 0,
+    "emptied_by_checker": 0,
+    "nothing_drafted": 0,
+    "facts_removed_in_emptied_items": 0
+   },
+   "Q3": {
+    "items": 30,
+    "empty": 20,
+    "emptied_by_checker": 15,
+    "nothing_drafted": 5,
+    "facts_removed_in_emptied_items": 43
+   },
+   "Q4": {
+    "items": 30,
+    "empty": 0,
+    "emptied_by_checker": 0,
+    "nothing_drafted": 0,
+    "facts_removed_in_emptied_items": 0
+   }
+  },
+  "total": {
+   "items": 120,
+   "empty": 22,
+   "emptied_by_checker": 17,
+   "nothing_drafted": 5,
+   "facts_removed_in_emptied_items": 49
+  }
+ },
+ "pass2_sample_check": {
+  "drawn": 90,
+  "labelled": 90,
+  "equal": true,
+  "missing": [],
+  "extra": []
+ },
+ "provenance": {
+  "code_sha256": "c11c4ce25e1f1260d78d038ad09d74f27875444388c7583fed433f4960c95bac",
+  "frozen_analysis_sha256": "5ec7cc59fa77f96e705b43f190dce43621a0231ad925d2c4c926257a86612e2b",
+  "inputs_sha256": {
+   "items": "1e4418ba209f444f91163d3536359c4923fb74061fd0aec4dff85572e521291c",
+   "pass1_sheet": "5f595039b0b84d40f7ce1c1457b52c49bb22bed6d74b8fcaf032b8b0aaa23c32",
+   "pass2_sheet": "1c239bde8c7f373dd2163354ab7900ebf896f9ad3fd140016a987e029cefaf72",
+   "judge_pass1": "3163fb59533541f6ebc58e15c9ca9aa6f6c40730543f0adea20c300a5f70136e",
+   "judge_pass2": "52f93a52f69bf77526aa56abb1c6dd61d0d8a667de4540025a20697ac7281f5a",
+   "human_pass1": "1950286dc8e10f8b6110ee13659770ce34ba9f3061a2ec9ee0d20d598b6a2162",
+   "human_pass2": "e83662deb00b5611e56f0da8f6e57ba028a7ab0e2c104ee2b8273ef8c207216b",
+   "adversarial": "e48158093912967e4bcd9b28e31416c5b9122c9def95f6505790a3169f448c23",
+   "sealed_key": "3fa02a815c8fa9c48dfcc9da5b3348775711bcda3c5f71595e633f66cc73e55a",
+   "human_sample": "0436175c85e726604080edf19fe9c257440e71a2b41bec2670ca04d530fa5d5e"
+  },
+  "finished": "2026-11-20T19:14:08+00:00"
+ }
+}
