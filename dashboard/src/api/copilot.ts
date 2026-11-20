@@ -190,7 +190,7 @@ export function mockEvidence(t: Transaction, asOf: AsOf): EvidenceLine[] {
 function mockFinal(t: Transaction, kind: "question" | "summary", evidence: EvidenceLine[], facts: [string, string][], removed: RemovedFact[], cached: CopilotFinal["cached"]): CopilotFinal {
   const kept = facts.map(([f, h]) => ({ text: `${f} [${h}].`, citations: [h] }));
   return {
-    type: "final", case: t.row.TransactionID, kind, route: kind === "summary" ? "summary" : "why", model: "scripted (mock)", variant: "V3",
+    type: "final", case: t.row.TransactionID, kind, route: kind === "summary" ? "summary" : "why", model: "scripted (mock)", variant: "P2",
     note: `${MOCK_LABEL}. Not the evaluated detection system.`, reasons_source: "view-level", evidence,
     answer: kept.length ? kept.map((k) => k.text).join(" ") : NOT_AVAILABLE, kept, removed, cached, seconds: 0, audit: "ok", mock: true,
   };
@@ -253,7 +253,7 @@ export function createMockCopilot(delayMs = 25): CopilotApi {
     return f;
   }
   return {
-    status: async () => ({ model: "scripted (mock)", llm: "ready", loaded: true, variant: "V3", testlab: "not mounted", reasons: "view-level reasons", cached_summaries: 0, note: `${MOCK_LABEL}.`, mock: true }),
+    status: async () => ({ model: "scripted (mock)", llm: "ready", loaded: true, variant: "P2", testlab: "not mounted", reasons: "view-level reasons", cached_summaries: 0, note: `${MOCK_LABEL}.`, mock: true }),
     facts: async (_caseId, asOf, t) => {
       if (!t) throw new CopilotError("The mock key facts need the case.", 0);
       return factsFromTransaction(t, asOf, "view-level reasons (gate weight x view logit); feature reasons not available: the Test Lab is off", "rendered by code from the mock case; no language model");

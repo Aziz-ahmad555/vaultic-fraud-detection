@@ -1,0 +1,226 @@
+{
+ "rule": "D227b / D227c",
+ "config": "experiments/configs/EXP-320.yaml",
+ "estimate": "tokens_est = ceil(prompt_chars / 3) (conservative; no token-count endpoint)",
+ "longest_prompt_used": "Which entities or customers is this case linked to, and with what known fraud?",
+ "num_ctx": 4096,
+ "output_cap": 260,
+ "chat_template_allowance": 30,
+ "max_tokens_est": 1209,
+ "max_total_with_allowance_and_cap": 1499,
+ "margin_vs_num_ctx": 2597,
+ "stop_line_tokens": 3800,
+ "any_over_stop_line": false,
+ "cases": [
+  {
+   "case": 1,
+   "TransactionID": 3507561,
+   "evidence_lines": 24,
+   "prompt_chars": 2950,
+   "tokens_est": 984
+  },
+  {
+   "case": 2,
+   "TransactionID": 3524612,
+   "evidence_lines": 28,
+   "prompt_chars": 3545,
+   "tokens_est": 1182
+  },
+  {
+   "case": 3,
+   "TransactionID": 3536547,
+   "evidence_lines": 22,
+   "prompt_chars": 2894,
+   "tokens_est": 965
+  },
+  {
+   "case": 4,
+   "TransactionID": 3540459,
+   "evidence_lines": 28,
+   "prompt_chars": 3447,
+   "tokens_est": 1149
+  },
+  {
+   "case": 5,
+   "TransactionID": 3564634,
+   "evidence_lines": 21,
+   "prompt_chars": 2521,
+   "tokens_est": 841
+  },
+  {
+   "case": 6,
+   "TransactionID": 3491511,
+   "evidence_lines": 27,
+   "prompt_chars": 3474,
+   "tokens_est": 1158
+  },
+  {
+   "case": 7,
+   "TransactionID": 3524528,
+   "evidence_lines": 29,
+   "prompt_chars": 3557,
+   "tokens_est": 1186
+  },
+  {
+   "case": 8,
+   "TransactionID": 3530327,
+   "evidence_lines": 21,
+   "prompt_chars": 2545,
+   "tokens_est": 849
+  },
+  {
+   "case": 9,
+   "TransactionID": 3549424,
+   "evidence_lines": 25,
+   "prompt_chars": 3090,
+   "tokens_est": 1030
+  },
+  {
+   "case": 10,
+   "TransactionID": 3570979,
+   "evidence_lines": 25,
+   "prompt_chars": 3006,
+   "tokens_est": 1002
+  },
+  {
+   "case": 11,
+   "TransactionID": 3497035,
+   "evidence_lines": 22,
+   "prompt_chars": 2641,
+   "tokens_est": 881
+  },
+  {
+   "case": 12,
+   "TransactionID": 3523009,
+   "evidence_lines": 23,
+   "prompt_chars": 2880,
+   "tokens_est": 960
+  },
+  {
+   "case": 13,
+   "TransactionID": 3537223,
+   "evidence_lines": 24,
+   "prompt_chars": 3004,
+   "tokens_est": 1002
+  },
+  {
+   "case": 14,
+   "TransactionID": 3566575,
+   "evidence_lines": 22,
+   "prompt_chars": 2621,
+   "tokens_est": 874
+  },
+  {
+   "case": 15,
+   "TransactionID": 3571178,
+   "evidence_lines": 21,
+   "prompt_chars": 2534,
+   "tokens_est": 845
+  },
+  {
+   "case": 16,
+   "TransactionID": 3517111,
+   "evidence_lines": 29,
+   "prompt_chars": 3627,
+   "tokens_est": 1209
+  },
+  {
+   "case": 17,
+   "TransactionID": 3535596,
+   "evidence_lines": 25,
+   "prompt_chars": 3184,
+   "tokens_est": 1062
+  },
+  {
+   "case": 18,
+   "TransactionID": 3542117,
+   "evidence_lines": 22,
+   "prompt_chars": 2629,
+   "tokens_est": 877
+  },
+  {
+   "case": 19,
+   "TransactionID": 3543519,
+   "evidence_lines": 29,
+   "prompt_chars": 3560,
+   "tokens_est": 1187
+  },
+  {
+   "case": 20,
+   "TransactionID": 3571124,
+   "evidence_lines": 27,
+   "prompt_chars": 3420,
+   "tokens_est": 1140
+  },
+  {
+   "case": 21,
+   "TransactionID": 3509753,
+   "evidence_lines": 26,
+   "prompt_chars": 3277,
+   "tokens_est": 1093
+  },
+  {
+   "case": 22,
+   "TransactionID": 3528982,
+   "evidence_lines": 26,
+   "prompt_chars": 3464,
+   "tokens_est": 1155
+  },
+  {
+   "case": 23,
+   "TransactionID": 3565346,
+   "evidence_lines": 28,
+   "prompt_chars": 3549,
+   "tokens_est": 1183
+  },
+  {
+   "case": 24,
+   "TransactionID": 3572504,
+   "evidence_lines": 28,
+   "prompt_chars": 3553,
+   "tokens_est": 1185
+  },
+  {
+   "case": 25,
+   "TransactionID": 3577221,
+   "evidence_lines": 28,
+   "prompt_chars": 3553,
+   "tokens_est": 1185
+  },
+  {
+   "case": 26,
+   "TransactionID": 3513829,
+   "evidence_lines": 22,
+   "prompt_chars": 2617,
+   "tokens_est": 873
+  },
+  {
+   "case": 27,
+   "TransactionID": 3557916,
+   "evidence_lines": 25,
+   "prompt_chars": 3147,
+   "tokens_est": 1049
+  },
+  {
+   "case": 28,
+   "TransactionID": 3560514,
+   "evidence_lines": 25,
+   "prompt_chars": 3125,
+   "tokens_est": 1042
+  },
+  {
+   "case": 29,
+   "TransactionID": 3562094,
+   "evidence_lines": 27,
+   "prompt_chars": 3413,
+   "tokens_est": 1138
+  },
+  {
+   "case": 30,
+   "TransactionID": 3572974,
+   "evidence_lines": 28,
+   "prompt_chars": 3565,
+   "tokens_est": 1189
+  }
+ ]
+}
