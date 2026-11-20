@@ -1,4 +1,4 @@
-# Pre-registration: E20, copilot evaluation (D225, amended by D225a, D225b, D225c, D225d, D225e, D225f and D225j)
+# Pre-registration: E20, copilot evaluation (D225, amended by D225a, D225b, D225c, D225d, D225e, D225f, D225g, D225h, D225i, D225j, D225k, D225l, D225m and D225p)
 
 Written 2026-10-26 on branch `e20` from `phase0-1` at `c9d8806` (the copilot merge, PR #14), before
 any E20 generation. Nothing in this file has been run. It fixes the system, the cases, the items, the
@@ -64,6 +64,19 @@ The guide, metrics, hypotheses and run rules are unchanged. The procedure is in 
 - **Pass 2:** D225e (5) and (6) and the seeds are confirmed by Aziz.
 
 The prompts of section 11.2 are updated to match.
+
+**Amendments and declared deviations after D225f** (each logged alone in `research/decisions.md`; recorded
+here after the final analysis and its review, D225p):
+- **D225g:** the pass-1 judge made two desktop-app interface calls (no files, no labels); a declared
+  deviation.
+- **D225h / D225l:** locked labelling workbooks with the CSVs' checks.
+- **D225i:** two more tools denied for the pass-2 judge.
+- **D225j:** pass-2 case 8 redone by the rule of 11.1 step 4, with the redo line in 11.2.
+- **D225k:** that redo ran in Auto mode (a declared deviation; access unchanged).
+- **D225m:** analysis details fixed before the key was opened. Outputs go to `research/tables/e20/` instead of
+  `research/tables/copilot/` (section 8).
+- **D225n / D225o:** FINAL-STARTED / FINAL-COMPLETED.
+- **D225p:** a descriptive post-review addendum. It is not part of the pre-registered analysis.
 
 ## 1. The frozen system
 
