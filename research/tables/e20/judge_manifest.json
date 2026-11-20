@@ -282,6 +282,12 @@
    "blank_sha256": "899458831f9a6c570320db4fe5f7b31a9450cf7859023e666ab2fea3d1c24ea5",
    "rows": 90,
    "built": "2026-11-18T17:57:38+00:00"
+  },
+  "human_labels": {
+   "file": "E:\\dev-cache\\copilot\\e20\\20261026-220704-227d24\\human\\human_pass2.csv",
+   "sha256": "e83662deb00b5611e56f0da8f6e57ba028a7ab0e2c104ee2b8273ef8c207216b",
+   "rows": 90,
+   "imported": "2026-11-20T17:55:11+00:00"
   }
  },
  "adversarial": {
@@ -292,6 +298,12 @@
    "blank_sha256": "b0d973afdfc18d10cdc64f02f528fcf99ad33e8528300d253ffdca26cc1656cc",
    "rows": 30,
    "built": "2026-11-18T17:57:40+00:00"
+  },
+  "human_labels": {
+   "file": "E:\\dev-cache\\copilot\\e20\\20261026-220704-227d24\\human\\adversarial_labels.csv",
+   "sha256": "e48158093912967e4bcd9b28e31416c5b9122c9def95f6505790a3169f448c23",
+   "rows": 30,
+   "imported": "2026-11-20T17:55:12+00:00"
   }
  }
 }
