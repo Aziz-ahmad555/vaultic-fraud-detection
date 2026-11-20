@@ -8,9 +8,9 @@ anonymized e-commerce transactions released by Vesta for the IEEE-CIS competitio
 | Run | `20261026-220704-227d24` (generation at `6142cf2`, 330 items: A 150, B 150, C 30; 0 failed) |
 | Analysis | `python -m vaultic.eval.e20_analysis --final`, code at `a9d2f34` (sha256 `5ec7cc59…`) |
 | Started | FINAL-STARTED row D225n, `01bb283` |
-| Pre-registration | `research/preregistration_e20.md`, sections 6, 7 and 11 (D225, D225a-m) |
+| Pre-registration | `research/preregistration_e20.md`, sections 6, 7 and 11 (D225, amended by D225a-D225m; post-review addendum D225p) |
 | Sealed key | Opened only by that run, after its sha256 matched the value recorded at generation |
-| Full numbers | `research/tables/e20/e20_results.json`; the tables below are `research/tables/e20/e20_tables.md` verbatim |
+| Full numbers | `research/tables/e20/e20_results.json`; the tables below are `research/tables/e20/e20_tables.md` verbatim, except the H8c row label, corrected after review (D225p) |
 
 ## Which labels each metric uses (the pre-set rule, section 11.4)
 
@@ -39,6 +39,7 @@ anonymized e-commerce transactions released by Vesta for the IEEE-CIS competitio
      copilot (A) and **0.200** [0.177, 0.223] for the same model on raw text (B).
    - **Difference** A - B = -0.117 [-0.143, -0.090], Holm p < 0.001.
    - **Faithfulness (H8b: supported)** mirrors it: 0.917 vs 0.800.
+   - Read with coverage: A showed at least one fact on 82% of normal items (B 100%) and 4.74 claims per item (B 7.93).
    - **Wrong claims** are rare in both: 0.004 for A, 0.017 for B.
    - This is a **whole-system** comparison (tools, trimmed evidence, schema, checker and refusal rules
      against raw text); it does not say which part does the work.
@@ -52,10 +53,11 @@ anonymized e-commerce transactions released by Vesta for the IEEE-CIS competitio
    - **Faithfulness:** A 0.849 [0.812, 0.887] on those questions; C 0.945 [0.923, 0.963].
    - **Difference** A - C = -0.096 [-0.135, -0.052]. The lower bound is below the -0.10 margin; Holm
      p = 0.401.
-   - So the template is more faithful than the language model on these questions, and a loss larger than 0.10
-     cannot be ruled out.
-   - On Aziz's sample labels (secondary, not used for the decision) the same test would pass (+0.028
-     [-0.097, 0.153]). The primary result is the one above.
+   - C's faithfulness was higher (-0.096, CI excludes 0; descriptive, not a pre-registered test), and a loss
+     larger than 0.10 cannot be ruled out.
+   - **H8d depends on the label set:** on the judge's labels (primary) it is not supported; on Aziz's sample
+     labels (secondary, not used for the decision) it would be supported (+0.028 [-0.097, 0.153]). The primary
+     result is the one above.
 4. **Refusals met both pre-set thresholds (descriptive).**
    - **A** refused **30 of 30** adversarial prompts (threshold >= 27), and its refusal kind matched the prompt
      type in all 30.
@@ -72,10 +74,13 @@ anonymized e-commerce transactions released by Vesta for the IEEE-CIS competitio
      vs B gives faithfulness +0.113 [0.088, 0.139].
    - **The checker itself did not measurably improve faithfulness per claim** on the judge's labels: draft
      vs shown -0.004 [-0.021, 0.011].
-   - It removed 68 units (209 claims), and the judge labelled 0.904 of those claims as supported. It did
-     slightly lower the wrong rate: draft 0.012, shown 0.004, difference 0.008 [0.001, 0.016].
-   - On Aziz's sample the checker effect on faithfulness is larger (-0.047 [-0.092, -0.009]). The two label
-     sets disagree most on removed units (kappa 0.627 there).
+   - **Its two measured effects:**
+     - a lower wrong rate: draft 0.012, shown 0.004, difference 0.008 [0.001, 0.016];
+     - a content cost: it removed 68 units (209 claims), and the judge labelled 0.904 of those claims as
+       supported. It left 17 normal items with no fact although facts had been drafted (addendum).
+   - **On Aziz's sample the checker effect on faithfulness is larger:** draft minus shown = -0.047 [-0.092,
+     -0.009], so on his labels the shown facts were 0.047 more faithful than the draft.
+   - **Removed units have the lowest raw agreement** between the two label sets (0.902; kappa 0.627).
 7. **Latency (normal items).** A median **51.1 s** (90th percentile 69.3 s); B median 28.0 s (90th
    percentile 100.1 s). Both were warm, on one laptop CPU. A's refusals take no model call.
 
@@ -85,9 +90,13 @@ anonymized e-commerce transactions released by Vesta for the IEEE-CIS competitio
   They disagree on which units are accurate, mostly B's (kappa 0.169 on B, raw agreement 0.58). The
   pre-registered fallback therefore made the 90-unit human sample primary for H8c.
 - **The checker mostly removed supported claims.** By the judge's labels, the removed units were 90%
-  supported per claim, so the checker cost content without a measurable faithfulness gain. This matches the
-  limit stated in D225d: true facts about earlier transactions can be removed by the conservative rule.
-- **The template beat the language model on Q1 and Q4**, by about 0.10 in faithfulness.
+  supported per claim, so on those labels the checker gave no measurable per-claim faithfulness gain.
+  - **Its two measured effects:** a lower wrong rate (0.008 [0.001, 0.016]) and a content cost (68 units, 209
+    claims removed; 17 items left empty, 15 of them Q3).
+  - **Possible cause:** this is consistent with the limit stated in D225d (true facts about earlier
+    transactions can be removed by the conservative history rule; not checked).
+- **On Q1 and Q4, C's faithfulness was higher** (-0.096, CI excludes 0; descriptive, not a pre-registered
+  test).
 - **Per-system agreement on pass 1 was lowest for C** (kappa 0.412, raw agreement 0.924). That is a kappa
   effect of nearly all claims being S, not of frequent disagreement.
 
@@ -102,11 +111,34 @@ anonymized e-commerce transactions released by Vesta for the IEEE-CIS competitio
 - **Small study:** 30 cases, one generation each, on one laptop CPU, with the Test Lab off (view-level
   reasons only).
 - **B gets more evidence than A**, and A vs B is a whole-system comparison.
-- **H8c rests on 90 human-labelled units.**
-- **Declared deviations, none affecting access or labels:**
-  - D225g: two interface calls in the pass-1 judge session;
-  - D225j: the pass-2 case 8 was redone after an incomplete read;
-  - D225k: the redo ran in Auto mode.
+- **H8c rests on 90 human-labelled units** (35 A, 55 B).
+- **Small hold strata:** the bundle has 22 legit and 42 fraud holds.
+- **The checker does not check meaning** (negation, number words, phrasings outside its word lists). That is
+  exactly what the labels measure.
+- **H8d depends on the label set:** not supported on the judge's labels (primary); supported on Aziz's
+  sample (secondary).
+- **Known gaps in the frozen analysis code, recorded and not changed:**
+  - it checks that Aziz's pass-1 units equal the drawn sample, but not his pass-2 units. The addendum checks
+    pass 2: equal.
+  - its FINAL-STARTED guard reads `decisions.md` from the working tree, not from the pushed commit. In this
+    run the row was pushed (`01bb283`) before the key was opened.
+- **Deviations from and amendments to the pre-registration after generation**, each logged alone in
+  `research/decisions.md`:
+  - **D225e / D225f:** labelling changed to an LLM judge plus human validation, with the judge's isolation
+    and tooling; before any labelling.
+  - **D225g:** two desktop-app interface calls in the pass-1 judge session. They touched no files and held
+    no labels; accepted as a declared deviation.
+  - **D225h / D225l:** locked labelling workbooks for Aziz's samples and the adversarial sheet, with the
+    same checks as the CSVs.
+  - **D225i:** two more tools denied for the pass-2 judge before it ran.
+  - **D225j:** pass-2 case 8 was incomplete (2 of 23 units) after a truncated read, and was redone in a
+    fresh session by the pre-set rule.
+  - **D225k:** that redo ran in Auto mode instead of Ask. The deny rule was in force and access was
+    unchanged.
+  - **D225m:** analysis details fixed before the key was opened, including the **output path**:
+    `research/tables/e20/` instead of `research/tables/copilot/` as named in section 8.
+  - **D225n / D225o:** FINAL-STARTED / FINAL-COMPLETED.
+  - **D225p:** this post-review addendum and the wording fixes.
 
   An accidental session opened in the wrong folder read and wrote nothing (recorded in the manifest).
 
@@ -195,7 +227,7 @@ Checker effect (descriptive, differences with 95% CI, no test):
 |---|---|---|---|---|---|
 | H8 | unsupported-claim rate, A vs B (120 normal items, per claim) | -0.117 [-0.143, -0.090] | < 0.001 | < 0.001 | yes |
 | H8b | faithfulness, A vs B (120 normal items, per claim) | 0.117 [0.090, 0.143] | < 0.001 | < 0.001 | yes |
-| H8c | citation accuracy, A vs B (120 normal items, per unit) | 0.265 [0.085, 0.427] | 0.002 | 0.004 | yes |
+| H8c | citation accuracy, A vs B (Aziz's 90-unit sample: 35 A, 55 B units; per unit) | 0.265 [0.085, 0.427] | 0.002 | 0.004 | yes |
 | H8d | faithfulness, A vs C on Q1 and Q4 (60 items, per claim), non-inferiority margin 0.10 | -0.096 [-0.135, -0.052] | 0.401 | 0.401 | no |
 
 ### Same tests on the other label sets (secondary, not used for decisions)
@@ -251,7 +283,7 @@ Added on 2026-11-21, **after** the final analysis and its independent review.
 **Reading notes:**
 - **Removed units:** where the judge and Aziz differ on A's removed units, the judge said S and Aziz said W or
   U on 4 claims, against 1 claim the other way. Aziz therefore found the removed facts less supported than
-  the judge did, which is why the checker effect on his sample is larger (see b1 in the summary).
+  the judge did, which is why the checker effect on his sample is larger (summary, item 6).
 - **Pass 2, B:** the disagreement goes both ways: 9 units judge Y / Aziz N and 14 units judge N / Aziz Y.
 - **A's empty normal items:** 22 of 120. 17 were emptied by the checker (49 drafted facts removed) and 5 had
   nothing drafted. 15 of the 17 emptied items are Q3 ("Has this customer done something like this
