@@ -1,6 +1,7 @@
-"""The acting analyst of an HTTP request (D208, D209): the dashboard sends a named analyst and a
-role with every request. They are self-declared by the browser and not authenticated (no sign-in
-until JWT): attribution, not proof. A request without them is recorded as 'unknown'."""
+"""The acting analyst of an HTTP request (D208, D209, D235). With login on (VAULTIC_AUTH=jwt) it is
+the logged-in user. In the no-login demo mode the dashboard sends a named analyst and a role with every
+request: self-declared by the browser and not authenticated, so attribution, not proof. A request
+without them is recorded as 'unknown'."""
 
 from __future__ import annotations
 
@@ -20,8 +21,16 @@ log = logging.getLogger("vaultic.audit")
 
 
 def actor_of(request, fallback_role: str | None = None) -> tuple[str | None, str | None]:
-    """(analyst, role) from the request headers. Header values are ASCII, so the dashboard
-    percent-encodes a non-ASCII name; it is decoded here ("Zo%C3%AB" -> "Zoë")."""
+    """(analyst, role) of a request. With login on (D235) it is the logged-in user, set by the auth
+    middleware, and the headers are ignored. In the no-login demo mode it comes from the request
+    headers; header values are ASCII, so the dashboard percent-encodes a non-ASCII name and it is
+    decoded here ("Zo%C3%AB" -> "Zoë")."""
+    state = getattr(request, "state", None)
+    identity = getattr(state, "identity", None) if state is not None else None
+    if identity:
+        return identity
+    if state is not None and getattr(state, "auth_mode", None) == "jwt":
+        return None, None  # login on but no user (a public route): never trust the headers
     headers = getattr(request, "headers", None) or {}
     name = headers.get(ANALYST_HEADER)
     if name and "%" in name:

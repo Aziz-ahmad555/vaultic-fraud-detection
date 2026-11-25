@@ -1,0 +1,7 @@
+{
+  "note": "Test users for the local demo (D235, Q9). Usernames and roles only: passwords are never committed. `python -m vaultic.infra.users seed` reads each password from .env (VAULTIC_SEED_PASSWORD_<USERNAME>) or generates one and prints it once.",
+  "users": [
+    {"username": "analyst1", "role": "analyst"},
+    {"username": "admin1", "role": "admin"}
+  ]
+}
