@@ -9,6 +9,7 @@
  * mock mode (the default) uses a scripted copilot built from the mock case: no Ollama.
  */
 import { DATA_SOURCE } from "./index";
+import { withAuth } from "./auth";
 import { identityHeaders } from "./identity";
 import type { AsOf, Transaction } from "./types";
 
@@ -146,6 +147,8 @@ export async function readStream(res: Response, onEvent: (e: CopilotEvent) => vo
 }
 
 export function createHttpCopilot(baseUrl = "http://127.0.0.1:8000", fetchImpl: Fetch = fetch): CopilotApi {
+  // with login on, a 401 gets one silent refresh and one retry (D235)
+  fetchImpl = withAuth(fetchImpl);
   const base = baseUrl.replace(/\/$/, "");
   async function send(path: string, init?: RequestInit): Promise<Response> {
     let res: Response;

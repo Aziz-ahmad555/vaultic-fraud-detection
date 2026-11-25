@@ -594,3 +594,31 @@
   color: var(--graphite);
   font-weight: normal;
 }
+
+/* login (D235): the login page, and the banner of the no-login demo mode */
+.demo-banner {
+  margin: 0;
+  padding: 2px var(--s-3);
+  border-bottom: 1px dashed var(--graphite);
+  background: var(--sheet);
+  color: var(--graphite);
+  text-align: center;
+}
+.login {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: var(--s-4) var(--s-3);
+}
+.login-form {
+  width: min(360px, 100%);
+}
+.login-form .pane-body {
+  display: grid;
+  gap: var(--s-3);
+}
+.login-error {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 600;
+}

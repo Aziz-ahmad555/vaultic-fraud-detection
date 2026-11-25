@@ -3,6 +3,7 @@
  * run live through the Test Lab engine. Synthetic scenario - not the evaluation. Needs the backend
  * started with VAULTIC_TESTLAB=1.
  */
+import { withAuth } from "./auth";
 import { identityHeaders } from "./identity";
 import { LabError } from "./testlab";
 
@@ -168,6 +169,8 @@ export interface RunSpec {
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
 export function createAttackApi(baseUrl = "http://127.0.0.1:8000", fetchImpl: Fetch = fetch) {
+  // with login on, a 401 gets one silent refresh and one retry (D235)
+  fetchImpl = withAuth(fetchImpl);
   const base = baseUrl.replace(/\/$/, "");
   async function call<T>(path: string, init?: RequestInit): Promise<T> {
     let res: Response;

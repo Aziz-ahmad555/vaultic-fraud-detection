@@ -1,5 +1,6 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
+import { AuthGate } from "./components/AuthGate";
 import { Shell } from "./components/Shell";
 import { Empty, Loading } from "./components/States";
 import { Overview } from "./pages/Overview";
@@ -31,6 +32,7 @@ const AttackLab = page("AttackLab");
 
 export function App() {
   return (
+    <AuthGate>
     <AppProvider>
       <BrowserRouter>
         <Shell>
@@ -61,5 +63,6 @@ export function App() {
         </Shell>
       </BrowserRouter>
     </AppProvider>
+    </AuthGate>
   );
 }

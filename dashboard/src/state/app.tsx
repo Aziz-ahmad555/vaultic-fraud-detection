@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { setIdentity } from "../api/identity";
+import { useAuth } from "../components/AuthGate";
 import type { AsOf, CostModel, Role } from "../api/types";
 import { LABEL_DELAYS } from "../api/types";
 import { DAY } from "../lib/format";
@@ -84,6 +85,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(initial.theme);
   const [role, setRole] = useState<Role>(initial.role);
   const [analyst, setAnalyst] = useState<string>(typeof initial.analyst === "string" ? initial.analyst.slice(0, 60) : "");
+  // with login on, the role and name are the logged-in user's (D235); the self-declared ones only
+  // in the no-login demo mode (D208)
+  const auth = useAuth();
+  const sessionUser = auth.mode === "jwt" ? auth.user : null;
+  if (sessionUser && (role !== sessionUser.role || analyst !== sessionUser.username)) {
+    setRole(sessionUser.role);
+    setAnalyst(sessionUser.username);
+  }
   // every request carries the acting analyst and role (D208); set before any child renders
   setIdentity(analyst, role);
   const [toasts, setToasts] = useState<Toast[]>([]);

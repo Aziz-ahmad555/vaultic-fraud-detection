@@ -31,6 +31,7 @@ import type {
   WhatIf,
 } from "../types";
 import { flagsIn, noteServed, whatIfKey, whatIfParams } from "../../lib/whatIf";
+import { withAuth } from "../auth";
 import { identityHeaders } from "../identity";
 
 export const HTTP_SOURCE_LABEL = "IEEE-CIS test period, final run";
@@ -39,6 +40,8 @@ export const SCORE_SOURCE = "Simulator: illustrative model, not the evaluated sy
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
 export function createHttpApi(baseUrl = "http://127.0.0.1:8000", fetchImpl: Fetch = fetch): Api {
+  // with login on, a 401 gets one silent refresh and one retry (D235)
+  fetchImpl = withAuth(fetchImpl);
   const base = baseUrl.replace(/\/$/, "");
   const illustrative = createMockApi();
 
