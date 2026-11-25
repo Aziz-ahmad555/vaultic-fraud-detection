@@ -8,6 +8,9 @@ requires-python = ">=3.11,<3.12"
 # Research tests only. FYP-1 tests run separately: cd legacy/fyp1 && python -m pytest tests
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "integration: needs a running PostgreSQL / Redis / Kafka (docker compose); skipped when none is reachable",
+]
 
 [tool.black]
 line-length = 100
