@@ -18,12 +18,13 @@ import argparse
 import csv
 import hashlib
 import json
+import ntpath
 import re
 import shutil
 import string
 import subprocess
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import numpy as np
 
@@ -218,10 +219,18 @@ def prompt_from_prereg(text: str, name: str) -> str:
     return "\n".join(quoted).strip() + "\n"
 
 
-def rule_path(path: Path) -> str:
-    """A Windows path in the POSIX form of permission rules (E:\\a b\\c -> //e/a b/c), specials escaped."""
-    p = Path(path).resolve()
-    parts = [p.drive.rstrip(":").lower()] + list(p.parts[1:])
+def rule_path(path: Path | str) -> str:
+    """A Windows path in the POSIX form of permission rules (E:\\a b\\c -> //e/a b/c), specials escaped.
+    Drive paths are read as Windows paths on every OS (D225q); other paths are resolved on the host.
+    """
+    w = PureWindowsPath(str(path))
+    if not w.drive:
+        w = PureWindowsPath(str(Path(path).resolve()))  # gains a drive only on a Windows host
+    if w.drive:
+        w = PureWindowsPath(ntpath.normpath(str(w)))
+        parts = [w.drive.rstrip(":").lower(), *w.parts[1:]]
+    else:
+        parts = list(Path(path).resolve().parts[1:])
     escaped = [re.sub(r"([\[\]*?!\\#])", r"\\\1", x) for x in parts]
     return "//" + "/".join(escaped)
 
@@ -312,15 +321,20 @@ def transcript_dir(folder: Path) -> Path:
     return CLAUDE_PROJECTS / re.sub(r"[^A-Za-z0-9]", "-", str(folder.resolve()))
 
 
-def _inside(path_text: str, root: Path, cwd: Path) -> bool:
-    """Is the path (relative ones resolve against the session's folder) inside root?"""
-    p = Path(path_text)
-    p = (cwd / p) if not p.is_absolute() else p
-    try:
-        p.resolve().relative_to(root.resolve())
-        return True
-    except ValueError:
-        return False
+def _win_norm(path: str) -> str:
+    """A path as Windows reads it, on any OS: separators unified, '..' collapsed, case folded (D225q)."""
+    return ntpath.normcase(ntpath.normpath(path))
+
+
+def _inside(path_text: str, root: Path | str, cwd: Path | str) -> bool:
+    """Is the path inside root? Transcript paths are Windows paths, so both sides are compared by
+    Windows rules on whatever OS runs the audit; a relative path is joined to the session's folder.
+    """
+    p = str(path_text)
+    if not ntpath.isabs(p):
+        p = ntpath.join(str(cwd), p)
+    p, r = _win_norm(p).split("\\"), _win_norm(str(root)).rstrip("\\").split("\\")
+    return p[: len(r)] == r
 
 
 def audit_transcripts(folder: Path, tdir: Path, declared: set[str] = frozenset()) -> dict:

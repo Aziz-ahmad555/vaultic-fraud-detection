@@ -640,3 +640,50 @@ def _fill_sheet(xlsx, sheet, fill):
     for row in wb[sheet].iter_rows(min_row=judge.FIRST_ROW):
         fill(row)
     wb.save(xlsx)
+
+
+def test_the_audit_reads_transcript_paths_as_windows_paths_on_a_posix_runner(tmp_path):
+    """D225q: on a Linux CI runner the judge folder is a POSIX path while the transcripts hold Windows
+    paths; 'E:/...' and 'C:/' must count as outside, not as relative paths under the folder."""
+    from pathlib import PurePosixPath
+
+    folder = PurePosixPath(
+        "/home/runner/work/judge/pass1"
+    )  # what a Linux runner's tmp folder looks like
+    calls = [
+        ("Read", {"file_path": "/home/runner/work/judge/pass1/inputs/x.csv"}),  # inside
+        ("Glob", {"pattern": "out/*"}),  # inside (relative)
+        ("Write", {"file_path": "/home/runner/work/judge/pass1/out/case_01.jsonl"}),  # inside out/
+        ("Read", {"file_path": "E:/dev-cache/copilot/e20/run/sheets/SEALED_pass1_key.json"}),
+        ("Grep", {"pattern": "x", "path": "C:/"}),
+        ("Read", {"file_path": "../../x/items.jsonl"}),
+        (
+            "Read",
+            {"file_path": "/home/runner/work/judge/pass1x/inputs/x.csv"},
+        ),  # a look-alike sibling
+        ("Write", {"file_path": "inputs/guide.md"}),
+    ]
+    _transcript(tmp_path / "t", calls)
+    v = judge.audit_transcripts(folder, tmp_path / "t")["violations"]
+    assert len(v) == 5
+    assert (
+        sum("outside the judge folder" in x for x in v) == 4
+        and sum("outside out/" in x for x in v) == 1
+    )
+    assert any("SEALED_pass1_key" in x for x in v) and any("C:/" in x for x in v)
+
+
+def test_the_audit_compares_windows_paths_case_insensitively_and_collapses_dotdot():
+    root = "E:/dev-cache/copilot/e20/judge/pass1"
+    assert judge._inside(r"e:\DEV-CACHE\Copilot\e20\judge\PASS1\inputs\x.csv", root, root)
+    assert judge._inside("inputs/../out/case_01.jsonl", root + "/out", root)
+    assert not judge._inside("E:/dev-cache/copilot/e20/judge/pass1/../pass2/out/x", root, root)
+    assert not judge._inside("E:/dev-cache/copilot/e20/judge/pass1x/out/x", root, root)
+    assert not judge._inside("D:/dev-cache/copilot/e20/judge/pass1/x", root, root)
+    assert not judge._inside("C:/", root, root)
+
+
+def test_rule_paths_read_drive_paths_as_windows_paths_on_any_os():
+    assert judge.rule_path("E:/old work/fyp 11") == "//e/old work/fyp 11"
+    assert judge.rule_path(r"E:\old work\fyp 11\..\x") == "//e/old work/x"
+    assert judge.rule_path("e:/A[1]/b") == r"//e/A\[1\]/b"
