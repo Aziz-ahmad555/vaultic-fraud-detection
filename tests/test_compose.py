@@ -56,3 +56,8 @@ def test_every_service_has_a_memory_limit_a_health_check_and_a_pinned_official_i
 def test_only_postgres_runs_without_a_profile():
     no_profile = [n for n, s in COMPOSE["services"].items() if not s.get("profiles")]
     assert no_profile == ["postgres"]
+
+
+def test_no_service_restarts_on_its_own():
+    """D233: Vaultic's containers start only with `docker compose up`, never after a reboot."""
+    assert all("restart" not in s for s in COMPOSE["services"].values())

@@ -4,9 +4,11 @@ Migrations are the files services/db/migrations/NNNN_name.sql, numbered from 000
 runs once, in its own transaction, under an advisory lock (two runners never interleave); the table
 schema_migrations records its name and sha256 (line endings normalised). An applied migration whose
 file changed or disappeared, or a gap or duplicate in the numbering, stops the runner before it
-touches anything: fix it with a new migration, never by editing an applied one.
+touches anything: fix it with a new migration, never by editing an applied one. A file containing
+COMMIT, ROLLBACK or CONCURRENTLY is refused (it could not run inside the runner's one transaction),
+and the runner waits at most `lock_wait` seconds (30) for another runner's lock (D233).
 
-    python -m vaultic.infra.db status
+    python -m vaultic.infra.db status       read-only: never creates anything
     python -m vaultic.infra.db migrate
 
 The connection comes from VAULTIC_DB_URL, else from POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD
@@ -20,6 +22,7 @@ import argparse
 import hashlib
 import os
 import re
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +33,10 @@ MIGRATIONS_DIR = REPO / "services" / "db" / "migrations"
 DEFAULT_PORT = 5442  # D231 (amends D14's 55432)
 FILE_NAME = re.compile(r"^(\d{4})_[a-z0-9_]+\.sql$")
 LOCK_KEY = 2310_0001  # pg_advisory_lock key of the runner (D231)
+LOCK_WAIT, LOCK_POLL = 30.0, 0.5  # seconds (D233)
+# statements that cannot run inside the runner's transaction (D233); comments are ignored
+FORBIDDEN = re.compile(r"\b(COMMIT|ROLLBACK|CONCURRENTLY)\b", re.I)
+COMMENTS = re.compile(r"/\*.*?\*/|--[^\n]*", re.S)
 STATE_TABLE = """CREATE TABLE IF NOT EXISTS schema_migrations (
     name       TEXT PRIMARY KEY,
     sha256     TEXT NOT NULL,
@@ -61,6 +68,12 @@ def discover(directory: Path = MIGRATIONS_DIR) -> list[Migration]:
         m = FILE_NAME.match(p.name)
         if not m:
             raise MigrationError(f"{p.name}: migration files are named NNNN_lowercase_name.sql")
+        bad = FORBIDDEN.search(COMMENTS.sub(" ", p.read_text("utf-8")))
+        if bad:
+            raise MigrationError(
+                f"{p.name}: {bad.group(1).upper()} is not allowed; each migration runs in one "
+                "transaction (D233)"
+            )
         found.append(Migration(int(m.group(1)), p.name, p, file_sha256(p)))
     numbers = [m.number for m in found]
     if len(set(numbers)) != len(numbers):
@@ -132,16 +145,37 @@ def connect(url: str | None = None, timeout: int = 5):
 
 
 # ---- running -------------------------------------------------------------------------------------
+def has_state_table(conn) -> bool:
+    return conn.execute("SELECT to_regclass('schema_migrations')").fetchone()[0] is not None
+
+
 def applied(conn) -> dict[str, str]:
-    conn.execute(STATE_TABLE)
+    """The applied migrations; empty when there is no schema_migrations table (nothing is created)."""
+    if not has_state_table(conn):
+        return {}
     return dict(conn.execute("SELECT name, sha256 FROM schema_migrations ORDER BY name").fetchall())
 
 
-def migrate(conn, files: list[Migration] | None = None, log=print) -> list[str]:
-    """Apply the pending migrations, each in its own transaction, under the runner's advisory lock."""
+def acquire_lock(conn, wait: float = LOCK_WAIT, poll: float = LOCK_POLL, clock=time.monotonic,
+                 sleep=time.sleep) -> None:  # fmt: skip
+    """Take the runner's advisory lock, waiting at most `wait` seconds for another runner (D233)."""
+    start = clock()
+    while not conn.execute("SELECT pg_try_advisory_lock(%s)", (LOCK_KEY,)).fetchone()[0]:
+        if clock() - start >= wait:
+            raise MigrationError(
+                f"another migration runner holds the lock (waited {wait:g} s); try again later"
+            )
+        sleep(poll)
+
+
+def migrate(conn, files: list[Migration] | None = None, log=print,
+            lock_wait: float = LOCK_WAIT) -> list[str]:  # fmt: skip
+    """Apply the pending migrations, each in its own transaction, under the runner's advisory lock.
+    An error while releasing the lock never hides an earlier error (D233)."""
     files = discover() if files is None else files
-    conn.execute("SELECT pg_advisory_lock(%s)", (LOCK_KEY,))
+    acquire_lock(conn, lock_wait)
     try:
+        conn.execute(STATE_TABLE)
         todo = pending(applied(conn), files)
         for m in todo:
             with conn.transaction():
@@ -151,15 +185,25 @@ def migrate(conn, files: list[Migration] | None = None, log=print) -> list[str]:
                     (m.name, m.sha256),
                 )
             log(f"applied {m.name}")
-        return [m.name for m in todo]
-    finally:
-        conn.execute("SELECT pg_advisory_unlock(%s)", (LOCK_KEY,))
+    except BaseException:
+        try:
+            conn.execute("SELECT pg_advisory_unlock(%s)", (LOCK_KEY,))
+        except Exception as unlock_error:  # noqa: BLE001 - the original error matters more
+            log(
+                f"could not release the migration lock ({unlock_error}); the original error follows"
+            )
+        raise
+    conn.execute("SELECT pg_advisory_unlock(%s)", (LOCK_KEY,))
+    return [m.name for m in todo]
 
 
 def status(conn, files: list[Migration] | None = None) -> dict:
+    """Applied and pending migrations; read-only (D233): never creates the migrations table."""
     files = discover() if files is None else files
-    done = applied(conn)
-    return {"applied": sorted(done), "pending": [m.name for m in pending(done, files)]}
+    table = has_state_table(conn)
+    done = applied(conn) if table else {}
+    return {"table": table, "applied": sorted(done),
+            "pending": [m.name for m in pending(done, files)]}  # fmt: skip
 
 
 def main(argv=None) -> None:
@@ -174,9 +218,13 @@ def main(argv=None) -> None:
                 print(f"{len(done)} migration(s) applied to {redact(url)}")
             else:
                 s = status(conn)
-                print(
-                    f"{redact(url)}: applied {s['applied'] or 'none'}; pending {s['pending'] or 'none'}"
-                )
+                if not s["table"]:
+                    print(f"{redact(url)}: no migrations table; pending {s['pending'] or 'none'}")
+                else:
+                    print(
+                        f"{redact(url)}: applied {s['applied'] or 'none'}; "
+                        f"pending {s['pending'] or 'none'}"
+                    )
     except MigrationError as e:
         raise SystemExit(f"refused: {e}") from None
 
