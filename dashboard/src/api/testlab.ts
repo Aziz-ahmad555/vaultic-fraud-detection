@@ -3,6 +3,7 @@
  * system scoring one transaction live. Needs the backend (VITE_DATA_SOURCE=http) started with
  * VAULTIC_TESTLAB=1; the mock has no Test Lab.
  */
+import { withAuth } from "./auth";
 import { identityHeaders } from "./identity";
 import type { View } from "./types";
 
@@ -137,6 +138,8 @@ export class LabError extends Error {
 }
 
 export function createTestLabApi(baseUrl = "http://127.0.0.1:8000", fetchImpl: Fetch = fetch) {
+  // with login on, a 401 gets one silent refresh and one retry (D235)
+  fetchImpl = withAuth(fetchImpl);
   const base = baseUrl.replace(/\/$/, "");
   async function call<T>(path: string, init?: RequestInit): Promise<T> {
     let res: Response;

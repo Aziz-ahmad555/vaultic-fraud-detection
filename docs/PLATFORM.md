@@ -87,6 +87,65 @@ docker compose down
 - `copilot_audit`: **not hash-chained or append-only yet.** Only `audit_log` is. Whether it should be is
   open question Q13 for step 3.3.
 
+## Login (step 3.2, D235)
+
+Login with role checks for a local demo. There is no TLS on localhost, and it is not described as secure.
+
+**Where it runs:** `services/api/platform_server.py` (D236). It wraps the demo backend, because
+`services/api/demo_server.py` is part of E20's frozen code and stays byte-identical.
+`uvicorn services.api.demo_server:app` still runs the plain no-Docker demo exactly as before: no login and
+no role table. The dashboard treats a backend without `/api/auth/mode` as the no-login demo mode.
+
+**Two modes of the platform server:**
+- **No-login demo mode** (`VAULTIC_AUTH` unset).
+  - The role table applies, so a route without a rule is refused.
+  - Names and roles are self-declared in Settings and sent as the D208 headers.
+  - The roles are labels and are not enforced.
+  - The dashboard shows "Demo mode: no login; names and roles are self-declared".
+- **Login on** (`VAULTIC_AUTH=jwt`): needs PostgreSQL with `0002_auth.sql` applied, and
+  `VAULTIC_JWT_SECRET` (at least 32 characters) in `.env`. The API refuses to start without them.
+  - The demo mode is off: the self-declared headers are ignored, and a request with only them gets 401.
+  - The audit log records the logged-in user.
+
+**Tokens:**
+- **Access token:** a JWT (HS256) valid 15 minutes, sent as `Authorization: Bearer` and kept in the
+  dashboard's memory.
+- **Refresh token:** valid 8 hours, in an httpOnly cookie (SameSite=Strict, path `/api/auth`). It rotates
+  on every refresh, and only its sha256 is stored.
+  - Presenting an already used refresh token ends the whole session family; this is audited.
+  - Logout ends the session.
+  - `/api/auth/refresh` and `/api/auth/logout` also need the header `X-Vaultic-CSRF: 1`.
+- **Rate limit:** 5 failed logins per username, or 20 per client IP, in 15 minutes give 429.
+
+**Passwords:** Argon2id only; never logged, audited or returned. Every failure says "invalid username or
+password".
+
+**Roles:**
+- `analyst` and `admin`; admin includes analyst.
+- Admin only: the audit export and verify, and the Attack Lab run and suite.
+- Every `/api` route has one rule in `ROUTE_ROLES` (`services/api/auth.py`). A route without a rule is
+  refused, and a test fails if one is missing.
+
+**Test users:**
+- The seed file `services/db/seed/users.example.json` holds usernames and roles only: `analyst1` and
+  `admin1`.
+- `python -m vaultic.infra.users seed` takes each password from `.env` (`VAULTIC_SEED_PASSWORD_ANALYST1`,
+  `VAULTIC_SEED_PASSWORD_ADMIN1`, at least 12 characters), or generates one and prints it once. It is
+  never written to a file.
+- Existing users are left alone unless you pass `--reset-password`.
+
+**Start with login on**, from the main checkout (from a worktree, also set `VAULTIC_ENV_FILE`):
+
+```bash
+python -m vaultic.infra.db migrate
+python -m vaultic.infra.users seed
+VAULTIC_AUTH=jwt uvicorn services.api.platform_server:app --port 8000
+```
+
+- Then run the dashboard with `VITE_DATA_SOURCE=http` and open it at `http://127.0.0.1:5173`. Use
+  127.0.0.1, not localhost, so the page and the API are the same site and the SameSite cookie works.
+- **Not yet:** user management in the API (use the seed command), Redis sessions (3.4) and TLS.
+
 ## Tests
 
 `python -m pytest tests/test_infra_db.py tests/test_compose.py`

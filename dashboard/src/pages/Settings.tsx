@@ -3,7 +3,9 @@ import { HTTP_SOURCE_LABEL } from "../api/http/httpApi";
 import { api, DATA_SOURCE } from "../api";
 import type { Thresholds } from "../api/types";
 import { ACTION_LABEL } from "../api/types";
+import { logout } from "../api/auth";
 import { AuditPanel } from "../components/AuditPanel";
+import { useAuth } from "../components/AuthGate";
 import { LockIcon, WhatIfReportNote } from "../components/Badges";
 import { WhatIfPanel } from "../components/WhatIfPanel";
 import { ErrorState, Loading } from "../components/States";
@@ -21,6 +23,7 @@ const FIELDS: { key: "t_monitor" | "t_step" | "t_hold"; label: string }[] = [
 
 export function Settings() {
   const { asOf, role, setRole, analyst, setAnalyst, toast } = useApp();
+  const auth = useAuth();
   const cfg = useData(() => api.thresholds(), []);
   const summary = useData(() => api.daySummary(asOf), [asOfKey(asOf)]);
   const [nonce, setNonce] = useState(0);
@@ -96,17 +99,28 @@ export function Settings() {
         <section className="pane">
           <div className="pane-head"><h2>Analyst and role</h2></div>
           <div className="pane-body">
-            <label className="field">
-              <span>Your name (recorded with every action in the audit log)</span>
-              <input value={analyst} onChange={(e) => setAnalyst(e.target.value)} placeholder="not set: actions are recorded as unknown" maxLength={60} />
-            </label>
-            <div className="segmented" role="group" aria-label="Role">
-              <button type="button" aria-pressed={role === "analyst"} onClick={() => { setRole("analyst"); toast("Role set to analyst"); }}>Analyst</button>
-              <button type="button" aria-pressed={role === "admin"} onClick={() => { setRole("admin"); toast("Role set to admin"); }}>Admin</button>
-            </div>
-            <p className="muted small" style={{ marginTop: 8 }}>
-              Mock roles for the layout; there is no sign-in yet. {DATA_SOURCE === "http" ? "With the final-run data the thresholds are frozen for every role." : "Admins can change decision thresholds."}
-            </p>
+            {auth.mode === "jwt" && auth.user ? (
+              <>
+                <p>
+                  Logged in as <strong>{auth.user.username}</strong> ({auth.user.role}). Every action is recorded under this login in the audit log.
+                </p>
+                <button type="button" className="btn" onClick={() => { void logout(); }}>Log out</button>
+              </>
+            ) : (
+              <>
+              <label className="field">
+                <span>Your name (recorded with every action in the audit log)</span>
+                <input value={analyst} onChange={(e) => setAnalyst(e.target.value)} placeholder="not set: actions are recorded as unknown" maxLength={60} />
+              </label>
+              <div className="segmented" role="group" aria-label="Role">
+                <button type="button" aria-pressed={role === "analyst"} onClick={() => { setRole("analyst"); toast("Role set to analyst"); }}>Analyst</button>
+                <button type="button" aria-pressed={role === "admin"} onClick={() => { setRole("admin"); toast("Role set to admin"); }}>Admin</button>
+              </div>
+              <p className="muted small" style={{ marginTop: 8 }}>
+                Demo mode: no login; the name and role are self-declared. {DATA_SOURCE === "http" ? "With the final-run data the thresholds are frozen for every role." : "Admins can change decision thresholds."}
+              </p>
+              </>
+            )}
           </div>
         </section>
       </div>

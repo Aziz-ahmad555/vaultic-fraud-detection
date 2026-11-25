@@ -12,6 +12,8 @@ antlr4-python3-runtime==4.9.3
 anyio==4.15.1
 appdirs==1.4.4
 arabic-reshaper==3.0.1
+argon2-cffi-bindings==26.2.0
+argon2-cffi==25.1.0
 asn1crypto==1.5.1
 asyncssh==2.24.1
 atpublic==8.0.1

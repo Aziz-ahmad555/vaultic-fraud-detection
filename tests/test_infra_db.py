@@ -115,9 +115,11 @@ def test_the_migrations_apply_once_and_the_audit_log_is_append_only(schema_conn)
     import psycopg
 
     conn = schema_conn
-    assert db.migrate(conn, log=lambda *_: None) == ["0001_init.sql"]
+    on_disk = [m.name for m in db.discover()]
+    assert on_disk[:2] == ["0001_init.sql", "0002_auth.sql"]
+    assert db.migrate(conn, log=lambda *_: None) == on_disk
     assert db.migrate(conn, log=lambda *_: None) == []  # idempotent
-    assert db.status(conn) == {"table": True, "applied": ["0001_init.sql"], "pending": []}
+    assert db.status(conn) == {"table": True, "applied": on_disk, "pending": []}
     tables = {r[0] for r in conn.execute(
         "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()")}  # fmt: skip
     assert tables >= {

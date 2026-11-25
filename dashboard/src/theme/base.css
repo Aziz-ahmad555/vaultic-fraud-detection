@@ -163,6 +163,7 @@ kbd {
 input[type="text"],
 input[type="search"],
 input[type="number"],
+input[type="password"],
 select {
   min-height: 32px;
   padding: 0 var(--s-2);
