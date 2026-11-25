@@ -435,6 +435,10 @@ pulls).
     - copilot records in their own table linked to the single hash-chained audit entry.
 
     Also: when to migrate the real audit DB.
+  - Q13 (added 2026-11-26 from the post-merge review of PR #16, D233): `copilot_audit` is not hash-chained
+    or append-only in schema v1; only `audit_log` is. Should it get the same append-only triggers, or be
+    covered by the hash of its linked `audit_log` entry (for example by storing the record's sha256 in that
+    entry)?
 - **3.4:** Q11: Redis for cache and sessions only (as you wrote), not the roadmap's online-feature counters
   (11.2); recorded as a deviation from the roadmap. Agree?
 - **3.5:**

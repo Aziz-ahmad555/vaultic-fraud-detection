@@ -117,7 +117,7 @@ def test_the_migrations_apply_once_and_the_audit_log_is_append_only(schema_conn)
     conn = schema_conn
     assert db.migrate(conn, log=lambda *_: None) == ["0001_init.sql"]
     assert db.migrate(conn, log=lambda *_: None) == []  # idempotent
-    assert db.status(conn) == {"applied": ["0001_init.sql"], "pending": []}
+    assert db.status(conn) == {"table": True, "applied": ["0001_init.sql"], "pending": []}
     tables = {r[0] for r in conn.execute(
         "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()")}  # fmt: skip
     assert tables >= {
@@ -165,6 +165,7 @@ def test_a_failing_migration_leaves_nothing_behind(schema_conn, tmp_path):
     with pytest.raises(psycopg.errors.UndefinedFunction):
         db.migrate(schema_conn, db.discover(tmp_path), log=lambda *_: None)
     assert db.status(schema_conn, db.discover(tmp_path)) == {
+        "table": True,
         "applied": ["0001_a.sql"],
         "pending": ["0002_b.sql"],
     }
@@ -176,3 +177,125 @@ def test_the_env_file_can_be_pointed_at_another_checkout(monkeypatch, tmp_path):
     assert db.env_file() == db.REPO / ".env"
     monkeypatch.setenv("VAULTIC_ENV_FILE", str(tmp_path / "main.env"))
     assert db.env_file() == tmp_path / "main.env"
+
+
+# ---- D233: read-only status, lock wait, forbidden statements, the original error kept --------------
+class FakeConn:
+    """Enough of a psycopg connection for the runner: records every statement, answers the lock and
+    table queries as scripted, and can fail a given statement."""
+
+    def __init__(self, lock_answers=(True,), table=False, fail=None, fail_unlock=None):
+        self.sql, self.lock_answers, self.table = [], list(lock_answers), table
+        self.fail, self.fail_unlock = fail, fail_unlock
+
+    def execute(self, sql, params=None):
+        self.sql.append(sql)
+        if "pg_try_advisory_lock" in sql:
+            return _Rows([(self.lock_answers.pop(0) if self.lock_answers else False,)])
+        if "pg_advisory_unlock" in sql and self.fail_unlock:
+            raise self.fail_unlock
+        if "to_regclass('schema_migrations')" in sql:
+            return _Rows([("schema_migrations" if self.table else None,)])
+        if sql.startswith("CREATE TABLE IF NOT EXISTS schema_migrations"):
+            self.table = True
+        if "FROM schema_migrations" in sql:
+            return _Rows([])
+        if self.fail and self.fail[0] in sql:
+            raise self.fail[1]
+        return _Rows([])
+
+    def transaction(self):
+        import contextlib
+
+        return contextlib.nullcontext()
+
+
+class _Rows:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def fetchone(self):
+        return self.rows[0]
+
+    def fetchall(self):
+        return self.rows
+
+
+def test_status_is_read_only_and_reports_a_missing_migrations_table(tmp_path):
+    _write(tmp_path, "0001_a.sql")
+    conn = FakeConn(table=False)
+    assert db.status(conn, db.discover(tmp_path)) == {
+        "table": False,
+        "applied": [],
+        "pending": ["0001_a.sql"],
+    }
+    assert not any(
+        q.lstrip().upper().startswith(("CREATE", "INSERT", "ALTER", "DROP")) for q in conn.sql
+    )
+
+
+def test_an_unlock_error_never_hides_the_original_error(tmp_path):
+    _write(tmp_path, "0001_a.sql", "SELECT broken;")
+    logs = []
+    conn = FakeConn(fail=("SELECT broken", ValueError("the migration failed")),
+                    fail_unlock=ConnectionError("connection lost"))  # fmt: skip
+    with pytest.raises(ValueError, match="the migration failed"):
+        db.migrate(conn, db.discover(tmp_path), log=logs.append)
+    assert any("could not release the migration lock" in x and "connection lost" in x for x in logs)
+    # without an earlier error, an unlock error is raised as usual
+    with pytest.raises(ConnectionError):
+        db.migrate(
+            FakeConn(fail_unlock=ConnectionError("lost")), db.discover(tmp_path), log=logs.append
+        )
+
+
+def test_the_lock_wait_is_bounded_and_a_free_lock_is_taken_after_retries():
+    now = [0.0]
+    clock, sleep = (lambda: now[0]), (lambda s: now.__setitem__(0, now[0] + s))
+    with pytest.raises(db.MigrationError, match="another migration runner holds the lock"):
+        db.acquire_lock(FakeConn(lock_answers=()), wait=2.0, poll=0.5, clock=clock, sleep=sleep)
+    assert now[0] == pytest.approx(2.0)
+    now[0] = 0.0
+    conn = FakeConn(lock_answers=(False, False, True))
+    db.acquire_lock(conn, wait=30.0, poll=0.5, clock=clock, sleep=sleep)
+    assert sum("pg_try_advisory_lock" in q for q in conn.sql) == 3 and now[0] == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("sql", [
+    "CREATE TABLE t (x INT); COMMIT;",
+    "BEGIN; CREATE TABLE t (x INT); rollback;",
+    "CREATE INDEX CONCURRENTLY i ON t (x);",
+    "DROP INDEX concurrently i;",
+])  # fmt: skip
+def test_migrations_with_transaction_control_or_concurrently_are_refused(tmp_path, sql):
+    _write(tmp_path, "0001_a.sql", sql)
+    with pytest.raises(
+        db.MigrationError, match="is not allowed; each migration runs in one transaction"
+    ):
+        db.discover(tmp_path)
+
+
+def test_those_words_in_comments_or_inside_names_are_allowed(tmp_path):
+    sql = "-- never COMMIT here\n/* no ROLLBACK, no CONCURRENTLY */\nCREATE TABLE t (committed_at INT);"
+    _write(tmp_path, "0001_a.sql", sql)
+    assert [m.name for m in db.discover(tmp_path)] == ["0001_a.sql"]
+
+
+@pytest.mark.integration
+def test_status_on_an_empty_schema_creates_nothing(schema_conn):
+    s = db.status(schema_conn)
+    assert s["table"] is False and s["applied"] == [] and s["pending"][0] == "0001_init.sql"
+    assert schema_conn.execute("SELECT to_regclass('schema_migrations')").fetchone()[0] is None
+
+
+@pytest.mark.integration
+def test_a_second_runner_waits_then_refuses_while_the_lock_is_held(schema_conn, tmp_path):
+    _write(tmp_path, "0001_a.sql", "CREATE TABLE t (x INT);")
+    with db.connect(_reachable_url()) as other:
+        other.execute("SELECT pg_advisory_lock(%s)", (db.LOCK_KEY,))
+        try:
+            with pytest.raises(db.MigrationError, match="another migration runner holds the lock"):
+                db.migrate(schema_conn, db.discover(tmp_path), log=lambda *_: None, lock_wait=1.0)
+        finally:
+            other.execute("SELECT pg_advisory_unlock(%s)", (db.LOCK_KEY,))
+    assert db.migrate(schema_conn, db.discover(tmp_path), log=lambda *_: None) == ["0001_a.sql"]

@@ -30,7 +30,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    restart: unless-stopped
+    # no restart policy (D233): Vaultic's PostgreSQL starts only with `docker compose up`
 
 volumes:
   vaultic-postgres:

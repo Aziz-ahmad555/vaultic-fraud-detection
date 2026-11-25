@@ -20,8 +20,10 @@ Nothing the platform stores feeds a model, a metric or a research table.
 
 Every port is bound to 127.0.0.1. The ports, the project name `vaultic` and the `vaultic-*` volumes keep
 this stack apart from other local compose projects, for example one using PostgreSQL 5433 and Redis 6379.
-Both can run at once. `POSTGRES_PORT`, the D14 key whose old default was 55432, is still read when
-`VAULTIC_POSTGRES_PORT` is not set.
+Both can run at once.
+
+Port fallback: if `VAULTIC_POSTGRES_PORT` is not set, the older `POSTGRES_PORT` key (D14, whose old
+default was 55432) is used, and 5442 only when neither is set (D231).
 
 ## One-time setup
 
@@ -58,11 +60,21 @@ docker compose down
 - `migrate` applies `services/db/migrations/*.sql` once each, in order.
 - `status` lists the applied and the pending migrations.
 - `docker compose down` stops the stack and keeps the data in the `vaultic-postgres` volume.
+- **No restart policy (D233):** Vaultic's containers never start on their own, after a reboot or a Docker
+  Desktop restart. They start only with `docker compose up`.
+- `status` is read-only: it never creates anything. On an empty database it says "no migrations table"
+  and lists every migration as pending.
 
 ## Migrations
 
 - Plain SQL files `services/db/migrations/NNNN_name.sql`, numbered from 0001 without gaps.
 - Each runs once, in one transaction, under an advisory lock.
+- **Lock wait (D233):** a second runner waits at most 30 seconds for the lock (it retries every 0.5 s), then
+  stops with "another migration runner holds the lock" instead of hanging.
+- **One transaction per file (D233):** a file containing `COMMIT`, `ROLLBACK` or `CONCURRENTLY` is refused.
+  The check ignores case and skips `--` and `/* */` comments. Such statements would end the runner's
+  transaction or cannot run inside one, so a half-applied file could not be rolled back.
+- An error while releasing the lock never hides the error that stopped a migration.
 - `schema_migrations` records each file's name and sha256.
 - **Never edit an applied migration:** the runner refuses a changed or missing applied file, a gap or a
   duplicate number. Add a new file instead.
@@ -72,7 +84,8 @@ docker compose down
 - `cases`
 - `decisions`
 - `audit_log`: the SQLite log's columns, append-only by trigger; tamper-evident, not tamper-proof (D209).
-- `copilot_audit`
+- `copilot_audit`: **not hash-chained or append-only yet.** Only `audit_log` is. Whether it should be is
+  open question Q13 for step 3.3.
 
 ## Tests
 
