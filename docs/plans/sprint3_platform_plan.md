@@ -84,6 +84,8 @@ approves this plan.** Roadmap Phase 11 ("Real-time platform"), milestone M10.
   on host port `${VAULTIC_POSTGRES_PORT:-5442}` (see the rules above; amends D14).
 - It also gets **profiles**: `db` (PostgreSQL only, the default), `cache` (+ Redis), `stream` (+ Kafka) and
   `full`.
+  *(Correction 2026-11-26, D233: there is no `db` profile. PostgreSQL has no profile and always starts with
+  `docker compose up`; `cache`, `stream` and `full` come with Redis and Kafka in 3.4 and 3.5.)*
   - In 3.1 only PostgreSQL is filled in; the others are added by their steps.
   - Each service gets a health check and a memory limit (`mem_limit`, below) and binds to 127.0.0.1 only.
 - **Schema v1** as plain numbered SQL migrations (`services/db/migrations/0001_init.sql`, ...), applied by a
