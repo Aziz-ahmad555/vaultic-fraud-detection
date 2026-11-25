@@ -135,10 +135,14 @@ def test_the_migrations_apply_once_and_the_audit_log_is_append_only(schema_conn)
     for sql in (
         "UPDATE audit_log SET analyst = 'b'",
         "DELETE FROM audit_log",
-        "TRUNCATE audit_log",
+        "TRUNCATE audit_log CASCADE",  # CASCADE skips the foreign-key refusal: the trigger must stop it
     ):
         with pytest.raises(psycopg.errors.RaiseException, match="append-only"):
             conn.execute(sql)
+    # a plain TRUNCATE is refused even earlier, by copilot_audit's foreign key
+    with pytest.raises(psycopg.errors.FeatureNotSupported):
+        conn.execute("TRUNCATE audit_log")
+    assert conn.execute("SELECT count(*) FROM audit_log").fetchone()[0] == 1
     with pytest.raises(psycopg.errors.CheckViolation):
         conn.execute("INSERT INTO users (username, password_hash, role) VALUES ('u', 'h', 'root')")
 

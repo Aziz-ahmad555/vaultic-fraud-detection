@@ -50,6 +50,7 @@ def test_every_service_has_a_memory_limit_a_health_check_and_a_pinned_official_i
             "apache/"
         ), f"{name}: official images only ({image})"
         assert re.match(r"^\d+(\.\d+)+", tag), f"{name}: an exact version tag, not '{tag}'"
+        assert re.search(r"@sha256:[0-9a-f]{64}$", image), f"{name}: pinned to its digest ({image})"
 
 
 def test_only_postgres_runs_without_a_profile():
