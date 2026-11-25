@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { createMockApi } from "../api/mock/mockApi";
 import type { Transaction } from "../api/types";
-import { Counterfactual, narrative } from "./Case";
+import { Counterfactual, narrative, timelineCoverage } from "./Case";
 
 const api = createMockApi(7);
 
@@ -45,5 +45,15 @@ describe("illustrative counterfactual (D127)", () => {
     expect(box).toContain(`illustrative model on this case: ${Math.round(100 * own.p)}`);
     expect(box).toContain("the case's real risk is 99");
     expect(described).toEqual([]); // never handed to the narrative
+  });
+});
+
+describe("customer timeline coverage (D228)", () => {
+  it("never calls a customer with earlier history a cold start", () => {
+    expect(timelineCoverage(0, 20)).toBe("No earlier transactions in the test-period data shown; 20 earlier in total, before the test period (point-in-time).");
+    expect(timelineCoverage(0, 20)).not.toMatch(/cold start/);
+    expect(timelineCoverage(3, 20)).toBe("3 of 20 earlier transactions shown (test-period data); the other 17 are before the test period (point-in-time).");
+    expect(timelineCoverage(0, 0)).toMatch(/cold start/);
+    expect(timelineCoverage(5, 5)).toBeNull();
   });
 });

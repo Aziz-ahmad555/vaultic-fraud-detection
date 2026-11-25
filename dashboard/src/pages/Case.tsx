@@ -51,8 +51,23 @@ export function narrative(t: Transaction, cf?: string | null): string {
   return parts.join(" ");
 }
 
+/**
+ * D228: what the customer timeline covers. `shown`: earlier transactions in the data the page has
+ * (the demo bundle holds the test period only); `total`: all earlier ones, point-in-time
+ * (inputs.historyCount). "Cold start" only when there is no earlier transaction at all.
+ * null: every earlier transaction is shown, nothing to add.
+ */
+export function timelineCoverage(shown: number, total: number): string | null {
+  if (total <= 0 && shown <= 0) return "No earlier transactions for this customer before this one (cold start).";
+  if (shown <= 0) return `No earlier transactions in the test-period data shown; ${total} earlier in total, before the test period (point-in-time).`;
+  if (shown < total) return `${shown} of ${total} earlier transactions shown (test-period data); the other ${total - shown} are before the test period (point-in-time).`;
+  return null;
+}
+
 function Timeline({ history, current, asOf }: { history: Transaction[]; current: Transaction; asOf: number }) {
-  if (history.length <= 1) return <p className="muted small">No earlier transactions for this customer before the as-of time (cold start).</p>;
+  const shown = history.filter((h) => h.row.TransactionDT < current.row.TransactionDT).length;
+  const coverage = timelineCoverage(shown, current.inputs.historyCount);
+  if (history.length <= 1) return <p className="muted small">{coverage}</p>;
   const width = 330;
   const height = 120;
   const t0 = Math.min(...history.map((h) => h.row.TransactionDT));
@@ -92,6 +107,7 @@ function Timeline({ history, current, asOf }: { history: Transaction[]; current:
         <span><span className="swatch" style={{ background: "var(--sheet)" }} /> Confirmed legit</span>
         <span><span className="swatch" style={{ background: "var(--rule)" }} /> Label not known yet</span>
       </figcaption>
+      {coverage && <p className="muted small">{coverage}</p>}
     </figure>
   );
 }
