@@ -31,7 +31,7 @@ decision D31 in `research/decisions.md`. Milestones follow the roadmap's M0–M1
 | M13 Paper 2 submitted, thesis approved, defense rehearsed (Phase 14) | MUST | ⏳ Paper 2 LaTeX skeleton |
 | Paper 1: graph leakage (edge vs label leakage, label delay); Elliptic as replication of arXiv 2604.19514 | SHOULD | Not started |
 | M9 Drift under delayed labels as a thesis chapter (Phase 10) | SHOULD | ⏳ Drift module (PSI, KS + Holm, score and disagreement drift, ADWIN, Page-Hinkley, label-delay simulator, injected drifts, policies P0–P3 with champion-challenger) implemented and tested on synthetic drifts; not yet run on the real data |
-| M10 Simplified platform: FastAPI + Postgres + replay script, no Kafka (Phase 11) | SHOULD | Not started |
+| M10 Platform: FastAPI + PostgreSQL + Redis + Kafka replay with parity test, JWT login (Phase 11; D230 amends D31) | SHOULD | Sprint 3 in progress |
 | M11 4-page dashboard (Phase 12) | SHOULD | Not started |
 | M14 GraphSAGE / TGN comparison | COULD | Not started |
 | M15 LLM investigation copilot | COULD | Not started |

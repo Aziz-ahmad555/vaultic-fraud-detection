@@ -1,23 +1,37 @@
-# Local services. Phase 0: PostgreSQL only; Kafka, Redis, API, scorer, MLflow and the
-# dashboard are added in Phase 11.
-# Start:  docker compose up -d      (needs POSTGRES_PASSWORD in .env; see .env.example)
+# Vaultic platform services (Sprint 3, D231; scope D230). The API and the dashboard run on the host;
+# only PostgreSQL, Redis and Kafka run here. Every port is bound to 127.0.0.1 and set in .env, and the
+# project name and volumes are 'vaultic', so this stack runs beside other compose projects (for
+# example one using 5433 and 6379) without clashes. See docs/PLATFORM.md.
+#
+#   docker compose up -d                      PostgreSQL (the default service)
+#   docker compose --profile full up -d       + Redis (3.4) + Kafka (3.5), added in their steps
+#   python -m vaultic.infra.db migrate        apply services/db/migrations
+#
+# Needs POSTGRES_PASSWORD in .env (see .env.example).
+name: vaultic
+
 services:
   postgres:
-    image: postgres:16-alpine
+    # exact tag pinned to its digest (D231), as pulled on 2026-11-25
+    image: postgres:16.16-alpine@sha256:f2f98726820d0342055351c6e9d36e705f5bfffb3dd53ff556325114b08afb6d
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=50"]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-vaultic}
       POSTGRES_USER: ${POSTGRES_USER:-vaultic}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     ports:
-      # localhost only; 55432 by default because a native PostgreSQL may already use 5432
-      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
+      # 5442 by default (D231 amends D14's 55432); POSTGRES_PORT is still read as a fallback
+      - "127.0.0.1:${VAULTIC_POSTGRES_PORT:-${POSTGRES_PORT:-5442}}:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - vaultic-postgres:/var/lib/postgresql/data
+    mem_limit: 512m
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
 volumes:
-  postgres-data:
+  vaultic-postgres:
+    name: vaultic-postgres
