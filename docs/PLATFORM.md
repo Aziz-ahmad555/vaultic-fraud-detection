@@ -87,7 +87,7 @@ docker compose down
 - `copilot_audit`: **not hash-chained or append-only yet.** Only `audit_log` is. Whether it should be is
   open question Q13 for step 3.3.
 
-## Login (step 3.2, D235)
+## Login (step 3.2, D235; fixes 3.2a, D238)
 
 Login with role checks for a local demo. There is no TLS on localhost, and it is not described as secure.
 
@@ -112,13 +112,43 @@ no role table. The dashboard treats a backend without `/api/auth/mode` as the no
   dashboard's memory.
 - **Refresh token:** valid 8 hours, in an httpOnly cookie (SameSite=Strict, path `/api/auth`). It rotates
   on every refresh, and only its sha256 is stored.
-  - Presenting an already used refresh token ends the whole session family; this is audited.
-  - Logout ends the session.
-  - `/api/auth/refresh` and `/api/auth/logout` also need the header `X-Vaultic-CSRF: 1`.
-- **Rate limit:** 5 failed logins per username, or 20 per client IP, in 15 minutes give 429.
+  - **Session limit (B1):** a session lasts at most **12 hours from login**, however often it is
+    refreshed. A refresh token never outlives its session.
+  - **Two tabs (A5):** a rotated token presented again within 10 seconds is a concurrent refresh. It gets
+    409 and nothing is revoked; the dashboard retries once with the newer cookie.
+  - **Reuse:** a rotated token presented later ends the whole session family, and that is audited as
+    reuse.
+  - **After logout:** a refresh is refused, without a reuse entry.
+  - **Logout (B2):** ends the refresh token at once. An access token already issued stays valid until it
+    expires, **at most 15 minutes**.
+  - **CSRF (B6):** `/api/auth/refresh` and `/api/auth/logout` also need the header `X-Vaultic-CSRF: 1`.
+    This protects them only together with the strict CORS allow-list below. A page that CORS allowed
+    could set the header.
+  - **Not Secure (B3):** the cookie is not marked Secure, because the demo runs over plain http on
+    localhost. Current browsers may accept Secure cookies on localhost, but that is not relied on and was
+    not tested.
+- **CORS (A4):** with login on, only the origins in `VAULTIC_CORS_ORIGINS` (default
+  `http://127.0.0.1:5173,http://localhost:5173`) get CORS headers, with credentials. A `*` or any value
+  that is not `scheme://host[:port]` (no path, no trailing slash) refuses the start.
+- **Rate limit (A2, B5):**
+  - 5 attempts per username, or 20 per client IP, in 15 minutes give 429. Each attempt is counted
+    **before** the password is checked, under a lock, so parallel guesses cannot all be checked. A
+    successful login gives its attempt back.
+  - The limiter is in memory: per process, reset on restart, with one entry per distinct username or IP
+    seen in the window.
+  - Anyone can lock a known username out for 15 minutes. That is by design.
+- **Client IP (A3):** never taken from proxy headers. Every documented start command turns them off
+  (`--no-proxy-headers --forwarded-allow-ips ""`, or `python -m vaultic.infra.serve`).
+- **Root path (B7):** a request with a root path (`--root-path`) is refused, because the routed path would
+  differ from the checked one.
 
 **Passwords:** Argon2id only; never logged, audited or returned. Every failure says "invalid username or
-password".
+password". A failed login stores the typed username in the audit log only when it names an existing user
+(B4), so a password typed into the username field is never stored.
+
+**Mode at start-up (A1):** `VAULTIC_AUTH` is read from the environment and `.env`. It must be empty
+(no-login demo mode) or `jwt` (login on); any other value refuses the start. The server prints
+`Vaultic login: ON (jwt)` or `Vaultic login: OFF - no-login demo mode`.
 
 **Roles:**
 - `analyst` and `admin`; admin includes analyst.
@@ -139,8 +169,17 @@ password".
 ```bash
 python -m vaultic.infra.db migrate
 python -m vaultic.infra.users seed
-VAULTIC_AUTH=jwt uvicorn services.api.platform_server:app --port 8000
+VAULTIC_AUTH=jwt python -m vaultic.infra.serve --port 8000
 ```
+
+or, with uvicorn directly:
+
+```bash
+VAULTIC_AUTH=jwt uvicorn services.api.platform_server:app --port 8000 --no-proxy-headers --forwarded-allow-ips ""
+```
+
+The frozen `demo_server.py` docstring still shows its old uvicorn command. It runs the no-login demo,
+which has no login limit to protect.
 
 - Then run the dashboard with `VITE_DATA_SOURCE=http` and open it at `http://127.0.0.1:5173`. Use
   127.0.0.1, not localhost, so the page and the API are the same site and the SameSite cookie works.

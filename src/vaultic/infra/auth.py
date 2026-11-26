@@ -4,14 +4,16 @@
   exp, iss and aud are checked. The user is re-read on every check, so a deactivated user or a changed
   role takes effect at once.
 - Refresh token: 32 random bytes, valid 8 hours, stored only as its sha256.
-  - It rotates on every refresh.
-  - Presenting an already rotated token revokes its whole family (reuse detection).
+  - It rotates on every refresh, and a session lasts at most 12 hours from login (D238).
+  - A rotated token presented again within 10 seconds is a concurrent refresh (two tabs): 409, nothing
+    revoked. Presented later, it is reuse: the whole family is revoked (D238).
   - Logout revokes the family.
 - Passwords: Argon2id (argon2-cffi defaults: time cost 3, 64 MiB, parallelism 4), rehashed on login when
   the parameters change, never logged or returned.
 - Unknown usernames are checked against a dummy hash, and every failure says only "invalid username or
   password".
-- Rate limit, in memory: 5 failures per username or 20 per client IP in 15 minutes.
+- Rate limit, in memory: 5 attempts per username or 20 per client IP in 15 minutes, counted before the
+  password is checked, under a lock (D238).
 
 There is no TLS on localhost. This is login with role checks for a local demo, not a security product.
 """
@@ -26,7 +28,7 @@ import time
 import uuid
 from collections import defaultdict, deque
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import jwt
 from argon2 import PasswordHasher
@@ -34,6 +36,10 @@ from argon2.exceptions import InvalidHashError, VerificationError
 
 ACCESS_TTL = 15 * 60
 REFRESH_TTL = 8 * 3600
+SESSION_TTL = 12 * 3600  # absolute session lifetime from login (D238, B1)
+REFRESH_GRACE = (
+    10  # seconds: a rotated token presented again this soon is a concurrent refresh (A5)
+)
 ISSUER, AUDIENCE, ALGORITHM = "vaultic", "vaultic-api", "HS256"
 MIN_SECRET = 32
 ROLES = ("analyst", "admin")
@@ -96,6 +102,11 @@ class RefreshRecord:
     expires_at: float
     revoked_at: float | None = None
     replaced_by: str | None = None
+    family_started_at: float | None = None  # the login time of the session (D238); None = issued_at
+
+    @property
+    def session_start(self) -> float:
+        return self.family_started_at if self.family_started_at is not None else self.issued_at
 
 
 class MemoryStore:
@@ -185,24 +196,28 @@ class PgStore:
 
     def add_refresh(self, r: RefreshRecord) -> None:
         self._run(
-            """INSERT INTO refresh_tokens (id, user_id, token_hash, family_id, issued_at, expires_at)
-               VALUES (%s, %s, %s, %s, to_timestamp(%s), to_timestamp(%s))""",
-            (r.id, r.user_id, r.token_hash, r.family_id, r.issued_at, r.expires_at),
+            """INSERT INTO refresh_tokens (id, user_id, token_hash, family_id, issued_at, expires_at,
+                                           family_started_at)
+               VALUES (%s, %s, %s, %s, to_timestamp(%s), to_timestamp(%s), to_timestamp(%s))""",
+            (r.id, r.user_id, r.token_hash, r.family_id, r.issued_at, r.expires_at,
+             r.session_start),  # fmt: skip
         )
 
     def refresh_by_hash(self, h: str) -> RefreshRecord | None:
         row = self._run(
             """SELECT id, user_id, token_hash, family_id, extract(epoch FROM issued_at),
-                      extract(epoch FROM expires_at), extract(epoch FROM revoked_at), replaced_by
+                      extract(epoch FROM expires_at), extract(epoch FROM revoked_at), replaced_by,
+                      extract(epoch FROM family_started_at)
                FROM refresh_tokens WHERE token_hash = %s""",
             (h,),
             "one",
         )
         if not row:
             return None
-        rid, uid, th, fam, iss, exp, rev, rep = row
+        rid, uid, th, fam, iss, exp, rev, rep, start = row
         return RefreshRecord(rid, uid, th, fam, float(iss), float(exp),
-                             float(rev) if rev is not None else None, rep)  # fmt: skip
+                             float(rev) if rev is not None else None, rep,
+                             float(start) if start is not None else None)  # fmt: skip
 
     def rotate(self, old_id: str, new: RefreshRecord, now: float) -> bool:
         self.add_refresh(new)
@@ -227,37 +242,58 @@ class PgStore:
 
 
 # ---- rate limit ----------------------------------------------------------------------------------
-@dataclass
 class RateLimiter:
-    """Failed logins per username and per client IP in a sliding window (in memory, D235)."""
+    """Login attempts per username and per client IP in a sliding window (in memory, D235, D238).
 
-    clock: callable = time.time
-    window: int = FAIL_WINDOW
-    per_user: int = FAIL_PER_USER
-    per_ip: int = FAIL_PER_IP
-    _fails: dict = field(default_factory=lambda: defaultdict(deque))
+    attempt() checks both limits and counts the attempt in one step under a lock, BEFORE the password
+    is verified, so parallel guesses cannot all pass the check (A2). A successful login gives its own
+    attempt back and clears the user's count."""
 
-    def _recent(self, key) -> deque:
-        q, now = self._fails[key], self.clock()
-        while q and q[0] <= now - self.window:
+    def __init__(self, clock=time.time, window: int = FAIL_WINDOW, per_user: int = FAIL_PER_USER,
+                 per_ip: int = FAIL_PER_IP):  # fmt: skip
+        self.clock, self.window, self.per_user, self.per_ip = clock, window, per_user, per_ip
+        self._seen: dict = defaultdict(deque)
+        self._lock = threading.Lock()
+
+    def _recent(self, key, now: float) -> tuple[int, float | None]:
+        """(attempts of `key` in the window, the oldest one's time); empty keys are dropped."""
+        q = self._seen.get(key)
+        while q and q[0][0] <= now - self.window:
             q.popleft()
-        return q
+        if not q:
+            self._seen.pop(key, None)
+            return 0, None
+        return len(q), q[0][0]
 
-    def retry_after(self, username: str, ip: str) -> int | None:
-        waits = []
-        for key, limit in ((("user", username.lower()), self.per_user), (("ip", ip), self.per_ip)):
-            q = self._recent(key)
-            if len(q) >= limit:
-                waits.append(int(q[0] + self.window - self.clock()) + 1)
-        return max(waits) if waits else None
+    def attempt(self, username: str, ip: str) -> tuple[int | None, object]:
+        """(seconds to wait, None) when a limit is reached; else (None, ticket) with the attempt counted."""
+        keys = ((("user", username.strip().lower()), self.per_user), (("ip", ip), self.per_ip))
+        with self._lock:
+            now = self.clock()
+            waits = []
+            for key, limit in keys:
+                n, oldest = self._recent(key, now)
+                if n >= limit:
+                    waits.append(int(oldest + self.window - now) + 1)
+            if waits:
+                return max(waits), None
+            mark = (now, object())  # unique, so a success can give exactly this attempt back
+            for key, _ in keys:
+                self._seen[key].append(mark)
+            return None, (mark, [k for k, _ in keys])
 
-    def failed(self, username: str, ip: str) -> None:
-        now = self.clock()
-        self._fails[("user", username.lower())].append(now)
-        self._fails[("ip", ip)].append(now)
-
-    def succeeded(self, username: str) -> None:
-        self._fails.pop(("user", username.lower()), None)
+    def succeeded(self, ticket) -> None:
+        """A successful login: its attempt no longer counts, and the user's count starts again."""
+        mark, keys = ticket
+        with self._lock:
+            for key in keys:
+                q = self._seen.get(key)
+                if q is None:
+                    continue
+                if key[0] == "user":
+                    self._seen.pop(key, None)
+                elif mark in q:
+                    q.remove(mark)
 
 
 # ---- the service ---------------------------------------------------------------------------------
@@ -305,25 +341,27 @@ class AuthService:
 
     # login / refresh / logout
     def login(self, username: str, password: str, ip: str = "unknown") -> Tokens:
-        wait = self.limiter.retry_after(username, ip)
+        # the attempt is counted before the password is checked, under a lock (D238, A2)
+        wait, ticket = self.limiter.attempt(username, ip)
         if wait is not None:
             raise AuthError(429, "too many failed logins; try again later", retry_after=wait)
         user = self.store.user_by_name(username)
         ok = verify_password(user.password_hash if user else _dummy(), password)
         if not ok or user is None or not user.active:
-            self.limiter.failed(username, ip)
             raise AuthError(401, GENERIC)
-        self.limiter.succeeded(username)
+        self.limiter.succeeded(ticket)
         if _hasher.check_needs_rehash(user.password_hash):
             self.store.set_password_hash(user.id, hash_password(password))
-        return self._issue(user, family=uuid.uuid4().hex)
+        return self._issue(user, family=uuid.uuid4().hex, session_start=self.clock())
 
-    def _issue(self, user: User, family: str, rotate_from: str | None = None) -> Tokens:
+    def _issue(self, user: User, family: str, session_start: float,
+               rotate_from: str | None = None) -> Tokens:  # fmt: skip
         now = self.clock()
         raw = secrets.token_urlsafe(32)
-        rec = RefreshRecord(
-            uuid.uuid4().hex, user.id, token_hash(raw), family, now, now + REFRESH_TTL
-        )
+        # a refresh token never outlives its session (D238, B1)
+        expires = min(now + REFRESH_TTL, session_start + SESSION_TTL)
+        rec = RefreshRecord(uuid.uuid4().hex, user.id, token_hash(raw), family, now, expires,
+                            family_started_at=session_start)  # fmt: skip
         if rotate_from is None:
             self.store.add_refresh(rec)
         elif not self.store.rotate(rotate_from, rec, now):
@@ -332,24 +370,35 @@ class AuthService:
         return Tokens(self.issue_access(user), raw, user)
 
     def refresh(self, raw: str) -> Tokens:
-        """New tokens for a valid refresh token, the old one revoked (rotation). On reuse of an
-        already rotated token the whole family is revoked; the AuthError carries reuse_user_id."""
+        """New tokens for a valid refresh token, the old one revoked (rotation). Three outcomes are
+        told apart for a token that is no longer current (D238, A5):
+        - rotated less than REFRESH_GRACE seconds ago: a concurrent refresh (two tabs), 409, nothing
+          revoked;
+        - rotated earlier: real reuse, the whole family revoked; the AuthError carries reuse_user_id;
+        - revoked without a successor (logout, or the family already ended): 401, nothing more."""
         rec = self.store.refresh_by_hash(token_hash(raw or ""))
         now = self.clock()
         if rec is None:
             raise AuthError(401, "invalid refresh token")
         if rec.revoked_at is not None:
+            if rec.replaced_by is None:
+                raise AuthError(401, "the session was ended; log in again")
+            if now - rec.revoked_at <= REFRESH_GRACE:
+                raise AuthError(409, "refreshed in another tab; retry")
             self.store.revoke_family(rec.family_id, now)
             err = AuthError(401, "this refresh token was already used; the session is ended")
             err.reuse_user_id = rec.user_id  # for the audit entry
             raise err
+        if now >= rec.session_start + SESSION_TTL:
+            self.store.revoke_family(rec.family_id, now)
+            raise AuthError(401, "the session reached its 12-hour limit; log in again")
         if rec.expires_at <= now:
             raise AuthError(401, "the session has expired")
         user = self.store.user(rec.user_id)
         if user is None or not user.active:
             self.store.revoke_family(rec.family_id, now)
             raise AuthError(401, "the user is not active")
-        return self._issue(user, rec.family_id, rotate_from=rec.id)
+        return self._issue(user, rec.family_id, rec.session_start, rotate_from=rec.id)
 
     def logout(self, raw: str) -> User | None:
         rec = self.store.refresh_by_hash(token_hash(raw or ""))
@@ -365,9 +414,21 @@ def allowed(role: str, needed: str) -> bool:
 
 # ---- configuration -------------------------------------------------------------------------------
 def auth_mode(env: Mapping[str, str] | None = None) -> str:
-    """'jwt' when VAULTIC_AUTH=jwt, else 'demo' (the no-Docker demo, D235 Q8)."""
-    env = os.environ if env is None else env
-    return "jwt" if (env.get("VAULTIC_AUTH") or "").strip().lower() == "jwt" else "demo"
+    """'jwt' or 'demo' (D235 Q8). Fails closed (D238, A1): .env is read first (VAULTIC_ENV_FILE or the
+    repository's), and VAULTIC_AUTH must be empty or 'jwt'; anything else refuses the start."""
+    if env is None:
+        from vaultic.infra import db
+
+        db._load_dotenv()
+        env = os.environ
+    value = (env.get("VAULTIC_AUTH") or "").strip().lower()
+    if value == "":
+        return "demo"
+    if value == "jwt":
+        return "jwt"
+    raise RuntimeError(
+        f"VAULTIC_AUTH must be empty (no-login demo mode) or 'jwt' (login on), not {value!r}"
+    )
 
 
 def service_from_env(env: Mapping[str, str] | None = None) -> AuthService:
