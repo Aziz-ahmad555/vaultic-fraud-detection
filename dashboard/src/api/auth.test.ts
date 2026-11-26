@@ -102,6 +102,21 @@ describe("login session (D235)", () => {
     expect(getAuth().demoLabel).toMatch(/no login/);
   });
 
+  it("a refresh answered 409 (another tab refreshed at the same moment) is retried once (D238)", async () => {
+    let calls = 0;
+    configureAuth("http://api", async (url: string) => {
+      if (url.endsWith("/api/auth/mode")) return json(200, { mode: "jwt", demoLabel: null });
+      calls += 1;
+      return calls === 1
+        ? json(409, { detail: "refreshed in another tab; retry" })
+        : json(200, { accessToken: "after-retry", expiresIn: 900, user: { username: "analyst1", role: "analyst" } });
+    });
+    await loadMode();
+    expect(calls).toBe(2);
+    expect(getAuth().user?.username).toBe("analyst1");
+    expect(identityHeaders()).toEqual({ Authorization: "Bearer after-retry" });
+  });
+
   it("demo mode passes 401s through without refreshing", async () => {
     const { f } = backend("demo");
     configureAuth("http://api", f);

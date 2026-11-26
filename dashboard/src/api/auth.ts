@@ -125,7 +125,11 @@ export function refreshSession(): Promise<boolean> {
   if (!refreshing) {
     refreshing = (async () => {
       try {
-        const res = await baseFetch(`${base}/api/auth/refresh`, { method: "POST", credentials: "include", headers: CSRF });
+        const call = () => baseFetch(`${base}/api/auth/refresh`, { method: "POST", credentials: "include", headers: CSRF });
+        let res = await call();
+        // 409: another tab refreshed at the same moment; the browser now holds its newer cookie, so
+        // one retry continues the session (D238, A5)
+        if (res.status === 409) res = await call();
         if (!res.ok) {
           endSession();
           return false;
