@@ -219,3 +219,98 @@ def test_export_records_itself_with_the_exact_count(store):
         store.append("Aziz", "analyst", f"action {i}")
     entry, rows = store.export("Aziz", "admin")
     assert entry["detail"] == "4 entries (CSV)" and len(rows) == 4 and rows[0]["id"] == entry["id"]
+
+
+# ---- 3.3b (D242): the anchor write on Windows under concurrent load --------------------------------
+def _flaky_replace(monkeypatch, fail_times):
+    """os.replace raising PermissionError (as on Windows while a reader has the anchor open) the first
+    `fail_times` calls; records every call and every wait of the store."""
+    import vaultic.audit.store as S
+
+    real, calls, waits = os.replace, [], []
+
+    def replace(src, dst):
+        calls.append(str(dst))
+        if len(calls) <= fail_times:
+            raise PermissionError(13, "The process cannot access the file", str(dst))
+        return real(src, dst)
+
+    monkeypatch.setattr(S.os, "replace", replace)
+    monkeypatch.setattr(S, "_sleep", waits.append, raising=False)
+    return calls, waits
+
+
+def test_d242_a_replace_that_fails_twice_is_retried_and_the_anchor_is_current(store, monkeypatch):
+    calls, waits = _flaky_replace(monkeypatch, fail_times=2)
+    e = store.append("Aziz", "analyst", "label", time="2026-11-27T10:00:00+00:00")
+    assert len(calls) == 3 and len(waits) == 2
+    assert store.read_anchor() == {"entries": 1, "hash": e["hash"]}
+    assert store.verify() == {"ok": True, "entries": 1, "first_bad": None, "reason": None}
+
+
+def test_d242_a_replace_that_always_fails_is_bounded_and_raised_after_the_commit(
+    store, monkeypatch
+):
+    store.append("Aziz", "analyst", "first")  # the anchor exists and records 1 entry
+    calls, waits = _flaky_replace(monkeypatch, fail_times=10**6)
+    with pytest.raises(PermissionError):
+        store.append("Aziz", "analyst", "second")
+    assert len(calls) == 10 and len(waits) == 9 and sum(waits) < 1.0  # bounded, under 1 s
+    monkeypatch.undo()
+    assert store.count() == 2  # committed before the anchor write: never skipped silently
+    v = store.verify()
+    assert v["ok"] and v["entries"] == 2 and "interrupted write" in v["reason"]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows file sharing: os.replace onto an open file")
+def test_d242_windows_an_append_waits_for_a_reader_holding_the_anchor_open(store):
+    import time
+
+    store.append("Aziz", "analyst", "first")
+    opened, release = threading.Event(), threading.Event()
+
+    def reader():
+        with open(store.anchor_path, "rb"):  # Python opens without delete sharing on Windows
+            opened.set()
+            release.wait(0.1)  # about 100 ms
+
+    t = threading.Thread(target=reader)
+    t.start()
+    opened.wait(5)
+    start = time.monotonic()
+    e = store.append("Sara", "analyst", "while the anchor is open")
+    t.join()
+    assert time.monotonic() - start < 1.0
+    assert store.read_anchor() == {"entries": 2, "hash": e["hash"]} and store.verify()["ok"]
+
+
+def test_d242_parallel_verify_during_concurrent_appends(store):
+    errors, results, done = [], [], threading.Event()
+
+    def appender(k):
+        try:
+            for i in range(25):
+                store.append(f"w{k}", "analyst", f"act {k}.{i}")
+        except Exception as e:  # noqa: BLE001 - collected for the assertion
+            errors.append(repr(e))
+
+    def verifier():
+        while not done.is_set():
+            try:
+                results.append(store.verify())
+            except Exception as e:  # noqa: BLE001
+                errors.append(repr(e))
+
+    apps = [threading.Thread(target=appender, args=(k,)) for k in range(4)]
+    vers = [threading.Thread(target=verifier) for _ in range(2)]
+    for t in vers + apps:
+        t.start()
+    for t in apps:
+        t.join()
+    done.set()
+    for t in vers:
+        t.join()
+    assert errors == []
+    assert [r for r in results if not r["ok"]] == []
+    final = store.verify()
+    assert final["ok"] and final["entries"] == 100 and final["reason"] is None

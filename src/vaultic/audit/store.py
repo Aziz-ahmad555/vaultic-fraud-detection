@@ -29,6 +29,7 @@ import json
 import os
 import sqlite3
 import threading
+import time as _time
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
@@ -40,6 +41,11 @@ FIELDS = ("id", "time", "analyst", "role", "action", "target", "before", "after"
 UNKNOWN = "unknown"
 ROLES = ("analyst", "admin")
 MAX_NAME = 60
+# D242: on Windows os.replace onto the anchor, and opening it, raise PermissionError while another handle
+# has it open (a concurrent verify(), another process, an antivirus or indexer). Bounded retry: 10 tries,
+# waits 10, 20, 40, 80 ms then 100 ms (0.65 s in total, under 1 s); then the error is raised.
+ANCHOR_WAITS = (0.01, 0.02, 0.04, 0.08, 0.1, 0.1, 0.1, 0.1, 0.1)
+_sleep = _time.sleep  # looked up at call time, so tests can record the waits
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS audit_log (
@@ -123,15 +129,21 @@ class SQLiteAuditStore:
 
     # ---- anchor -----------------------------------------------------------------------------
     def _write_anchor(self, entries: int, last_hash: str) -> None:
+        """Called under the store's lock, after the entry's commit: the anchor never goes backwards.
+        A PermissionError is retried (bounded, D242) and raised after the last try, never skipped.
+        """
         tmp = self.anchor_path.with_name(self.anchor_path.name + ".tmp")
         tmp.write_text(json.dumps({"entries": entries, "hash": last_hash}), "utf-8")
-        os.replace(tmp, self.anchor_path)  # atomic on the same volume
+        _retry(lambda: os.replace(tmp, self.anchor_path))  # atomic on the same volume
 
     def read_anchor(self) -> dict | None:
-        try:
-            return json.loads(self.anchor_path.read_text("utf-8"))
-        except FileNotFoundError:
-            return None
+        def read():
+            try:
+                return json.loads(self.anchor_path.read_text("utf-8"))
+            except FileNotFoundError:
+                return None
+
+        return _retry(read)  # D242: the anchor may be mid-replace on Windows
 
     # ---- writes -----------------------------------------------------------------------------
     def append(self, analyst, role, action, target=None, before=None, after=None, detail="",
@@ -202,7 +214,13 @@ class SQLiteAuditStore:
     def verify(self) -> dict:
         """Walk the chain in id order (ids contiguous from 1, each prev_hash equal to the previous
         hash, each hash equal to its recomputed value), then compare with the anchor (truncation).
-        Tamper-evident only: see the module docstring for what this cannot detect."""
+        Tamper-evident only: see the module docstring for what this cannot detect. Under the store's
+        lock (D242), so inside one process the chain and the anchor are never read across an append.
+        """
+        with self.lock:
+            return self._verify()
+
+    def _verify(self) -> dict:
         prev, expected_id, hashes = GENESIS, 1, {}
         with closing(self._connect()) as con:
             for r in con.execute("SELECT * FROM audit_log ORDER BY id"):
@@ -236,6 +254,17 @@ class SQLiteAuditStore:
             return {"ok": False, "entries": n, "first_bad": None,
                     "reason": "the anchor file is missing"}  # fmt: skip
         return {"ok": True, "entries": n, "first_bad": None, "reason": None}
+
+
+def _retry(fn):
+    """fn(), retried on PermissionError with the bounded waits of ANCHOR_WAITS (D242); the last
+    PermissionError is raised."""
+    for wait in ANCHOR_WAITS:
+        try:
+            return fn()
+        except PermissionError:
+            _sleep(wait)
+    return fn()
 
 
 def to_csv(entries: list[dict]) -> str:

@@ -1,6 +1,6 @@
 """Copy the SQLite audit log into PostgreSQL, verified at both ends (Sprint 3 step 3.3, D240).
 
-"Both ends" (D241, B5 wording): the SQLite source before the copy, and the PostgreSQL copy inside the
+"Both ends" (D241, wording note): the SQLite source before the copy, and the PostgreSQL copy inside the
 migration's transaction, before it commits.
 
     python -m vaultic.infra.migrate_audit --from <audit.sqlite> [--to <db url>] --dry-run
@@ -36,6 +36,7 @@ import argparse
 import hashlib
 import json
 import sqlite3
+import threading
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
@@ -54,6 +55,7 @@ class ReadOnlySQLiteAuditStore(SQLiteAuditStore):
     def __init__(self, path: str | Path):
         self.path = Path(path)
         self.anchor_path = self.path.with_name(self.path.name + ".anchor.json")
+        self.lock = threading.RLock()  # verify() takes the store's lock (D242)
         if not self.path.is_file():
             raise MigrationRefused(f"{self.path} does not exist")
 

@@ -167,7 +167,7 @@ python -m vaultic.infra.migrate_audit --from "<path to audit.sqlite>"
   transaction, the entry count, the last hash and the sha256 of the full CSV export are compared with the
   source and the copy is verified; any difference rolls everything back. "Verified before and after"
   means: the SQLite source before the copy, and the PostgreSQL copy inside the migration's transaction,
-  before it commits (D241, B5), so nothing is committed that did not verify.
+  before it commits (D241, wording note), so nothing is committed that did not verify.
 - **The old log is closed (D241, A3).** Before the commit, the marker `<log>.migrated.json` (target
   without password, entry count, last hash, time) is written next to the SQLite log, and the log is
   re-read under SQLite's write lock. If it grew or changed during the copy, the marker is removed and
