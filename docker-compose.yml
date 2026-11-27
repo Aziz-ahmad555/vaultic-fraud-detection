@@ -4,7 +4,8 @@
 # example one using 5433 and 6379) without clashes. See docs/PLATFORM.md.
 #
 #   docker compose up -d                      PostgreSQL (the default service)
-#   docker compose --profile full up -d       + Redis (3.4) + Kafka (3.5), added in their steps
+#   docker compose --profile cache up -d      + Redis (3.4, D244): response and session cache
+#   docker compose --profile full up -d       + Redis + Kafka (3.5)
 #   python -m vaultic.infra.db migrate        apply services/db/migrations
 #
 # Needs POSTGRES_PASSWORD in .env (see .env.example).
@@ -31,6 +32,28 @@ services:
       timeout: 5s
       retries: 10
     # no restart policy (D233): Vaultic's PostgreSQL starts only with `docker compose up`
+
+  redis:
+    # Redis 7.4.11, pinned to the digest of the image already on this machine (D244: no download).
+    # A cache only: no RDB, no AOF, so no volume; PostgreSQL stays the source of truth for sessions.
+    image: redis:7.4.11-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+    profiles: ["cache", "full"]
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        exec redis-server --maxmemory 100mb --maxmemory-policy allkeys-lru --save "" --appendonly no
+        $${REDIS_PASSWORD:+--requirepass "$$REDIS_PASSWORD"}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    ports:
+      - "127.0.0.1:${VAULTIC_REDIS_PORT:-6390}:6379"
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # no restart policy (D233)
 
 volumes:
   vaultic-postgres:

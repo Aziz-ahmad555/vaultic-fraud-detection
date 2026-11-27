@@ -69,14 +69,64 @@ class _NoWildcardCORS:
         return await self.app(scope, receive, strip)
 
 
-def resolve_auth(auth="env"):
+def resolve_cache(cache="env"):
+    """A RedisLink (VAULTIC_CACHE=redis), None (no Redis), or "env": read VAULTIC_CACHE (D244)."""
+    if isinstance(cache, str) and cache == "env":
+        from vaultic.infra.cache import link_from_env
+
+        return link_from_env()
+    return cache
+
+
+def resolve_auth(auth="env", link=None):
     """An AuthService (login on), None (no-login demo mode), or "env": login on only with
-    VAULTIC_AUTH=jwt, which then needs VAULTIC_JWT_SECRET and PostgreSQL (D235)."""
+    VAULTIC_AUTH=jwt, which then needs VAULTIC_JWT_SECRET and PostgreSQL (D235). With a Redis link the
+    refresh tokens get Redis copies; PostgreSQL stays their source of truth (D244)."""
     if isinstance(auth, str) and auth == "env":
         from vaultic.infra.auth import auth_mode, service_from_env
 
-        return service_from_env() if auth_mode() == "jwt" else None
+        return service_from_env(link=link) if auth_mode() == "jwt" else None
     return auth
+
+
+def _postgres_urls(auth, audit) -> list[str]:
+    store = getattr(auth, "store", None)
+    store = getattr(store, "store", store)  # a CachedSessionStore wraps the PgStore
+    return [u for u in (getattr(store, "url", None), getattr(audit, "url", None)) if u]
+
+
+def postgres_status(urls: list[str]) -> str:
+    if not urls:
+        return "unused"
+    import psycopg
+
+    try:
+        for url in dict.fromkeys(urls):
+            psycopg.connect(url, connect_timeout=2).close()
+    except psycopg.Error:
+        return "down"
+    return "up"
+
+
+def add_health(app, link, auth) -> None:
+    """GET /api/health (public): which services answer (D244). The dashboard shows "cache off" when
+    Redis is down; nothing here reveals a URL or a secret."""
+
+    def health():
+        return {
+            "api": "up",
+            "redis": "off" if link is None else link.status(),
+            "postgres": postgres_status(_postgres_urls(auth, getattr(app.state, "audit", None))),
+        }
+
+    app.add_api_route("/api/health", health, methods=["GET"])
+
+
+def default_bundle_id() -> str:
+    """The sha256 of the demo bundle: part of every response-cache key (D244)."""
+    from vaultic.infra.cache import file_sha256
+
+    return file_sha256(Path(os.environ.get("VAULTIC_DEMO_BUNDLE") or demo.DEFAULT_BUNDLE))
 
 
 def mode_banner(auth) -> str:
@@ -88,11 +138,14 @@ def _to_stderr(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
 
 
-def with_login(app, auth="env", announce=_to_stderr):
+def with_login(app, auth="env", announce=_to_stderr, cache="env", bundle_id: str | None = None):
     """Add login and role checks to a demo app (from demo_server.create_app), before it starts.
-    Refuses (raises) on a bad VAULTIC_AUTH or VAULTIC_CORS_ORIGINS, before anything is added (D238).
+    Refuses (raises) on a bad VAULTIC_AUTH, VAULTIC_CACHE or VAULTIC_CORS_ORIGINS, before anything is
+    added (D238, D244). With Redis (D244) the response cache is installed innermost and /api/health
+    reports it; Redis being down never refuses the start.
     """
-    auth = resolve_auth(auth)
+    link = resolve_cache(cache)
+    auth = resolve_auth(auth, link)
     origins = auth_api.cors_origins(os.environ) if auth is not None else None  # A4: checked first
     if auth is not None:
         app.add_middleware(_NoWildcardCORS)
@@ -103,10 +156,18 @@ def with_login(app, auth="env", announce=_to_stderr):
     app.include_router(auth_api.make_router(auth, audit=getattr(app.state, "audit", None)))
     app.state.auth = auth
     with_records(app)
+    add_health(app, link, auth)
+    if link is not None:
+        from vaultic.infra.cache import install_response_cache
+
+        install_response_cache(app, link, bundle_id or default_bundle_id())
+    app.state.cache = link
     announce(mode_banner(auth))  # the active mode, clearly, at start-up (D238, A1)
+    from vaultic.infra.cache import cache_banner
     from vaultic.infra.stores import store_banner
 
     announce(store_banner(getattr(app.state, "audit", None)))  # and the store (D240)
+    announce(cache_banner(link))  # and the cache (D244)
     return app
 
 

@@ -36,6 +36,7 @@ CSRF_HEADER = "X-Vaultic-CSRF"
 ROUTE_ROLES: dict[tuple[str, str], str] = {
     # login itself (D235)
     ("GET", "/api/auth/mode"): PUBLIC,
+    ("GET", "/api/health"): PUBLIC,  # which services answer (D244)
     ("POST", "/api/auth/login"): PUBLIC,
     ("POST", "/api/auth/refresh"): PUBLIC,
     ("POST", "/api/auth/logout"): PUBLIC,

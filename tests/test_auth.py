@@ -105,14 +105,16 @@ def test_every_api_route_has_exactly_one_role_rule_and_no_rule_is_stale(tmp_path
     mod.mount_copilot(app, SimpleNamespace())
     routes = _all_api_routes(app)
     rules = set(_platform().auth_api.ROUTE_ROLES)
-    # 5 auth + 20 demo backend + 1 label read (D240) + 8 Test Lab + 3 Attack Lab + 4 copilot
-    assert len(routes) == 41
+    # 5 auth + 20 demo backend + 1 label read (D240) + 1 health (D244) + 8 Test Lab + 3 Attack Lab
+    # + 4 copilot
+    assert len(routes) == 42
     assert routes - rules == set(), "routes without a role rule"
     assert rules - routes == set(), "role rules for routes that do not exist"
     roles = _platform().auth_api.ROUTE_ROLES
     assert {k for k, v in roles.items() if v == "public"} == {
         ("GET", "/api/auth/mode"), ("POST", "/api/auth/login"),
-        ("POST", "/api/auth/refresh"), ("POST", "/api/auth/logout")}  # fmt: skip
+        ("POST", "/api/auth/refresh"), ("POST", "/api/auth/logout"),
+        ("GET", "/api/health")}  # fmt: skip
     assert (
         roles[("GET", "/api/audit/export.csv")] == "admin"
         and roles[("POST", "/api/attack/run")] == "admin"
@@ -471,8 +473,9 @@ def test_a1_the_active_mode_is_announced_at_start_up(tmp_path):
         demo = mod.create_app(bundle, runs_dir=bundle.parent / "runs",
                               audit_store=SQLiteAuditStore(tmp_path / f"{len(said)}.sqlite"))  # fmt: skip
         _platform().with_login(demo, auth, announce=said.append)
-    assert said[0].startswith("Vaultic login: OFF") and said[2] == "Vaultic login: ON (jwt)"
-    assert said[1] == said[3] and said[1].startswith("Vaultic store: files")  # D240
+    assert said[0].startswith("Vaultic login: OFF") and said[3] == "Vaultic login: ON (jwt)"
+    assert said[1] == said[4] and said[1].startswith("Vaultic store: files")  # D240
+    assert said[2] == said[5] and said[2].startswith("Vaultic cache: off")  # D244
 
 
 def test_a2_parallel_wrong_guesses_check_no_more_passwords_than_the_limit(monkeypatch):

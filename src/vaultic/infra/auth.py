@@ -355,7 +355,7 @@ class AuthService:
         return self._issue(user, family=uuid.uuid4().hex, session_start=self.clock())
 
     def _issue(self, user: User, family: str, session_start: float,
-               rotate_from: str | None = None) -> Tokens:  # fmt: skip
+               rotate_from: RefreshRecord | None = None) -> Tokens:  # fmt: skip
         now = self.clock()
         raw = secrets.token_urlsafe(32)
         # a refresh token never outlives its session (D238, B1)
@@ -364,7 +364,14 @@ class AuthService:
                             family_started_at=session_start)  # fmt: skip
         if rotate_from is None:
             self.store.add_refresh(rec)
-        elif not self.store.rotate(rotate_from, rec, now):
+        elif not self.store.rotate(rotate_from.id, rec, now):
+            # lost a race: another refresh rotated (or a logout revoked) the token after it was read.
+            # Re-read it: rotated within the grace = another tab, 409 as in refresh() (A5, D244)
+            truth = getattr(self.store, "source", self.store)  # PostgreSQL, never a cached copy
+            cur = truth.refresh_by_hash(rotate_from.token_hash)
+            if (cur is not None and cur.replaced_by is not None and cur.revoked_at is not None
+                    and now - cur.revoked_at <= REFRESH_GRACE):  # fmt: skip
+                raise AuthError(409, "refreshed in another tab; retry")
             self.store.revoke_family(family, now)
             raise AuthError(401, "the session was ended; log in again")
         return Tokens(self.issue_access(user), raw, user)
@@ -398,7 +405,7 @@ class AuthService:
         if user is None or not user.active:
             self.store.revoke_family(rec.family_id, now)
             raise AuthError(401, "the user is not active")
-        return self._issue(user, rec.family_id, rec.session_start, rotate_from=rec.id)
+        return self._issue(user, rec.family_id, rec.session_start, rotate_from=rec)
 
     def logout(self, raw: str) -> User | None:
         rec = self.store.refresh_by_hash(token_hash(raw or ""))
@@ -431,7 +438,7 @@ def auth_mode(env: Mapping[str, str] | None = None) -> str:
     )
 
 
-def service_from_env(env: Mapping[str, str] | None = None) -> AuthService:
+def service_from_env(env: Mapping[str, str] | None = None, link=None) -> AuthService:
     """The jwt-mode service; refuses to start without a long enough secret or a database."""
     from vaultic.infra import db
 
@@ -443,4 +450,9 @@ def service_from_env(env: Mapping[str, str] | None = None) -> AuthService:
         raise RuntimeError(
             f"VAULTIC_AUTH=jwt needs VAULTIC_JWT_SECRET (at least {MIN_SECRET} characters) in .env"
         )
-    return AuthService(PgStore(db.db_url(env)), secret)
+    store = PgStore(db.db_url(env))
+    if link is not None:  # Redis copies of new refresh tokens; PostgreSQL stays the truth (D244)
+        from vaultic.infra.cache import CachedSessionStore
+
+        store = CachedSessionStore(store, link)
+    return AuthService(store, secret)

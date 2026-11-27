@@ -15,7 +15,7 @@ Nothing the platform stores feeds a model, a metric or a research table.
 | service | image | host port (`.env` key, default) | memory limit | step |
 |---|---|---|---|---|
 | PostgreSQL | `postgres:16.16-alpine` | `VAULTIC_POSTGRES_PORT`, 5442 | 512 MB | 3.1 |
-| Redis | added in 3.4 | `VAULTIC_REDIS_PORT`, 6390 | 128 MB | 3.4 |
+| Redis | `redis:7.4.11-alpine` (profile `cache`) | `VAULTIC_REDIS_PORT`, 6390 | 128 MB | 3.4 |
 | Kafka (KRaft) | added in 3.5 | `VAULTIC_KAFKA_PORT`, 9094 | 1 GB | 3.5 |
 
 Every port is bound to 127.0.0.1. The ports, the project name `vaultic` and the `vaultic-*` volumes keep
@@ -90,6 +90,44 @@ docker compose down
 Later migrations: `0002_auth.sql` (refresh tokens, 3.2), `0003_session_start.sql` (12-hour session limit,
 3.2a), `0004_records.sql` (audit anchor, labels, copilot records, 3.3), `0005_decisions_guard.sql`
 (decisions stream-only and append-only, the label boundary; 3.3a, D241).
+
+## Cache (step 3.4, D244)
+
+Redis is a cache only. It makes the platform faster; it never decides anything, and the platform works
+the same without it, only slower.
+
+```bash
+docker compose --profile cache up -d        # PostgreSQL + Redis
+VAULTIC_CACHE=redis VAULTIC_AUTH=jwt python -m vaultic.infra.serve --port 8000
+curl http://127.0.0.1:8000/api/health       # {"api": "up", "redis": "up", "postgres": "up"}
+```
+
+- **`VAULTIC_CACHE`** (environment or `.env`): empty = no Redis (as before); `redis` = Redis on
+  127.0.0.1:`VAULTIC_REDIS_PORT` (6390), with `REDIS_PASSWORD` if set. Any other value refuses the start.
+- **Container:** Redis 7.4.11, pinned by digest; 128 MB limit, at most 100 MB of data with `allkeys-lru`
+  eviction; no RDB and no AOF, so nothing is written to disk and there is no volume; no restart policy.
+- **What Redis holds (Q11):**
+  - **Responses** of the user-independent GET routes: day summary, alerts, network, queues, drift,
+    what-if status, model lab, meta and range. The key is the bundle's sha256, the path and the sorted
+    query string, so a what-if setting or a label delay never gets another one's answer. Entries live
+    5 minutes; only 200 JSON responses up to 2 MB are kept.
+  - **Copies of new refresh-token records.** PostgreSQL stays the source of truth: the rotation, the
+    reuse check and the audit all happen there. A rotation or logout deletes the copies.
+  - **No online features.** The roadmap's Redis counters (11.2) are not built; the features come from the
+    research code, the basis of the parity proof.
+- **Headers:** every cached route answers with `X-Vaultic-Cache: hit`, `miss` or `bypass` and a
+  `Server-Timing: app;dur=<ms>` header. Other routes carry neither.
+- **Redis down:** every call has a 50 ms timeout and a circuit breaker (3 failures open it for 10 s, then
+  one trial). Every route still answers with the same body, marked `bypass`; login, refresh and logout
+  keep working through PostgreSQL. `/api/health` says `"redis": "down"` and the dashboard shows a small
+  "Cache off" note.
+- **Why a Redis outage cannot bring back a revoked session:** copies are written only for new tokens,
+  never on a read. If a delete fails (Redis down during a logout), the session cache is marked stale and
+  skipped until all its keys are flushed. A copy that is still "active" can only reach PostgreSQL's
+  conditional rotation, which refuses it.
+- **Limits:** the cache is per Redis instance and is lost when Redis stops, which is harmless. A cached
+  response can be up to 5 minutes old; the bundle is read-only, so it cannot change underneath. The
+  copilot's cached summaries stay in their file cache on drive E (D224).
 
 ## Records in PostgreSQL (step 3.3, D240; fixes 3.3a, D241)
 

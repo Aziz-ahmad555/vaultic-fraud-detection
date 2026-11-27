@@ -173,6 +173,7 @@ pytokens==0.4.1
 pytz==2026.2
 pywin32==312; sys_platform == "win32"
 PyYAML==6.0.3
+redis==8.2.0
 reportlab==4.5.1
 requests==2.34.2
 rich==15.0.0
