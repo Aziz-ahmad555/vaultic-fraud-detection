@@ -72,21 +72,27 @@ Each run saves `config.yaml`, `metrics.json` (mean, std, 95% CI per metric), `pr
 - Use float32 / category dtypes; IEEE-CIS is ~590k rows × ~430 columns, so watch memory.
 - Graph work: PyTorch Geometric `HeteroData` + `NeighborLoader`; sample, don't load full graphs.
 - Windows machine: run Kafka, Redis, PostgreSQL via Docker Desktop + WSL2. Use `pathlib`, not hard-coded backslash paths.
-- Branch per feature. Before merging to `main`, open a PR and (decision D32):
-  1. Run the full test suite incl. leakage tests; all must pass.
+- Branch per feature. Pull requests follow the **lean workflow (D243, amends D32)**:
+  1. Locally, run only the tests related to the change (leakage tests on any feature change), plus the
+     freeze check (code rows, and the data rows' size + sha256 per D234). CI runs the full suite; run the
+     full suite locally only when CI fails.
   2. Fill the PR checklist (`.github/pull_request_template.md`): leakage rules respected,
      no test-period use outside `--final`, configs/decisions logged, no data/secrets committed,
      results reproducible from configs.
-  3. Independent review: start a NEW Claude Code session (not the one that wrote the code)
-     and ask it to review the PR diff against CLAUDE.md and the roadmap. Fix or answer every
-     finding before merging.
+  3. No separate review or verification sessions, except one independent review in a NEW session
+     before merging Sprint 3 step 3.5 (streaming parity and no future information).
+  4. After pushing, give Aziz the compare link and a short PR text. Aziz merges when CI is green;
+     Claude never merges.
+  5. Reports are short: what changed, the test result, the freeze check, anything Aziz must decide.
+     Work through planned steps one after another; stop only for a real decision or a failure.
   Supervisor reviews milestone results (M2, M6, M13 etc.), not individual PRs.
 - Unit-test every feature function on a small hand-made example (e.g. 10 rows) with known correct answers.
 
 ## How to work in this repo
 
 - Before a multi-file task, show a short plan and wait for approval.
-- After finishing, run `pytest` (including leakage tests) and report results; don't claim success without running them.
+- After finishing, run the related tests (D243; leakage tests on any feature change) and report results;
+  don't claim success without running them.
 - Stop at each phase's exit gate and report whether it passed, with numbers.
 - Don't install heavy dependencies or change pinned versions without saying so.
 - **Drives (D239): do no work on drive C.**
