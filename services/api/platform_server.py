@@ -1,7 +1,11 @@
 """The demo backend with login (Sprint 3 step 3.2, D235, D236).
 
-    VAULTIC_AUTH=jwt uvicorn services.api.platform_server:app --port 8000     login on
-    uvicorn services.api.platform_server:app --port 8000                      no-login demo mode
+    VAULTIC_AUTH=jwt python -m vaultic.infra.serve        login on
+    python -m vaultic.infra.serve                         no-login demo mode
+    (or uvicorn services.api.platform_server:app --port 8000 --no-proxy-headers --forwarded-allow-ips "")
+
+Client IPs are never taken from proxy headers (D238, A3); VAULTIC_AUTH must be empty or 'jwt', read from
+the environment and .env (D238, A1); the active mode is printed at start-up.
 
 services/api/demo_server.py is part of E20's frozen code, so it stays byte-identical and is wrapped here,
 not changed (D236). with_login(app, auth) adds:
@@ -72,18 +76,30 @@ def resolve_auth(auth="env"):
     return auth
 
 
-def with_login(app, auth="env"):
-    """Add login and role checks to a demo app (from demo_server.create_app), before it starts."""
+def mode_banner(auth) -> str:
+    return ("Vaultic login: ON (jwt)" if auth is not None
+            else "Vaultic login: OFF - no-login demo mode (names and roles are self-declared)")  # fmt: skip
+
+
+def _to_stderr(message: str) -> None:
+    print(message, file=sys.stderr, flush=True)
+
+
+def with_login(app, auth="env", announce=_to_stderr):
+    """Add login and role checks to a demo app (from demo_server.create_app), before it starts.
+    Refuses (raises) on a bad VAULTIC_AUTH or VAULTIC_CORS_ORIGINS, before anything is added (D238).
+    """
     auth = resolve_auth(auth)
+    origins = auth_api.cors_origins(os.environ) if auth is not None else None  # A4: checked first
     if auth is not None:
         app.add_middleware(_NoWildcardCORS)
     app.add_middleware(auth_api.AuthMiddleware, service=auth)
     if auth is not None:  # outermost: answers preflights and covers 401 / 403 responses too
-        app.add_middleware(CORSMiddleware, allow_origins=auth_api.cors_origins(os.environ),
-                           allow_methods=["*"], allow_headers=["*"],
-                           allow_credentials=True)  # fmt: skip
+        app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"],
+                           allow_headers=["*"], allow_credentials=True)  # fmt: skip
     app.include_router(auth_api.make_router(auth, audit=getattr(app.state, "audit", None)))
     app.state.auth = auth
+    announce(mode_banner(auth))  # the active mode, clearly, at start-up (D238, A1)
     return app
 
 

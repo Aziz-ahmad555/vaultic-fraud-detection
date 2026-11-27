@@ -89,6 +89,14 @@ Each run saves `config.yaml`, `metrics.json` (mean, std, 95% CI per metric), `pr
 - After finishing, run `pytest` (including leakage tests) and report results; don't claim success without running them.
 - Stop at each phase's exit gate and report whether it passed, with numbers.
 - Don't install heavy dependencies or change pinned versions without saying so.
+- **Drives (D239): do no work on drive C.**
+  - Drives C and E each keep at least 10 GB free. Before any heavy job (full test suite, builds,
+    benchmarks, parity or model runs, image pulls), run `python tools/disk_space.py`. If a drive is below
+    10 GB, stop and report; the full test suite also stops by itself (`tests/conftest.py`).
+  - Temp files and caches go under `E:\dev-cache`: TEMP/TMP `tmp`, pytest `pytest`, pip `pip`, npm `npm`,
+    Playwright `ms-playwright`, pre-commit `pre-commit`.
+  - The Claude Code settings in `E:\old work\fyp 11\.claude\settings.json` set these for every session
+    started there, and `tests/conftest.py` sets them for every test run on this machine.
 - A final run interrupted by sleep or shutdown may be resumed with the experiment's `--resume`
   (same guards as a start; a FINAL-RESUMED row pushed before any test data is read): a resume
   of the same run, logged; not a re-run. An aborted final run cannot be resumed. A crash or

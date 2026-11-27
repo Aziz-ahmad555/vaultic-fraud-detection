@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+import time
+
 import jwt
 import pytest
 from fastapi.testclient import TestClient
@@ -196,7 +198,7 @@ def test_a_deactivated_user_or_changed_role_takes_effect_at_once(jwt_app):
 
 
 def test_refresh_rotates_and_a_reused_token_ends_the_whole_session(jwt_app):
-    app, svc, _ = jwt_app
+    app, svc, now = jwt_app
     c = TestClient(app)
     _login(c, "analyst1")
     first = c.cookies.get(A_COOKIE := "vaultic_refresh")
@@ -206,7 +208,9 @@ def test_refresh_rotates_and_a_reused_token_ends_the_whole_session(jwt_app):
     assert r.status_code == 200 and r.json()["accessToken"]
     second = c.cookies.get(A_COOKIE)
     assert second and second != first
-    # someone replays the first (rotated) token: refused, and the whole family is revoked
+    # someone replays the first (rotated) token after the grace window: refused, and the whole
+    # family is revoked (within the window it would be a concurrent refresh, D238)
+    now[0] += A.REFRESH_GRACE + 1
     thief = TestClient(app)
     thief.cookies.set(A_COOKIE, first, path="/api/auth")
     assert thief.post("/api/auth/refresh", headers={"X-Vaultic-CSRF": "1"}).status_code == 401
@@ -354,11 +358,16 @@ def test_login_refresh_reuse_and_logout_on_postgresql(pg):
     for name, role in (("analyst1", "analyst"), ("admin1", "admin")):
         conn.execute("INSERT INTO users (username, password_hash, role) VALUES (%s, %s, %s)",
                      (name, A.hash_password(PASSWORDS[name]), role))  # fmt: skip
-    svc = A.AuthService(A.PgStore(url), SECRET)
+    now = [time.time()]
+    svc = A.AuthService(A.PgStore(url), SECRET, clock=lambda: now[0])
     t = svc.login("analyst1", PASSWORDS["analyst1"])
     assert svc.verify_access(t.access).username == "analyst1"
     t2 = svc.refresh(t.refresh)
     assert t2.refresh != t.refresh
+    with pytest.raises(A.AuthError) as tab:  # A5: within the grace, another tab's refresh
+        svc.refresh(t.refresh)
+    assert tab.value.status == 409
+    now[0] += A.REFRESH_GRACE + 1
     with pytest.raises(A.AuthError, match="already used"):
         svc.refresh(t.refresh)  # reuse: the family is revoked
     with pytest.raises(A.AuthError):
@@ -371,6 +380,17 @@ def test_login_refresh_reuse_and_logout_on_postgresql(pg):
     assert svc.logout(t3.refresh).username == "admin1"
     with pytest.raises(A.AuthError):
         svc.refresh(t3.refresh)
+    # B1 on PostgreSQL (migration 0003): refreshing keeps the session start; 12 h after login it ends
+    t4 = svc.login("analyst1", PASSWORDS["analyst1"])
+    start = now[0]
+    for _ in range(3):  # refresh every 4 hours
+        now[0] += 4 * 3600 - 60
+        t4 = svc.refresh(t4.refresh)
+    rec = svc.store.refresh_by_hash(A.token_hash(t4.refresh))
+    assert abs(rec.session_start - start) < 1 and rec.expires_at <= start + A.SESSION_TTL + 1
+    now[0] = start + A.SESSION_TTL + 1
+    with pytest.raises(A.AuthError, match="12-hour limit"):
+        svc.refresh(t4.refresh)
     hashes = [r[0] for r in conn.execute("SELECT token_hash FROM refresh_tokens").fetchall()]
     assert (
         t3.refresh not in hashes and A.token_hash(t3.refresh) in hashes
@@ -418,3 +438,227 @@ def test_the_frozen_demo_server_is_unchanged_and_has_no_login_routes(tmp_path):
     c = TestClient(plain)
     assert c.get("/api/auth/mode").status_code == 404
     assert c.get("/api/meta").status_code == 200
+
+
+# ---- 3.2a: the fixes of the post-merge review of PR #18 (D238) ---------------------------------------
+def test_a1_the_mode_is_read_from_dot_env_and_only_empty_or_jwt_is_accepted(monkeypatch, tmp_path):
+    import os
+
+    env_file = tmp_path / "main.env"
+    env_file.write_text("VAULTIC_AUTH=jwt\n", "utf-8")
+    monkeypatch.delenv("VAULTIC_AUTH", raising=False)
+    monkeypatch.setenv("VAULTIC_ENV_FILE", str(env_file))
+    try:
+        assert A.auth_mode() == "jwt"  # set only in .env: login is on, not silently off
+    finally:
+        os.environ.pop("VAULTIC_AUTH", None)
+    assert A.auth_mode({}) == A.auth_mode({"VAULTIC_AUTH": "  "}) == "demo"
+    assert A.auth_mode({"VAULTIC_AUTH": " JWT "}) == "jwt"
+    for bad in ("on", "true", "jwt1", "1", "yes"):
+        with pytest.raises(RuntimeError, match="must be empty .* or 'jwt'"):
+            A.auth_mode({"VAULTIC_AUTH": bad})
+
+
+def test_a1_the_active_mode_is_announced_at_start_up(tmp_path):
+    from vaultic.audit.store import SQLiteAuditStore
+
+    mod = _load_module()
+    bundle = _bundle(tmp_path)
+    _app(mod, bundle)
+    said = []
+    for auth in (None, _service([0.0])):
+        demo = mod.create_app(bundle, runs_dir=bundle.parent / "runs",
+                              audit_store=SQLiteAuditStore(tmp_path / f"{len(said)}.sqlite"))  # fmt: skip
+        _platform().with_login(demo, auth, announce=said.append)
+    assert said[0].startswith("Vaultic login: OFF") and said[1] == "Vaultic login: ON (jwt)"
+
+
+def test_a2_parallel_wrong_guesses_check_no_more_passwords_than_the_limit(monkeypatch):
+    import threading
+
+    svc = _service([1_000_000.0])
+    checked, lock = [], threading.Lock()
+    real = A.verify_password
+
+    def counting(stored, password):
+        with lock:
+            checked.append(password)
+        return real(stored, password)
+
+    monkeypatch.setattr(A, "verify_password", counting)
+    results = []
+
+    def guess(i):
+        try:
+            svc.login("analyst1", f"wrong-{i}", ip=f"10.0.0.{i}")  # spread over IPs: the user limit
+            results.append(200)
+        except A.AuthError as e:
+            results.append(e.status)
+
+    threads = [threading.Thread(target=guess, args=(i,)) for i in range(30)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(checked) == A.FAIL_PER_USER  # 5, not 30
+    assert sorted(results) == [401] * A.FAIL_PER_USER + [429] * (30 - A.FAIL_PER_USER)
+
+
+def test_a2_a_success_gives_its_attempt_back_and_resets_the_user():
+    lim = A.RateLimiter(clock=lambda: 0.0, per_user=2, per_ip=3)
+    wait, t1 = lim.attempt("u", "ip")
+    assert wait is None
+    lim.succeeded(t1)
+    for _ in range(2):
+        assert lim.attempt("u", "ip")[0] is None
+    assert lim.attempt("u", "ip")[0] is not None  # 2 per user (the refused one is not counted)
+    assert (
+        lim.attempt("other", "ip")[0] is None
+    )  # the IP's 3rd attempt: the success gave its own back
+    assert lim.attempt("third", "ip")[0] is not None  # 3 per IP
+
+
+def test_a3_x_forwarded_for_cannot_change_the_client_ip():
+    import socket
+    import threading
+    import time
+    import urllib.request
+
+    import uvicorn
+
+    from vaultic.infra import serve
+
+    async def echo(scope, receive, send):
+        if scope["type"] != "http":
+            return
+        body = (scope["client"][0] if scope.get("client") else "none").encode()
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/plain")],
+            }
+        )
+        await send({"type": "http.response.body", "body": body})
+
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    cfg = serve.config(echo, port=port)
+    assert cfg.proxy_headers is False and cfg.forwarded_allow_ips == "" and cfg.root_path == ""
+    server = uvicorn.Server(cfg)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    try:
+        for _ in range(100):
+            if server.started:
+                break
+            time.sleep(0.05)
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/",
+                                     headers={"X-Forwarded-For": "203.0.113.9", "X-Real-IP": "203.0.113.9"})  # fmt: skip
+        assert urllib.request.urlopen(req, timeout=5).read().decode() == "127.0.0.1"
+    finally:
+        server.should_exit = True
+        thread.join(timeout=10)
+
+
+def test_a3_every_documented_uvicorn_command_turns_proxy_headers_off():
+    import re
+
+    for doc in ("docs/PLATFORM.md", "services/api/platform_server.py"):
+        text = (ROOT / doc).read_text("utf-8")
+        for cmd in re.findall(r"uvicorn services\.api\.platform_server:app[^\n`]*", text):
+            assert "--no-proxy-headers" in cmd, f"{doc}: {cmd}"
+
+
+@pytest.mark.parametrize("bad", ["*", "http://127.0.0.1:5173,*", "http://x.example/", "http://x.example/path",
+                                 "127.0.0.1:5173", "ftp://x.example", "https://*.example.com", " , "])  # fmt: skip
+def test_a4_a_wildcard_or_malformed_cors_origin_refuses_the_start(bad, tmp_path, monkeypatch):
+    auth_api = _platform().auth_api
+    with pytest.raises(ValueError, match="VAULTIC_CORS_ORIGINS"):
+        auth_api.cors_origins({"VAULTIC_CORS_ORIGINS": bad})
+    monkeypatch.setenv("VAULTIC_CORS_ORIGINS", bad)
+    with pytest.raises(ValueError):
+        _app_with(_load_module(), tmp_path, _service([0.0]))
+
+
+def test_a4_good_origins_are_accepted():
+    auth_api = _platform().auth_api
+    assert auth_api.cors_origins({}) == ["http://127.0.0.1:5173", "http://localhost:5173"]
+    assert auth_api.cors_origins({"VAULTIC_CORS_ORIGINS": "https://demo.example:8443, http://[::1]:5173"}) == [
+        "https://demo.example:8443", "http://[::1]:5173"]  # fmt: skip
+
+
+def test_a5_concurrent_refresh_logout_and_real_reuse_are_told_apart(jwt_app):
+    app, svc, now = jwt_app
+    c = TestClient(app)
+    _login(c, "analyst1")
+    old = c.cookies.get("vaultic_refresh")
+    assert c.post("/api/auth/refresh", headers={"X-Vaultic-CSRF": "1"}).status_code == 200
+    new = c.cookies.get("vaultic_refresh")
+    # a second tab refreshes with the old token a moment later: 409, nothing revoked, cookie kept
+    tab2 = TestClient(app)
+    tab2.cookies.set("vaultic_refresh", old, path="/api/auth")
+    r = tab2.post("/api/auth/refresh", headers={"X-Vaultic-CSRF": "1"})
+    assert r.status_code == 409 and "set-cookie" not in r.headers
+    assert (
+        c.post("/api/auth/refresh", headers={"X-Vaultic-CSRF": "1"}).status_code == 200
+    )  # still on
+    # a refresh after logout (the current token, revoked without a successor): refused, not reuse
+    current = c.cookies.get("vaultic_refresh")
+    assert current and current != new
+    c.post("/api/auth/logout", headers={"X-Vaultic-CSRF": "1"})
+    late = TestClient(app)
+    late.cookies.set("vaultic_refresh", current, path="/api/auth")
+    assert late.post("/api/auth/refresh", headers={"X-Vaultic-CSRF": "1"}).status_code == 401
+    admin = _bearer(_login(TestClient(app), "admin1"))
+    actions = [e["action"] for e in TestClient(app).get("/api/audit", headers=admin).json()]
+    assert "refresh.reuse" not in actions  # no false reuse entries
+    # real reuse: an old rotated token presented after the grace window
+    c3 = TestClient(app)
+    _login(c3, "analyst1")
+    first = c3.cookies.get("vaultic_refresh")
+    c3.post("/api/auth/refresh", headers={"X-Vaultic-CSRF": "1"})
+    now[0] += A.REFRESH_GRACE + 1
+    thief = TestClient(app)
+    thief.cookies.set("vaultic_refresh", first, path="/api/auth")
+    assert thief.post("/api/auth/refresh", headers={"X-Vaultic-CSRF": "1"}).status_code == 401
+    assert (
+        c3.post("/api/auth/refresh", headers={"X-Vaultic-CSRF": "1"}).status_code == 401
+    )  # family ended
+    actions = [e["action"] for e in TestClient(app).get("/api/audit", headers=admin).json()]
+    assert actions.count("refresh.reuse") == 1
+
+
+def test_b1_a_session_ends_12_hours_after_login_however_often_it_is_refreshed():
+    now = [1_000_000.0]
+    svc = _service(now)
+    t = svc.login("analyst1", PASSWORDS["analyst1"])
+    start = now[0]
+    for _ in range(3):  # refresh every 4 hours
+        now[0] += 4 * 3600 - 60
+        t = svc.refresh(t.refresh)
+    rec = svc.store.refresh_by_hash(A.token_hash(t.refresh))
+    assert rec.expires_at <= start + A.SESSION_TTL and rec.session_start == start
+    now[0] = start + A.SESSION_TTL + 1
+    with pytest.raises(A.AuthError, match="12-hour limit"):
+        svc.refresh(t.refresh)
+
+
+def test_b4_a_failed_login_keeps_the_typed_name_only_if_it_is_a_user(jwt_app):
+    app, _, _ = jwt_app
+    c = TestClient(app)
+    c.post("/api/auth/login", json={"username": "MyS3cretPassw0rd", "password": "x"})
+    c.post("/api/auth/login", json={"username": "admin1", "password": "wrong-password"})
+    admin = _bearer(_login(c, "admin1"))
+    failed = [e for e in c.get("/api/audit", headers=admin).json() if e["action"] == "login.failed"]
+    assert [e["target"] for e in failed] and {e["target"] for e in failed} == {None, "admin1"}
+    assert "MyS3cretPassw0rd" not in c.get("/api/audit/export.csv", headers=admin).text
+
+
+def test_b7_a_root_path_can_never_skip_the_role_check(jwt_app, tmp_path):
+    for app in (jwt_app[0], _app_with(_load_module(), tmp_path, None)):
+        c = TestClient(app, root_path="/x")
+        for path in ("/x/api/meta", "/api/meta", "/x/api/audit/export.csv"):
+            r = c.get(path)
+            assert r.status_code == 500 and "root_path" in r.text, path

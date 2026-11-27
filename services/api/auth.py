@@ -115,6 +115,10 @@ class AuthMiddleware:
         self.app, self.service = app, service
 
     async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("root_path"):
+            # with a root path the routed path differs from scope["path"], so an /api request could
+            # skip the role check: refused outright (D238, B7)
+            return await _json(500, "root_path is not supported")(scope, receive, send)
         if scope["type"] != "http" or not scope["path"].startswith("/api"):
             return await self.app(scope, receive, send)
         state = scope.setdefault("state", {})
@@ -204,8 +208,11 @@ def make_router(service=None, audit=None) -> APIRouter:
         try:
             t = service.login(body.username, body.password, _client_ip(request))
         except AuthError as e:
-            _audit(audit, "unknown", "unknown", "login.failed", target=body.username[:60],
-                   detail=e.message)  # fmt: skip
+            # the typed username is stored only if it names a user: a password typed into the
+            # username field is never kept (D238, B4)
+            known = service.store.user_by_name(body.username) is not None
+            _audit(audit, "unknown", "unknown", "login.failed",
+                   target=body.username[:60] if known else None, detail=e.message)  # fmt: skip
             headers = {"Retry-After": str(e.retry_after)} if e.retry_after else None
             raise HTTPException(e.status, e.message, headers=headers) from None
         _audit(audit, t.user.username, t.user.role, "login", target=t.user.username)
@@ -226,7 +233,8 @@ def make_router(service=None, audit=None) -> APIRouter:
                        detail="an already rotated refresh token was presented; the session family "
                        "was revoked")  # fmt: skip
             res = _json(e.status, e.message)
-            res.delete_cookie(COOKIE, path="/api/auth", httponly=True, samesite="strict")
+            if e.status != 409:  # 409: another tab refreshed; its newer cookie must stay (D238, A5)
+                res.delete_cookie(COOKIE, path="/api/auth", httponly=True, samesite="strict")
             return res
         return with_cookie(token_body(t), t.refresh)
 
@@ -249,6 +257,18 @@ def make_router(service=None, audit=None) -> APIRouter:
     return router
 
 
+ORIGIN = re.compile(r"^https?://(\[[0-9A-Fa-f:]+\]|[A-Za-z0-9.-]+)(:[0-9]{1,5})?$")
+
+
 def cors_origins(env) -> list[str]:
+    """The dashboard origins allowed with login on. '*' and anything that is not scheme://host[:port]
+    refuse the start (D238, A4): with credentials, a wildcard would let any page read the tokens."""
     raw = env.get("VAULTIC_CORS_ORIGINS") or "http://127.0.0.1:5173,http://localhost:5173"
-    return [o.strip() for o in raw.split(",") if o.strip()]
+    origins = [o.strip() for o in raw.split(",") if o.strip()]
+    bad = [o for o in origins if not ORIGIN.match(o)]
+    if bad or not origins:
+        raise ValueError(
+            f"VAULTIC_CORS_ORIGINS must list origins like http://127.0.0.1:5173 (no '*', path or "
+            f"trailing slash); refused: {bad or raw!r}"
+        )
+    return origins
