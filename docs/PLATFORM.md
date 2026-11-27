@@ -84,8 +84,66 @@ docker compose down
 - `cases`
 - `decisions`
 - `audit_log`: the SQLite log's columns, append-only by trigger; tamper-evident, not tamper-proof (D209).
-- `copilot_audit`: **not hash-chained or append-only yet.** Only `audit_log` is. Whether it should be is
-  open question Q13 for step 3.3.
+- `copilot_audit`: made append-only and covered by its linked entry's hash in `0004_records.sql` (step
+  3.3, Q13, below).
+
+Later migrations: `0002_auth.sql` (refresh tokens, 3.2), `0003_session_start.sql` (12-hour session limit,
+3.2a), `0004_records.sql` (audit anchor, labels, copilot records, 3.3).
+
+## Records in PostgreSQL (step 3.3, D240)
+
+**The switch.** `VAULTIC_STORE` in the environment or `.env` (as `VAULTIC_AUTH`) chooses the stores:
+
+| `VAULTIC_STORE` | Audit log | Analyst labels | Copilot records |
+|---|---|---|---|
+| empty (default) | SQLite on drive E, as before | in memory, for the session only | inside the audit entry |
+| `postgres` | `audit_log` + `audit_anchor` | `feedback_labels`, persistent | `copilot_audit`, linked to the entry |
+
+Anything else refuses the start. With `postgres`, an unreachable database or a missing migration 0004
+also refuses the start: there is never a silent fallback to SQLite, which would split the log in two. The
+server prints the active store at start-up, under the login mode.
+
+**Audit log.** The same hash chain as the SQLite log (the same function, so a migrated entry keeps its
+hash) and the same policies: labels fail-closed, everything else fail-open (D209). Appends are serialised
+by a transaction-level advisory lock, across threads and processes. The truncation anchor is the one row of
+`audit_anchor`, written in the same transaction as each append. `/api/audit/verify` also returns
+`records` (copilot records and labels checked).
+
+**Copilot records (Q13).** A `copilot_audit` row is derived only from its hash-chained entry (kind,
+target, question, analyst, role, time and the entry's `after`, which holds the route, kept and removed
+facts with reasons and the timing), plus that record's sha256. The row is written in the same transaction
+as the entry. `verify()` recomputes every row from its entry and needs exactly one row per copilot entry.
+The table is append-only by trigger. The copilot's code is E20-frozen and unchanged.
+
+**Labels.** `fraud`, `legit` or `unsure`, with the analyst and the time. Anything else gets 422 and
+nothing is written. The audit entry and the label row are written in one transaction, so it is both or
+neither. A change is a new row; the current label is the latest. `GET /api/feedback/{tid}` (analyst role)
+returns the current label and the history. Without `postgres` it answers 501. "unsure" never reaches the
+training-label reader. Nothing reads labels into a model, a metric or a research table (D208).
+
+**Decisions (Q10).** `decisions` holds the stream scorer's decisions only (source `stream`, written from
+step 3.5). The frozen E12 decisions stay in the read-only bundle and are never copied. A `case` is an alert
+under review; the table has no writer yet.
+
+**Moving the SQLite log to PostgreSQL** (only with Aziz's go-ahead; a persistent change):
+
+```powershell
+python -m vaultic.infra.db migrate
+python -m vaultic.infra.migrate_audit --from "<path to audit.sqlite>" --dry-run
+python -m vaultic.infra.migrate_audit --from "<path to audit.sqlite>"
+```
+
+- The SQLite file is opened read-only and verified first; a broken chain or anchor is refused.
+- A target with any audit entry, anchor, copilot record or label is refused.
+- Every entry is copied with its id and hashes, plus the copilot records derived from it. In the same
+  transaction, the entry count, the last hash and the sha256 of the full CSV export are compared with the
+  source and the copy is verified; any difference rolls everything back.
+- The SQLite file is never changed or deleted. Keep it as the record of the old log.
+- Labels from the SQLite era were session-only and are not turned into label rows; their audit entries are
+  copied like every other entry.
+
+**Limits.** Tamper-evident, not tamper-proof: someone with database rights can drop the triggers and
+rewrite the log, the anchor and the records together (a test shows it).
 
 ## Login (step 3.2, D235; fixes 3.2a, D238)
 
@@ -187,7 +245,7 @@ which has no login limit to protect.
 
 ## Tests
 
-`python -m pytest tests/test_infra_db.py tests/test_compose.py`
+`python -m pytest tests/test_infra_db.py tests/test_compose.py tests/test_auth.py tests/test_records_pg.py`
 - The tests marked `integration` run the real migrations in a throwaway schema when PostgreSQL is
   reachable, and are skipped otherwise.
 - CI gets the database services in step 3.6.

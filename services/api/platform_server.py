@@ -25,7 +25,10 @@ import os
 import sys
 from pathlib import Path
 
+from fastapi import HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.routing import APIRoute
+from pydantic import BaseModel
 
 HERE = Path(__file__).resolve().parent
 
@@ -99,7 +102,60 @@ def with_login(app, auth="env", announce=_to_stderr):
                            allow_headers=["*"], allow_credentials=True)  # fmt: skip
     app.include_router(auth_api.make_router(auth, audit=getattr(app.state, "audit", None)))
     app.state.auth = auth
+    with_records(app)
     announce(mode_banner(auth))  # the active mode, clearly, at start-up (D238, A1)
+    from vaultic.infra.stores import store_banner
+
+    announce(store_banner(getattr(app.state, "audit", None)))  # and the store (D240)
+    return app
+
+
+class FeedbackIn(BaseModel):
+    label: str
+    role: str | None = None  # older clients; the role of the request wins (D208)
+
+
+def with_records(app):
+    """With the PostgreSQL audit store (VAULTIC_STORE=postgres, D240), labels persist: the demo's
+    in-memory label route is replaced by one that writes the audit entry and the label row in one
+    transaction (fail-closed, D209), and GET /api/feedback/{tid} reads the current label and its
+    history. With the SQLite log only that GET is added, answering 501 (no persistent labels)."""
+    from vaultic.audit.pg_store import LABELS, PostgresAuditStore
+
+    store = getattr(app.state, "audit", None)
+    path = "/api/feedback/{tid}"
+    if not isinstance(store, PostgresAuditStore):
+
+        @app.get(path)
+        def no_persistent_labels(tid: int):
+            raise HTTPException(501, "Labels are kept in memory for this session only; persistent "
+                                     "labels need VAULTIC_STORE=postgres (D240).")  # fmt: skip
+
+        return app
+    from vaultic.audit.http import actor_of
+    from vaultic.infra.stores import LabelStore
+
+    labels = LabelStore(store)
+    app.router.routes[:] = [r for r in app.router.routes
+                            if not (isinstance(r, APIRoute) and r.path == path and "POST" in r.methods)]  # fmt: skip
+
+    def post_feedback(tid: int, body: FeedbackIn, request: Request):
+        if body.label not in LABELS:
+            raise HTTPException(422, f"label must be one of {', '.join(LABELS)}")
+        analyst, role = actor_of(request, body.role)
+        try:
+            labels.label(analyst, role, tid, body.label)
+        except Exception as e:
+            raise HTTPException(503, "The label was not saved: the audit log could not be "
+                                     f"written ({type(e).__name__}). Try again.") from e  # fmt: skip
+        return {"ok": True}
+
+    def get_feedback(tid: int):
+        return {"transaction": tid, "current": labels.current(tid), "history": labels.history(tid)}
+
+    app.add_api_route(path, post_feedback, methods=["POST"])
+    app.add_api_route(path, get_feedback, methods=["GET"])
+    app.state.labels = labels
     return app
 
 
