@@ -1,6 +1,6 @@
 # Sprint 3 (platform): status and handoff
 
-Updated 2026-11-27, after step 3.3 was committed and pushed. The plan is in
+Updated 2026-11-27, after step 3.3a (the fixes from the review of PR #20) was committed and pushed. The plan is in
 `docs/plans/sprint3_platform_plan.md` and the user guide is in `docs/PLATFORM.md`.
 
 The work is on branch `sprint3-platform`, in the worktree `.worktrees/sprint3-platform`. The branch's upstream
@@ -20,7 +20,7 @@ is `origin/sprint3-platform`, never `phase0-1`.
 |---|---|---|
 | #19 | 3.2a: fixes from the post-merge review of PR #18, plus D239 | `0e7a5e0` |
 
-## Open on sprint3-platform (pushed, not merged, no PR yet): step 3.3
+## Open on sprint3-platform: PR #20, steps 3.3 and 3.3a (pushed, not merged)
 
 Step 3.3 puts the audit log, analyst labels and copilot records in PostgreSQL behind `VAULTIC_STORE`, with
 a verified migration from the SQLite log (D240, which answers Q10 and Q13). The branch was fast-forwarded
@@ -30,7 +30,7 @@ to `0e7a5e0` first.
 |---|---|
 | `b9b1f5d` | D240, logged alone |
 | `f6bb20f` | 3.3 code, migration 0004, tests, PLATFORM.md |
-| (this commit) | This note |
+| `610010c` | Status note for 3.3 |
 
 **What 3.3 adds**
 - `src/vaultic/audit/pg_store.py`: `PostgresAuditStore` (same chain, advisory-lock appends, anchor row,
@@ -60,9 +60,39 @@ to `0e7a5e0` first.
   log and the real database were not touched.
 - **Frozen files:** none of the changed files is in `EXP-320.yaml` or a `research/frozen_*.md` list;
   `demo_server.py` blob sha256 still `55163d9a…`.
-- **Not done:** the real `vaultic` database still has 0002, 0003 and now 0004 pending (Aziz migrates); the
-  real audit log is not migrated (needs Aziz's go-ahead); no dashboard change (the Case page does not yet
-  show a stored label); no live uvicorn run with `VAULTIC_STORE=postgres` against the real database.
+- **Not done:** the real `vaultic` database still has 0002 to 0005 pending (Aziz migrates); the real audit
+  log is not migrated (needs Aziz's go-ahead); no dashboard change (the Case page does not yet show a stored
+  label); no live uvicorn run with `VAULTIC_STORE=postgres` against the real database.
+
+### 3.3a: fixes from the review of PR #20 (D241), before the merge
+
+Aziz confirmed D240's answers to Q10 and Q13 as written. The review found A1-A4 and B1-B5.
+
+| Commit | What |
+|---|---|
+| `31671a3` | D241, logged alone; D240 marked confirmed |
+| `6183f85` | 3.3a code, migration 0005, tests, PLATFORM.md |
+| (this commit) | This note |
+
+| Finding | Fix | Test (failed on the 3.3 code first) |
+|---|---|---|
+| A1 a deleted label row went unnoticed | `verify()` fails if a label entry above the stored boundary (`audit_label_boundary`, 0005) has no row; migrated and pre-0005 entries exempt; the store refuses a label entry without its row (frozen demo route: 503) | `test_a1_*` (3) |
+| A2 NUL lost the copilot's audit entry | every NUL written as the six characters `\u0000` before hashing, also inside the copilot record; the migration refuses a source entry with NUL | `test_a2_*` (3) |
+| A3 the old SQLite log could keep growing after a migration | marker `<log>.migrated.json` written before commit; source re-read under SQLite's write lock (refused if it grew); the SQLite store refuses appends while the marker exists; "stop the server first" in PLATFORM.md | `test_a3_*` (2) |
+| A4 training labels ignored the label delay | `training_labels(as_of, label_delay_days)`, both required, matured labels only | `test_a4_*` |
+| B1 only 0004 was checked at start-up | any pending migration refuses the start | `test_b1_*` |
+| B2 `frozen_e12` and changes to `decisions` allowed by the database | migration `0005_decisions_guard.sql` (0004 unchanged) | `test_b2_*` |
+| B3, B4, B5 | to be documented in PLATFORM.md / D240: **their text was not in the request and is not on PR #20; waiting for Aziz** | — |
+
+**Checks for 3.3a** (2026-11-27; disk C 58.8 GB, E 21.8 GB free; one heavy job at a time):
+- The 11 reproduction tests: 11 failed on the 3.3 code; after the fixes `tests/test_records_pg.py` 40 passed
+  on PostgreSQL. Two 3.3 tests were updated (the required `training_labels` arguments; a second migration is
+  now refused by the marker before the non-empty target, both still checked).
+- **Full pytest** (`VAULTIC_DATA_DIR`, `VAULTIC_ENV_FILE` set; 23 min): **1095 passed, 0 failed, 4 skipped**
+  (torch, dice_ml twice, `.venv-torch`).
+- **Dashboard** (unchanged): typecheck OK; vitest 125/125; build OK.
+- **Freeze:** code rows of all 4 records unchanged; data rows 10/10, 20/20, 16/18 (D234); all 9 E20 files
+  byte-identical.
 
 ## Decisions (each logged alone in research/decisions.md)
 
@@ -78,9 +108,10 @@ to `0e7a5e0` first.
 | D237 | Process: PR #18 was merged before the independent review (declared deviation, review finding A6) |
 | D238 | 3.2a design: fixes for A1–A5, B1, B4 and B7; B2, B3, B5 and B6 documented |
 | D239 | Drives: no work on C; C and E each keep at least 10 GB free, checked before heavy jobs (`tools/disk_space.py`; the test suite stops by itself); all temp files and caches under `E:\dev-cache` |
-| D240 | 3.3 design: PostgreSQL records behind `VAULTIC_STORE`; Q10 (decisions = stream decisions + labels; case = alert under review); Q13 (`copilot_audit` append-only and covered by its entry's hash); verified migration. NEEDS CONFIRMATION in the PR review |
+| D240 | 3.3 design: PostgreSQL records behind `VAULTIC_STORE`; Q10 (decisions = stream decisions + labels; case = alert under review); Q13 (`copilot_audit` append-only and covered by its entry's hash); verified migration. Confirmed by Aziz as written |
+| D241 | 3.3a: fixes from the review of PR #20 (A1-A4, B1, B2; B3-B5 documented) |
 
-Next free number: **D241**.
+Next free number: **D242**.
 
 ## Review findings for PR #18 and how each was fixed (D238)
 
@@ -102,22 +133,22 @@ Next free number: **D241**.
 
 ## Open questions for later steps
 
-- **Q10 (3.3):** answered in D240 (needs Aziz's confirmation).
+- **Q10 (3.3):** answered in D240, confirmed by Aziz.
 - **Q11 (3.4):** whether Redis is used for the cache and sessions only.
 - **Q12 (3.5):** the parity size, 10,000 or 2,000 rows; give both timings.
-- **Q13 (3.3):** answered in D240: both append-only and covered by its entry's hash (needs confirmation).
+- **Q13 (3.3):** answered in D240 (append-only and covered by its entry's hash), confirmed by Aziz.
 
 ## Exact next steps
 
-1. **Aziz:** open the 3.3 PR from the compare link
-   `https://github.com/Aziz-ahmad555/vaultic-fraud-detection/compare/phase0-1...sprint3-platform`, using the
-   text in `E:\old work\fyp 11\pr_sprint3_3_to_phase0-1.md`.
-2. **Wait for CI to pass.** Then run the independent review in a NEW Claude Code session, and fix or answer
-   every finding **before** merging (D232, D237). Confirm or change D240 (Q10, Q13) in that review.
+1. **Aziz:** send the text of review findings B3, B4 and B5; Claude documents them in PLATFORM.md and D240.
+2. PR #20 updates itself from the pushed branch. **Wait for CI to pass**, then let the reviewer check 3.3a
+   (`610010c..sprint3-platform`) and fill in the findings and answers in the PR text
+   (`E:\old work\fyp 11\pr_sprint3_3_to_phase0-1.md`).
 3. **Aziz merges.** Claude never merges.
-4. **Optional, after the merge:** `python -m vaultic.infra.db migrate` on the real database (applies 0002,
-   0003, 0004), then, only if Aziz says go, the dry run and the real `python -m vaultic.infra.migrate_audit
-   --from E:\dev-cache\audit\audit.sqlite`, then `VAULTIC_STORE=postgres` in `.env`.
+4. **Optional, after the merge:** stop the API server; `python -m vaultic.infra.db migrate` on the real
+   database (applies 0002 to 0005); then, only if Aziz says go, the dry run and the real
+   `python -m vaultic.infra.migrate_audit --from E:\dev-cache\audit\audit.sqlite`; then `VAULTIC_STORE=postgres`
+   in `.env`.
 5. **Next is step 3.4** (Redis cache and sessions). It starts with a plan and the answer to Q11, and its own
-   decision (D241 onwards) is logged alone before any code.
+   decision (D242 onwards) is logged alone before any code.
 6. **Before every heavy job:** run `python tools/disk_space.py` and stop if C or E is below 10 GB (D239).
