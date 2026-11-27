@@ -1,6 +1,6 @@
 # Sprint 3 (platform): status and handoff
 
-Updated 2026-11-27, after step 3.3a (the fixes from the review of PR #20) was committed and pushed. The plan is in
+Updated 2026-11-27, after PR #20 (steps 3.3 and 3.3a) was merged. The plan is in
 `docs/plans/sprint3_platform_plan.md` and the user guide is in `docs/PLATFORM.md`.
 
 The work is on branch `sprint3-platform`, in the worktree `.worktrees/sprint3-platform`. The branch's upstream
@@ -19,8 +19,9 @@ is `origin/sprint3-platform`, never `phase0-1`.
 | PR | Step | Merge commit |
 |---|---|---|
 | #19 | 3.2a: fixes from the post-merge review of PR #18, plus D239 | `0e7a5e0` |
+| #20 | 3.3 and 3.3a: records in PostgreSQL (D240), fixes from its review before the merge (D241) | `092a5b7` |
 
-## Open on sprint3-platform: PR #20, steps 3.3 and 3.3a (pushed, not merged)
+## PR #20: steps 3.3 and 3.3a (merged as `092a5b7`)
 
 Step 3.3 puts the audit log, analyst labels and copilot records in PostgreSQL behind `VAULTIC_STORE`, with
 a verified migration from the SQLite log (D240, which answers Q10 and Q13). The branch was fast-forwarded
@@ -141,17 +142,51 @@ Next free number: **D242**.
 - **Q12 (3.5):** the parity size, 10,000 or 2,000 rows; give both timings.
 - **Q13 (3.3):** answered in D240 (append-only and covered by its entry's hash), confirmed by Aziz.
 
+## Open items for a later small PR (found in the verification of PR #20; not started)
+
+1. **Wording slip: the wrong finding label.** PLATFORM.md (the migration bullet, about line 170: "before it
+   commits (D241, B5)") and the docstring of `src/vaultic/infra/migrate_audit.py` (line 3: "D241, B5
+   wording") call the "verified before and after" clarification B5. B5 is the unknown-transaction-id
+   limitation (PLATFORM.md about line 135, which is right). The D241 row itself puts the wording note inside
+   its (B5) paragraph, after "Wording:".
+   - **Fix:** relabel both places as "D241, wording note" (not B5). Add a dated note in research/decisions.md
+     that the wording note in D241 is separate from B5; never rewrite D241's text.
+   - **Test:** none needed beyond `tests/test_docs_clean.py`; a grep in the PR description shows that no
+     "B5" is left on the wording note.
+2. **Pre-existing Windows bug: the SQLite anchor write can fail under concurrent load.** Not from PR #20.
+   - `SQLiteAuditStore._write_anchor` (`src/vaultic/audit/store.py`) writes `<db>.anchor.json.tmp`, then
+     calls `os.replace` onto `<db>.anchor.json`. On Windows that raises PermissionError while another
+     handle has the anchor open (Python opens files without delete sharing): `read_anchor()` from a
+     concurrent `verify()` (for example `/api/audit/verify`), another process, or an antivirus / indexer.
+   - **Effect:** the entry is already committed when the anchor write fails, so `append()` raises after the
+     commit. A fail-closed label (SQLite mode) answers 503 although its audit entry exists. `verify()` then
+     reports "the last entry is not yet in the anchor (interrupted write)" with ok = true, and the next
+     successful append catches the anchor up. Two failures in a row would make verify report a mismatch.
+   - **Frozen?** No. `src/vaultic/audit/store.py` is in no freeze list (`EXP-320.yaml`,
+     `research/frozen_*.md`; checked 2026-11-27), so it gets a fix, not a limitation note.
+   - **Planned fix (own decision, D242 or later, logged alone first):**
+     - `_write_anchor` retries `os.replace` on PermissionError with a bounded backoff (for example 10 tries,
+       10 to 100 ms, under 1 s in total). It is still under the store's lock, so the anchor never goes
+       backwards.
+     - `read_anchor` retries on PermissionError the same way.
+     - After the last try the error is raised as today: no silent anchor skip.
+   - **Tests (written first, failing on today's code):**
+     - With `os.replace` patched to raise PermissionError twice, `append()` succeeds and the anchor matches.
+     - Patched to always raise, `append()` raises after the commit, and `verify()` reports the interrupted
+       write.
+     - Windows only (skipped elsewhere): a thread holds the anchor file open for about 100 ms while
+       another appends; the append succeeds.
+     - The existing thread test of `tests/test_audit_store.py`, plus parallel `verify()` calls during the
+       appends.
+
 ## Exact next steps
 
-1. B3-B5 are documented (D241, PLATFORM.md).
-2. PR #20 updates itself from the pushed branch. **Wait for CI to pass**, then let the reviewer check 3.3a
-   (`610010c..sprint3-platform`) and fill in the findings and answers in the PR text
-   (`E:\old work\fyp 11\pr_sprint3_3_to_phase0-1.md`).
-3. **Aziz merges.** Claude never merges.
-4. **Optional, after the merge:** stop the API server; `python -m vaultic.infra.db migrate` on the real
+1. PR #20 is merged (`092a5b7`). Claude never merges.
+2. **Later, small PR:** the two open items above, each with its test first. Not started.
+3. **Optional, now that it is merged:** stop the API server; `python -m vaultic.infra.db migrate` on the real
    database (applies 0002 to 0005); then, only if Aziz says go, the dry run and the real
    `python -m vaultic.infra.migrate_audit --from E:\dev-cache\audit\audit.sqlite`; then `VAULTIC_STORE=postgres`
    in `.env`.
-5. **Next is step 3.4** (Redis cache and sessions). It starts with a plan and the answer to Q11, and its own
+4. **Next is step 3.4** (Redis cache and sessions). It starts with a plan and the answer to Q11, and its own
    decision (D242 onwards) is logged alone before any code.
-6. **Before every heavy job:** run `python tools/disk_space.py` and stop if C or E is below 10 GB (D239).
+5. **Before every heavy job:** run `python tools/disk_space.py` and stop if C or E is below 10 GB (D239).
