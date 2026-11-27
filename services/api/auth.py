@@ -59,6 +59,7 @@ ROUTE_ROLES: dict[tuple[str, str], str] = {
         "/api/thresholds",
     ): "analyst",  # refused for everyone (D129), and the refusal is audited
     ("POST", "/api/feedback/{tid}"): "analyst",
+    ("GET", "/api/feedback/{tid}"): "analyst",  # with VAULTIC_STORE=postgres only (D240)
     ("GET", "/api/whatif"): "analyst",
     ("GET", "/api/audit"): "analyst",
     ("GET", "/api/audit/verify"): "admin",

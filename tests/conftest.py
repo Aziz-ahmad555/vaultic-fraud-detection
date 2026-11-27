@@ -39,6 +39,8 @@ def pytest_configure(config):
 
 @pytest.fixture(autouse=True, scope="session")
 def _temporary_audit_db(tmp_path_factory):
+    # D240: never the real PostgreSQL stores, whatever .env says (an empty value is kept by load_dotenv)
+    os.environ["VAULTIC_STORE"] = ""
     old = os.environ.get("VAULTIC_AUDIT_DB")
     os.environ["VAULTIC_AUDIT_DB"] = str(tmp_path_factory.mktemp("audit") / "audit.sqlite")
     yield

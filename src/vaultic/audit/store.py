@@ -1,4 +1,5 @@
-"""The audit store (D208, D209): one interface, SQLite behind it now (PostgreSQL later).
+"""The audit store (D208, D209): one interface; SQLite here, PostgreSQL in pg_store.py (D240,
+VAULTIC_STORE=postgres).
 
 Tamper-EVIDENT, not tamper-proof. Every entry is kept and the SQLite table has triggers that
 refuse UPDATE and DELETE. Each entry carries a hash chain,
@@ -115,6 +116,11 @@ class SQLiteAuditStore:
         con.execute("PRAGMA journal_mode=WAL")
         return con
 
+    def migrated_marker(self) -> Path:
+        """<db>.migrated.json, written by vaultic.infra.migrate_audit (D241, A3): while it exists the log
+        refuses appends, so the old log cannot grow apart from its PostgreSQL copy."""
+        return self.path.with_name(self.path.name + ".migrated.json")
+
     # ---- anchor -----------------------------------------------------------------------------
     def _write_anchor(self, entries: int, last_hash: str) -> None:
         tmp = self.anchor_path.with_name(self.anchor_path.name + ".tmp")
@@ -139,6 +145,11 @@ class SQLiteAuditStore:
         with self.lock, closing(self._connect()) as con:
             try:
                 con.execute("BEGIN IMMEDIATE")
+                if self.migrated_marker().exists():  # inside the write lock (D241, A3)
+                    raise RuntimeError(
+                        f"this audit log was migrated to PostgreSQL ({self.migrated_marker().name}); "
+                        "set VAULTIC_STORE=postgres instead of writing to the old log"
+                    )
                 last = con.execute(
                     "SELECT id, hash FROM audit_log ORDER BY id DESC LIMIT 1"
                 ).fetchone()
@@ -245,5 +256,11 @@ def default_path() -> Path:
     return cache_root() / "audit" / "audit.sqlite"
 
 
-def default_store() -> SQLiteAuditStore:
+def default_store():
+    """The SQLite log of default_path(), or the PostgreSQL store with VAULTIC_STORE=postgres (D240;
+    vaultic.infra.stores: a bad value or an unreachable database refuses the start)."""
+    from vaultic.infra.stores import postgres_audit_store, store_mode
+
+    if store_mode() == "postgres":
+        return postgres_audit_store()
     return SQLiteAuditStore(default_path())
