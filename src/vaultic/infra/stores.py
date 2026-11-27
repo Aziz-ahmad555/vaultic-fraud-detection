@@ -9,7 +9,8 @@ VAULTIC_STORE (read from the environment and .env, like VAULTIC_AUTH) chooses, a
 
 Labels (roadmap 11.2): fraud / legit / unsure with time and analyst, one append-only row per label action,
 written in the same transaction as its audit entry (fail-closed, D209). "unsure" never enters any
-training; nothing here feeds a model, a metric or a research table (D208).
+training, and the training reader needs an as-of time and the label delay (D241, A4); nothing here feeds
+a model, a metric or a research table (D208).
 
 Decisions (Q10): only the stream scorer's decisions (source `stream`, step 3.5) are written; the frozen
 E12 decisions stay in the read-only bundle (D129) and are never copied.
@@ -19,6 +20,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
+from datetime import datetime, timedelta
 
 from vaultic.audit.pg_store import LABELS, PostgresAuditStore
 
@@ -63,8 +65,9 @@ class LabelStore:
     def __init__(self, audit: PostgresAuditStore):
         self.audit = audit
 
-    def label(self, analyst, role, tid: int, label: str) -> dict:
-        """Record a label; returns the audit entry. Refused (ValueError) for any other label."""
+    def label(self, analyst, role, tid: int, label: str, time: str | None = None) -> dict:
+        """Record a label; returns the audit entry. Refused (ValueError) for any other label. `time`
+        (ISO, default now) is the label time, as for any audit entry."""
         if label not in LABELS:
             raise ValueError(f"label must be one of {', '.join(LABELS)}")
         tid = int(tid)
@@ -73,7 +76,8 @@ class LabelStore:
             was = before["label"] if before else None
             entry = self.audit.append_in(conn, analyst, role, f"Marked transaction {tid} as {label}",
                                          target=f"tx:{tid}", before=was, after=label,
-                                         detail=f"was {was}" if was else "first label")  # fmt: skip
+                                         detail=f"was {was}" if was else "first label",
+                                         time=time)  # fmt: skip
             conn.execute("INSERT INTO feedback_labels (audit_id, transaction_id, label, analyst, role, "
                          "labelled_at) VALUES (%s, %s, %s, %s, %s, %s)",
                          (entry["id"], tid, label, entry["analyst"], entry["role"], entry["time"]))  # fmt: skip
@@ -98,13 +102,28 @@ class LabelStore:
                                 (int(tid),)).fetchall()  # fmt: skip
         return [dict(r) for r in rows]
 
-    def training_labels(self) -> dict[int, str]:
-        """The current label of every labelled transaction, for any later training: only fraud and
-        legit; a transaction whose latest label is "unsure" is left out entirely."""
+    def training_labels(self, as_of, label_delay_days: float) -> dict[int, str]:
+        """The labels a model may learn from at `as_of` (CLAUDE.md rule 4, D241 A4): per transaction the
+        latest label whose label time is at or before as_of minus the label delay (by label time; 30 days
+        elsewhere in the project), and only fraud / legit: a transaction whose latest matured label is
+        "unsure" is left out. Both parameters are required. `as_of`: an aware datetime or ISO text.
+        """
+        cutoff = _aware(as_of) - timedelta(days=float(label_delay_days))
+        if label_delay_days < 0:
+            raise ValueError("the label delay cannot be negative")
         with self.audit.connect() as conn:
             rows = conn.execute("SELECT DISTINCT ON (transaction_id) transaction_id, label FROM "
-                                "feedback_labels ORDER BY transaction_id, id DESC").fetchall()  # fmt: skip
+                                "feedback_labels WHERE labelled_at::timestamptz <= %s "
+                                "ORDER BY transaction_id, labelled_at::timestamptz DESC, id DESC",
+                                (cutoff,)).fetchall()  # fmt: skip
         return {int(r["transaction_id"]): r["label"] for r in rows if r["label"] != "unsure"}
+
+
+def _aware(t) -> datetime:
+    d = datetime.fromisoformat(t) if isinstance(t, str) else t
+    if not isinstance(d, datetime) or d.tzinfo is None:
+        raise ValueError("as_of must be a timezone-aware datetime or ISO text with an offset")
+    return d
 
 
 class DecisionStore:

@@ -9,7 +9,13 @@ and the same policies (labels fail-closed, everything else fail-open, D209).
   `copilot_audit` row in the same transaction; a label entry written through `labels()` gets its
   `feedback_labels` row. Each row is derived from the content of its hash-chained entry, and `verify()`
   recomputes every row from its entry, so the chain covers the records too. Both tables are append-only
-  by trigger (migration 0004).
+  by trigger (migration 0004). Every label entry above the stored boundary (`audit_label_boundary`,
+  migration 0005) must have its row (D241, A1); the public append() refuses a label action, so a label is
+  never audited without its row.
+- **NUL (D241, A2).** PostgreSQL TEXT and JSONB cannot hold U+0000: every NUL in a text field is written
+  as the six characters `\\u0000` before hashing, and the copilot record applies the same rule to every
+  string of its JSON. One canonical form, so verify() recomputes the same hashes.
+- **Start-up (D241, B1).** Refused unless every migration on disk is applied, in order.
 
 Tamper-EVIDENT, not tamper-proof, as the SQLite log: someone with database rights can drop the triggers
 and rewrite the log, the anchor and the records together.
@@ -30,11 +36,31 @@ LOCK_KEY = 2310_0004  # pg_advisory_xact_lock key of the appends (D240); the run
 COPILOT_ACTIONS = {"Copilot question": "question", "Copilot summary": "summary"}
 LABELS = ("fraud", "legit", "unsure")
 LABEL_ACTION = re.compile(r"^Marked transaction (-?\d+) as (fraud|legit|unsure)$")
+NUL, NUL_ESCAPED = "\x00", "\\u0000"  # the six characters backslash-u-0-0-0-0 (D241, A2)
+TEXT_FIELDS = ("time", "action", "target", "detail")  # analyst and role are cleaned by clean_actor
 _COLS = ", ".join(f'"{k}"' for k in FIELDS)
 
 
 class StoreSetupError(RuntimeError):
-    """The database cannot hold the PostgreSQL stores (unreachable, or migration 0004 missing)."""
+    """The database cannot hold the PostgreSQL stores (unreachable, or a migration pending)."""
+
+
+def escape_nul(value):
+    """A string with every NUL written as the six characters of NUL_ESCAPED; anything else unchanged."""
+    return value.replace(NUL, NUL_ESCAPED) if isinstance(value, str) else value
+
+
+def escape_nul_deep(obj):
+    """escape_nul over every string and key of a JSON value."""
+    if isinstance(obj, dict):
+        return {escape_nul(k): escape_nul_deep(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [escape_nul_deep(v) for v in obj]
+    return escape_nul(obj)
+
+
+def has_nul(entry: dict) -> bool:
+    return any(isinstance(v, str) and NUL in v for v in entry.values())
 
 
 def canonical(obj) -> str:
@@ -48,10 +74,11 @@ def copilot_record(entry: dict) -> dict | None:
     if kind is None:
         return None
     after = entry.get("after")
-    return {"audit_id": int(entry["id"]), "kind": kind, "target": entry.get("target"),
-            "question": entry.get("detail"), "analyst": entry.get("analyst"),
-            "role": entry.get("role"), "time": entry.get("time"),
-            "result": None if after is None else json.loads(after)}  # fmt: skip
+    record = {"audit_id": int(entry["id"]), "kind": kind, "target": entry.get("target"),
+              "question": entry.get("detail"), "analyst": entry.get("analyst"),
+              "role": entry.get("role"), "time": entry.get("time"),
+              "result": None if after is None else json.loads(after)}  # fmt: skip
+    return escape_nul_deep(record)  # JSONB cannot hold U+0000 (D241, A2)
 
 
 def record_sha256(record: dict) -> str:
@@ -81,14 +108,21 @@ class PostgresAuditStore:
         return psycopg.connect(self.url, autocommit=True, row_factory=dict_row, connect_timeout=5)
 
     def check_schema(self) -> None:
+        """Refuse unless every migration on disk is applied, in schema_migrations order, unchanged
+        (D241, B1): a pending 0005 matters as much as a pending 0004."""
+        from vaultic.infra import db
+
         try:
-            with self.connect() as conn:
-                found = conn.execute("SELECT to_regclass('audit_anchor') AS t").fetchone()["t"]
+            with db.connect(self.url) as conn:
+                state = db.status(conn)
+        except db.MigrationError as e:
+            raise StoreSetupError(f"the database migrations do not fit: {e}") from e
         except Exception as e:  # noqa: BLE001 - reported as a start-up refusal
             raise StoreSetupError(f"PostgreSQL is not reachable ({type(e).__name__})") from e
-        if found is None:
+        if state["pending"]:
             raise StoreSetupError(
-                "migration 0004_records.sql is not applied: run `python -m vaultic.infra.db migrate`"
+                f"migrations not applied: {', '.join(state['pending'])}; run "
+                "`python -m vaultic.infra.db migrate`"
             )
 
     @contextmanager
@@ -114,6 +148,8 @@ class PostgresAuditStore:
         entry = {"time": time or datetime.now(UTC).isoformat(timespec="seconds"), "analyst": name,
                  "role": role, "action": str(action), "target": None if target is None else str(target),
                  "before": _value(before), "after": _value(after), "detail": str(detail or "")}  # fmt: skip
+        for k in TEXT_FIELDS:  # before the hash: the stored text is the hashed text (A2)
+            entry[k] = escape_nul(entry[k])
         last = conn.execute("SELECT id, hash FROM audit_log ORDER BY id DESC LIMIT 1").fetchone()
         entry["id"] = 1 if last is None else int(last["id"]) + 1
         entry["prev_hash"] = GENESIS if last is None else last["hash"]
@@ -141,6 +177,10 @@ class PostgresAuditStore:
 
     def append(self, analyst, role, action, target=None, before=None, after=None, detail="",
                time=None) -> dict:  # fmt: skip
+        """A label action is refused here (D241, A1): labels are written with their row through
+        vaultic.infra.stores.LabelStore, never as an audit entry alone."""
+        if label_of({"action": escape_nul(str(action or ""))}) is not None:
+            raise ValueError("label entries are written with their label row through LabelStore")
         with self.transaction() as conn:
             return self.append_in(conn, analyst, role, action, target=target, before=before,
                                   after=after, detail=detail, time=time)  # fmt: skip
@@ -233,6 +273,7 @@ class PostgresAuditStore:
             ).fetchall()
             lrows = conn.execute("SELECT audit_id, transaction_id, label, analyst, role, labelled_at "
                                  "FROM feedback_labels ORDER BY audit_id").fetchall()  # fmt: skip
+            boundary = conn.execute("SELECT after_id FROM audit_label_boundary").fetchone()
         if anchor is None:
             if n:
                 return bad(n, None, "the anchor row is missing")
@@ -259,10 +300,20 @@ class PostgresAuditStore:
         missing = sorted(set(copilot) - seen)
         if missing:
             return bad(n, missing[0], f"copilot entry {missing[0]} has no copilot record")
+        lseen = set()
         for r in lrows:
             aid = int(r["audit_id"])
             row = (int(r["transaction_id"]), r["label"], r["analyst"], r["role"], r["labelled_at"])
             if labels.get(aid) != row:
                 return bad(n, aid, f"label row {aid} does not match its entry")
+            lseen.add(aid)
+        if boundary is None:  # A1: the boundary row is part of the schema (0005)
+            return bad(n, None, "the label boundary row is missing")
+        after_id = int(boundary["after_id"])
+        if after_id > n:
+            return bad(n, None, f"the label boundary ({after_id}) is beyond the last entry ({n})")
+        unlinked = sorted(a for a in labels if a > after_id and a not in lseen)
+        if unlinked:
+            return bad(n, unlinked[0], f"label entry {unlinked[0]} has no label row")
         records.update(copilot=len(crows), labels=len(lrows))
         return {"ok": True, "entries": n, "first_bad": None, "reason": None, "records": records}

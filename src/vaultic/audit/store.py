@@ -116,6 +116,11 @@ class SQLiteAuditStore:
         con.execute("PRAGMA journal_mode=WAL")
         return con
 
+    def migrated_marker(self) -> Path:
+        """<db>.migrated.json, written by vaultic.infra.migrate_audit (D241, A3): while it exists the log
+        refuses appends, so the old log cannot grow apart from its PostgreSQL copy."""
+        return self.path.with_name(self.path.name + ".migrated.json")
+
     # ---- anchor -----------------------------------------------------------------------------
     def _write_anchor(self, entries: int, last_hash: str) -> None:
         tmp = self.anchor_path.with_name(self.anchor_path.name + ".tmp")
@@ -140,6 +145,11 @@ class SQLiteAuditStore:
         with self.lock, closing(self._connect()) as con:
             try:
                 con.execute("BEGIN IMMEDIATE")
+                if self.migrated_marker().exists():  # inside the write lock (D241, A3)
+                    raise RuntimeError(
+                        f"this audit log was migrated to PostgreSQL ({self.migrated_marker().name}); "
+                        "set VAULTIC_STORE=postgres instead of writing to the old log"
+                    )
                 last = con.execute(
                     "SELECT id, hash FROM audit_log ORDER BY id DESC LIMIT 1"
                 ).fetchone()

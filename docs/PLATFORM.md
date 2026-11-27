@@ -88,9 +88,10 @@ docker compose down
   3.3, Q13, below).
 
 Later migrations: `0002_auth.sql` (refresh tokens, 3.2), `0003_session_start.sql` (12-hour session limit,
-3.2a), `0004_records.sql` (audit anchor, labels, copilot records, 3.3).
+3.2a), `0004_records.sql` (audit anchor, labels, copilot records, 3.3), `0005_decisions_guard.sql`
+(decisions stream-only and append-only, the label boundary; 3.3a, D241).
 
-## Records in PostgreSQL (step 3.3, D240)
+## Records in PostgreSQL (step 3.3, D240; fixes 3.3a, D241)
 
 **The switch.** `VAULTIC_STORE` in the environment or `.env` (as `VAULTIC_AUTH`) chooses the stores:
 
@@ -99,8 +100,9 @@ Later migrations: `0002_auth.sql` (refresh tokens, 3.2), `0003_session_start.sql
 | empty (default) | SQLite on drive E, as before | in memory, for the session only | inside the audit entry |
 | `postgres` | `audit_log` + `audit_anchor` | `feedback_labels`, persistent | `copilot_audit`, linked to the entry |
 
-Anything else refuses the start. With `postgres`, an unreachable database or a missing migration 0004
-also refuses the start: there is never a silent fallback to SQLite, which would split the log in two. The
+Anything else refuses the start. With `postgres`, an unreachable database or **any** pending migration
+(or an applied one that changed or is missing) also refuses the start (D241, B1): there is never a silent
+fallback to SQLite, which would split the log in two. The
 server prints the active store at start-up, under the login mode.
 
 **Audit log.** The same hash chain as the SQLite log (the same function, so a migrated entry keeps its
@@ -108,6 +110,10 @@ hash) and the same policies: labels fail-closed, everything else fail-open (D209
 by a transaction-level advisory lock, across threads and processes. The truncation anchor is the one row of
 `audit_anchor`, written in the same transaction as each append. `/api/audit/verify` also returns
 `records` (copilot records and labels checked).
+- **NUL characters (D241, A2).** PostgreSQL text and JSON cannot hold U+0000. The PostgreSQL store writes
+  every NUL in a text field as the six characters `\u0000` *before* hashing, and the copilot record
+  does the same in every string of its JSON, so the stored text is the hashed text and `verify()` still
+  matches. A copilot question containing NUL is therefore audited, not lost.
 
 **Copilot records (Q13).** A `copilot_audit` row is derived only from its hash-chained entry (kind,
 target, question, analyst, role, time and the entry's `after`, which holds the route, kept and removed
@@ -118,14 +124,25 @@ The table is append-only by trigger. The copilot's code is E20-frozen and unchan
 **Labels.** `fraud`, `legit` or `unsure`, with the analyst and the time. Anything else gets 422 and
 nothing is written. The audit entry and the label row are written in one transaction, so it is both or
 neither. A change is a new row; the current label is the latest. `GET /api/feedback/{tid}` (analyst role)
-returns the current label and the history. Without `postgres` it answers 501. "unsure" never reaches the
-training-label reader. Nothing reads labels into a model, a metric or a research table (D208).
+returns the current label and the history. Without `postgres` it answers 501. Nothing reads labels into a
+model, a metric or a research table (D208).
+- **Every label entry has its row (D241, A1).** `verify()` fails if a label entry above the stored
+  boundary (`audit_label_boundary`) has no `feedback_labels` row. Entries at or below it are exempt: those
+  copied from the SQLite log, and any written before migration 0005. The store refuses a label action
+  written without its row, so the frozen demo server's in-memory label route answers 503 on PostgreSQL:
+  use `python -m vaultic.infra.serve` (the platform server) for labels.
+- **Training labels (D241, A4).** `LabelStore.training_labels(as_of, label_delay_days)` needs both. It
+  returns, per transaction, the latest label at or before `as_of` minus the delay (by label time; the
+  project's delay is 30 days, CLAUDE.md rule 4), and only fraud or legit: "unsure" never reaches training.
 
 **Decisions (Q10).** `decisions` holds the stream scorer's decisions only (source `stream`, written from
-step 3.5). The frozen E12 decisions stay in the read-only bundle and are never copied. A `case` is an alert
-under review; the table has no writer yet.
+step 3.5). The frozen E12 decisions stay in the read-only bundle and are never copied. Since 0005 the
+database itself refuses a `frozen_e12` row and any UPDATE, DELETE or TRUNCATE of `decisions` (D241, B2).
+A `case` is an alert under review; the table has no writer yet.
 
-**Moving the SQLite log to PostgreSQL** (only with Aziz's go-ahead; a persistent change):
+**Moving the SQLite log to PostgreSQL** (only with Aziz's go-ahead; a persistent change).
+**Stop the API server first** (D241, A3): a server still writing to the SQLite log would make it grow
+apart from its copy.
 
 ```powershell
 python -m vaultic.infra.db migrate
@@ -133,12 +150,20 @@ python -m vaultic.infra.migrate_audit --from "<path to audit.sqlite>" --dry-run
 python -m vaultic.infra.migrate_audit --from "<path to audit.sqlite>"
 ```
 
-- The SQLite file is opened read-only and verified first; a broken chain or anchor is refused.
+- The SQLite file is opened read-only and verified first; a broken chain or anchor, an entry containing
+  NUL (its hash covers the raw character, which PostgreSQL cannot store) or an already migrated log is
+  refused.
 - A target with any audit entry, anchor, copilot record or label is refused.
 - Every entry is copied with its id and hashes, plus the copilot records derived from it. In the same
   transaction, the entry count, the last hash and the sha256 of the full CSV export are compared with the
   source and the copy is verified; any difference rolls everything back.
-- The SQLite file is never changed or deleted. Keep it as the record of the old log.
+- **The old log is closed (D241, A3).** Before the commit, the marker `<log>.migrated.json` (target
+  without password, entry count, last hash, time) is written next to the SQLite log, and the log is
+  re-read under SQLite's write lock. If it grew or changed during the copy, the marker is removed and
+  everything rolls back. After a migration, the SQLite store refuses every append (and export) while the
+  marker exists, so a server started on the old log cannot split it from the copy.
+- The SQLite file itself is never changed or deleted. Keep it, with its marker, as the record of the old
+  log.
 - Labels from the SQLite era were session-only and are not turned into label rows; their audit entries are
   copied like every other entry.
 

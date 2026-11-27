@@ -14,6 +14,7 @@ import sqlite3
 import threading
 import uuid
 import warnings
+from datetime import UTC
 from types import SimpleNamespace
 
 import pytest
@@ -320,7 +321,7 @@ def test_labels_persist_and_unsure_never_reaches_training(pg):
     again = LabelStore(PostgresAuditStore(pg[1]))  # a restart
     assert again.current(10)["label"] == "legit" and again.current(10)["analyst"] == "B"
     assert [h["label"] for h in again.history(10)] == ["fraud", "legit"]
-    assert again.training_labels() == {10: "legit"}
+    assert again.training_labels("2999-01-01T00:00:00+00:00", 30) == {10: "legit"}  # all matured
     assert s.query()[-1]["detail"] == "first label" and s.query(limit=1)[0]["before"] == '"fraud"'
     v = s.verify()
     assert v["ok"] and v["records"] == {"copilot": 0, "labels": 5} and v["entries"] == 5
@@ -416,7 +417,10 @@ def test_the_migration_copies_500_entries_identically_and_refuses_a_second_run(p
     v = target.verify()
     assert v["ok"] and v["entries"] == 500 and v["records"]["copilot"] == 10
     assert (src.path.read_bytes(), src.anchor_path.read_bytes()) == before  # source unchanged
-    with pytest.raises(M.MigrationRefused, match="not empty"):
+    with pytest.raises(M.MigrationRefused, match="already migrated"):  # the marker (D241, A3)
+        M.migrate(src.path, target, log=lambda *_: None)
+    M.marker_path(src.path).unlink()
+    with pytest.raises(M.MigrationRefused, match="not empty"):  # and the target itself
         M.migrate(src.path, target, log=lambda *_: None)
     target.append("A", "analyst", "after the migration")  # the chain continues from the copy
     assert target.verify()["entries"] == 501
@@ -432,3 +436,188 @@ def test_a_failed_copy_leaves_the_target_empty(pg, tmp_path, monkeypatch):
         M.migrate(src.path, target, log=lambda *_: None)
     assert target.count() == 0 and target.read_anchor() is None
     assert pg[0].execute("SELECT COUNT(*) FROM copilot_audit").fetchone()[0] == 0
+
+
+# ---- 3.3a: fixes from the review of PR #20 (D241); each test reproduces the original problem ------
+@pytest.mark.integration
+def test_a1_verify_fails_when_a_label_row_is_deleted(pg):
+    s = _pg_store(pg)
+    labels = LabelStore(s)
+    labels.label("A", "analyst", 10, "fraud")
+    labels.label("A", "analyst", 11, "legit")
+    assert s.verify()["ok"]
+    pg[0].execute("ALTER TABLE feedback_labels DISABLE TRIGGER USER")
+    pg[0].execute("DELETE FROM feedback_labels WHERE transaction_id = 11")
+    v = s.verify()
+    assert not v["ok"] and v["first_bad"] == 2 and "has no label row" in v["reason"], v
+
+
+@pytest.mark.integration
+def test_a1_a_label_entry_without_its_row_is_refused_on_postgres(pg, tmp_path):
+    """The frozen demo route writes label entries through the public append(): on PostgreSQL that is
+    refused, so the label fails closed (503) and no row-less entry is left."""
+    s = _pg_store(pg)
+    with pytest.raises(ValueError, match="LabelStore"):
+        s.append("A", "analyst", "Marked transaction 5 as fraud", target="tx:5")
+    mod = _load_module()
+    bundle = _bundle(tmp_path)
+    _app(mod, bundle)
+    plain = mod.create_app(bundle, runs_dir=bundle.parent / "runs", audit_store=s)  # frozen route
+    r = TestClient(plain).post("/api/feedback/1000", json={"label": "fraud"})
+    assert r.status_code == 503 and s.count() == 0 and s.verify()["ok"]
+
+
+@pytest.mark.integration
+def test_a1_label_entries_up_to_the_boundary_are_exempt(pg, tmp_path):
+    src = _synthetic_log(tmp_path / "audit.sqlite", n=30)  # has label entries without rows
+    target = _pg_store(pg)
+    M.migrate(src.path, target, log=lambda *_: None)
+    assert pg[0].execute("SELECT after_id FROM audit_label_boundary").fetchone()[0] == 30
+    assert target.verify()["ok"]
+    LabelStore(target).label("A", "analyst", 1, "fraud")  # entry 31, with its row
+    assert target.verify()["ok"]
+    pg[0].execute("ALTER TABLE feedback_labels DISABLE TRIGGER USER")
+    pg[0].execute("DELETE FROM feedback_labels")
+    assert target.verify()["first_bad"] == 31
+
+
+@pytest.mark.integration
+def test_a2_a_copilot_question_with_nul_gets_a_stored_verifiable_entry(pg, tmp_path):
+    from test_copilot_api import ask
+
+    from vaultic.copilot.llm import ScriptedLLM
+    from vaultic.copilot.service import Copilot
+
+    mod = _load_module()
+    bundle = _bundle(tmp_path)
+    _app(mod, bundle)
+    s = _pg_store(pg)
+    app = mod.create_app(bundle, runs_dir=bundle.parent / "runs", audit_store=s)
+    import pandas as pd
+
+    df = pd.read_parquet(bundle)
+    alerts = df[(df["day"] == 151) & df["action"].isin(["step_up", "hold", "block"])
+                & (df["TransactionDT"] <= AS_OF)].sort_values("TransactionDT")  # fmt: skip
+    tid = int(alerts["TransactionID"].iloc[-1])
+    cop = Copilot(app.state.read, ScriptedLLM(decision_answer), audit=s, testlab=lambda: None)
+    mod.mount_copilot(app, cop)
+    status, body = ask(TestClient(app), tid, "Why\x00 was this flagged?")
+    assert body.get("audit", "ok") == "ok", body
+    entries = s.query()
+    assert len(entries) == 1 and "\x00" not in entries[0]["detail"]
+    assert entries[0]["detail"].startswith("Why" + chr(92) + "u0000 was")
+    v = s.verify()
+    assert v["ok"] and v["records"]["copilot"] == 1, v
+
+
+@pytest.mark.integration
+def test_a2_nul_in_any_text_or_json_field_is_stored_in_one_canonical_form(pg):
+    s = _pg_store(pg)
+    e = s.append("A", "analyst", "Copilot summary", target="tx:\x001", detail="a\x00b",
+                 after={"k\x00": ["v\x00", {"n": "\x00"}]})  # fmt: skip
+    esc = chr(92) + "u0000"
+    assert e["detail"] == f"a{esc}b" and e["target"] == f"tx:{esc}1"
+    assert s.query()[0] == {k: e[k] for k in s.query()[0]}
+    rec = pg[0].execute("SELECT record FROM copilot_audit").fetchone()[0]
+    assert rec["result"] == {f"k{esc}": [f"v{esc}", {"n": esc}]}
+    assert s.verify()["ok"]
+
+
+@pytest.mark.integration
+def test_a2_the_migration_refuses_a_source_entry_with_nul(pg, tmp_path):
+    src = SQLiteAuditStore(tmp_path / "audit.sqlite")
+    src.append("A", "analyst", "note", detail="x\x00y")
+    target = _pg_store(pg)
+    with pytest.raises(M.MigrationRefused, match="NUL"):
+        M.migrate(src.path, target, log=lambda *_: None)
+    assert target.count() == 0
+
+
+@pytest.mark.integration
+def test_a3_a_migrated_sqlite_log_refuses_further_appends(pg, tmp_path):
+    src = _synthetic_log(tmp_path / "audit.sqlite", n=10)
+    M.migrate(src.path, _pg_store(pg), log=lambda *_: None)
+    marker = json.loads(M.marker_path(src.path).read_text("utf-8"))
+    assert marker["entries"] == 10 and "password" not in json.dumps(marker)
+    again = SQLiteAuditStore(src.path)  # a server started later on the old log
+    with pytest.raises(RuntimeError, match="migrated to PostgreSQL"):
+        again.append("A", "analyst", "late entry")
+    with pytest.raises(RuntimeError, match="migrated to PostgreSQL"):
+        again.export("A", "admin")
+    assert again.count() == 10 and again.verify()["ok"]
+
+
+@pytest.mark.integration
+def test_a3_the_migration_refuses_to_finish_if_the_log_grew_during_the_copy(
+    pg, tmp_path, monkeypatch
+):
+    src = _synthetic_log(tmp_path / "audit.sqlite", n=10)
+    target = _pg_store(pg)
+    writer = SQLiteAuditStore(src.path)  # a server still running on the old log
+    real = PostgresAuditStore._set_anchor
+
+    def anchor_then_append(conn, entries, last_hash):
+        real(conn, entries, last_hash)
+        writer.append("Sara", "analyst", "appended during the copy")
+
+    monkeypatch.setattr(PostgresAuditStore, "_set_anchor", staticmethod(anchor_then_append))
+    with pytest.raises(M.MigrationRefused, match="changed during the copy"):
+        M.migrate(src.path, target, log=lambda *_: None)
+    assert target.count() == 0 and not M.marker_path(src.path).exists()
+    assert writer.count() == 11 and writer.verify()["ok"]
+
+
+@pytest.mark.integration
+def test_a4_training_labels_need_as_of_and_the_delay_and_skip_unmatured_labels(pg):
+    from datetime import datetime, timedelta
+
+    labels = LabelStore(_pg_store(pg))
+    t0 = datetime(2026, 11, 1, tzinfo=UTC)
+    iso = lambda d: (t0 + timedelta(days=d)).isoformat(timespec="seconds")  # noqa: E731
+    labels.label("A", "analyst", 10, "fraud", time=iso(0))
+    labels.label("A", "analyst", 10, "legit", time=iso(10))  # newer: matures at day 40
+    labels.label("A", "analyst", 11, "fraud", time=iso(31))  # matures at day 61
+    labels.label("A", "analyst", 12, "unsure", time=iso(0))
+    with pytest.raises(TypeError):
+        labels.training_labels()
+    assert labels.training_labels(t0 + timedelta(days=35), 30) == {10: "fraud"}
+    assert labels.training_labels(t0 + timedelta(days=40), 30) == {10: "legit"}
+    assert labels.training_labels(t0 + timedelta(days=29), 30) == {}
+    assert labels.training_labels(iso(61), 30) == {10: "legit", 11: "fraud"}
+
+
+@pytest.mark.integration
+def test_b1_any_pending_migration_refuses_the_start(pg):
+    from vaultic.infra import db
+
+    url = db.db_url()
+    schema = f"test_{uuid.uuid4().hex[:12]}"
+    conn = pg[0]
+    conn.execute(f"CREATE SCHEMA {schema}")
+    try:
+        conn.execute(f"SET search_path TO {schema}")
+        files = db.discover()
+        db.migrate(conn, files[:4], log=lambda *_: None)  # 0001-0004 only
+        scoped = f"{url}{'&' if '?' in url else '?'}options=-csearch_path%3D{schema}"
+        with pytest.raises(StoreSetupError, match="0005"):
+            PostgresAuditStore(scoped)
+    finally:
+        conn.execute(f"DROP SCHEMA {schema} CASCADE")
+
+
+@pytest.mark.integration
+def test_b2_the_database_refuses_frozen_decisions_and_changes_to_decisions(pg):
+    import psycopg
+
+    conn = pg[0]
+    with pytest.raises(psycopg.errors.CheckViolation):
+        conn.execute("INSERT INTO decisions (transaction_id, source, action, model_version) "
+                     "VALUES (1, 'frozen_e12', 'block', 'e12')")  # fmt: skip
+    DecisionStore(pg[1]).record(1, "hold", 0.9, "v1")
+    for sql in (
+        "UPDATE decisions SET action = 'allow'",
+        "DELETE FROM decisions",
+        "TRUNCATE decisions",
+    ):
+        with pytest.raises(psycopg.errors.RaiseException, match="append-only"):
+            conn.execute(sql)
