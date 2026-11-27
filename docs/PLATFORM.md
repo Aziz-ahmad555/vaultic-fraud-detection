@@ -93,6 +93,12 @@ Later migrations: `0002_auth.sql` (refresh tokens, 3.2), `0003_session_start.sql
 
 ## Records in PostgreSQL (step 3.3, D240; fixes 3.3a, D241)
 
+**Run it with the platform server (D241, B3).** With PostgreSQL, start the API with `python -m
+vaultic.infra.serve` (`services/api/platform_server.py`). `services/api/demo_server.py` is for the no-Docker
+demo only. Plain `uvicorn services.api.demo_server:app` with `VAULTIC_STORE=postgres` would write its audit
+log to PostgreSQL but keep the frozen in-memory label route: labels are not checked, stay in memory and get
+no `feedback_labels` row (since 3.3a that route answers 503 on PostgreSQL), and no store banner is printed.
+
 **The switch.** `VAULTIC_STORE` in the environment or `.env` (as `VAULTIC_AUTH`) chooses the stores:
 
 | `VAULTIC_STORE` | Audit log | Analyst labels | Copilot records |
@@ -126,6 +132,9 @@ nothing is written. The audit entry and the label row are written in one transac
 neither. A change is a new row; the current label is the latest. `GET /api/feedback/{tid}` (analyst role)
 returns the current label and the history. Without `postgres` it answers 501. Nothing reads labels into a
 model, a metric or a research table (D208).
+- **Known limitation (D241, B5).** Neither label route (the frozen demo route nor the platform route) checks
+  that the transaction id exists in the bundle, as in the demo: a label for an unknown id is stored and
+  audited like any other.
 - **Every label entry has its row (D241, A1).** `verify()` fails if a label entry above the stored
   boundary (`audit_label_boundary`) has no `feedback_labels` row. Entries at or below it are exempt: those
   copied from the SQLite log, and any written before migration 0005. The store refuses a label action
@@ -156,7 +165,9 @@ python -m vaultic.infra.migrate_audit --from "<path to audit.sqlite>"
 - A target with any audit entry, anchor, copilot record or label is refused.
 - Every entry is copied with its id and hashes, plus the copilot records derived from it. In the same
   transaction, the entry count, the last hash and the sha256 of the full CSV export are compared with the
-  source and the copy is verified; any difference rolls everything back.
+  source and the copy is verified; any difference rolls everything back. "Verified before and after"
+  means: the SQLite source before the copy, and the PostgreSQL copy inside the migration's transaction,
+  before it commits (D241, B5), so nothing is committed that did not verify.
 - **The old log is closed (D241, A3).** Before the commit, the marker `<log>.migrated.json` (target
   without password, entry count, last hash, time) is written next to the SQLite log, and the log is
   re-read under SQLite's write lock. If it grew or changed during the copy, the marker is removed and
@@ -166,6 +177,12 @@ python -m vaultic.infra.migrate_audit --from "<path to audit.sqlite>"
   log.
 - Labels from the SQLite era were session-only and are not turned into label rows; their audit entries are
   copied like every other entry.
+
+**Migration 0004 and a non-empty `copilot_audit` (D241, B4).** 0004 adds `copilot_audit.record_sha256` as
+NOT NULL with no default. That works only because the table was empty when 0004 ran, which is true for the
+real database (nothing wrote `copilot_audit` before 3.3). 0004 is not edited (the runner refuses a changed
+applied migration). A database whose `copilot_audit` already had rows would refuse 0004 and roll it back;
+it would need a new migration that fills the column first.
 
 **Limits.** Tamper-evident, not tamper-proof: someone with database rights can drop the triggers and
 rewrite the log, the anchor and the records together (a test shows it).

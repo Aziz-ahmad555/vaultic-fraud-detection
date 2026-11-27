@@ -72,7 +72,8 @@ Aziz confirmed D240's answers to Q10 and Q13 as written. The review found A1-A4 
 |---|---|
 | `31671a3` | D241, logged alone; D240 marked confirmed |
 | `6183f85` | 3.3a code, migration 0005, tests, PLATFORM.md |
-| (this commit) | This note |
+| `3508c88` | Status note for 3.3a |
+| (this commit) | B3-B5 documented in D241 and PLATFORM.md; `migrate_audit` docstring wording; this note |
 
 | Finding | Fix | Test (failed on the 3.3 code first) |
 |---|---|---|
@@ -82,7 +83,9 @@ Aziz confirmed D240's answers to Q10 and Q13 as written. The review found A1-A4 
 | A4 training labels ignored the label delay | `training_labels(as_of, label_delay_days)`, both required, matured labels only | `test_a4_*` |
 | B1 only 0004 was checked at start-up | any pending migration refuses the start | `test_b1_*` |
 | B2 `frozen_e12` and changes to `decisions` allowed by the database | migration `0005_decisions_guard.sql` (0004 unchanged) | `test_b2_*` |
-| B3, B4, B5 | to be documented in PLATFORM.md / D240: **their text was not in the request and is not on PR #20; waiting for Aziz** | — |
+| B3 plain `demo_server` with `VAULTIC_STORE=postgres` keeps the frozen label route and prints no store banner | Documented: the platform server (`python -m vaultic.infra.serve`) is the supported way to run with PostgreSQL; `demo_server.py` is for the no-Docker demo only | — |
+| B4 0004's NOT NULL `record_sha256` without a default works only on an empty `copilot_audit` | Documented (true for the real database); 0004 not edited | — |
+| B5 no label route checks that the transaction id is in the bundle; "verified before and after" unclear | Documented as a known limitation; "after" = inside the migration's transaction, before it commits (also in `migrate_audit`'s docstring) | — |
 
 **Checks for 3.3a** (2026-11-27; disk C 58.8 GB, E 21.8 GB free; one heavy job at a time):
 - The 11 reproduction tests: 11 failed on the 3.3 code; after the fixes `tests/test_records_pg.py` 40 passed
@@ -109,7 +112,7 @@ Aziz confirmed D240's answers to Q10 and Q13 as written. The review found A1-A4 
 | D238 | 3.2a design: fixes for A1–A5, B1, B4 and B7; B2, B3, B5 and B6 documented |
 | D239 | Drives: no work on C; C and E each keep at least 10 GB free, checked before heavy jobs (`tools/disk_space.py`; the test suite stops by itself); all temp files and caches under `E:\dev-cache` |
 | D240 | 3.3 design: PostgreSQL records behind `VAULTIC_STORE`; Q10 (decisions = stream decisions + labels; case = alert under review); Q13 (`copilot_audit` append-only and covered by its entry's hash); verified migration. Confirmed by Aziz as written |
-| D241 | 3.3a: fixes from the review of PR #20 (A1-A4, B1, B2; B3-B5 documented) |
+| D241 | 3.3a: fixes from the review of PR #20 (A1-A4, B1, B2); B3-B5 documented |
 
 Next free number: **D242**.
 
@@ -140,7 +143,7 @@ Next free number: **D242**.
 
 ## Exact next steps
 
-1. **Aziz:** send the text of review findings B3, B4 and B5; Claude documents them in PLATFORM.md and D240.
+1. B3-B5 are documented (D241, PLATFORM.md).
 2. PR #20 updates itself from the pushed branch. **Wait for CI to pass**, then let the reviewer check 3.3a
    (`610010c..sprint3-platform`) and fill in the findings and answers in the PR text
    (`E:\old work\fyp 11\pr_sprint3_3_to_phase0-1.md`).

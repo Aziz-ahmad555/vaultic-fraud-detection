@@ -1,5 +1,8 @@
 """Copy the SQLite audit log into PostgreSQL, verified at both ends (Sprint 3 step 3.3, D240).
 
+"Both ends" (D241, B5 wording): the SQLite source before the copy, and the PostgreSQL copy inside the
+migration's transaction, before it commits.
+
     python -m vaultic.infra.migrate_audit --from <audit.sqlite> [--to <db url>] --dry-run
     python -m vaultic.infra.migrate_audit --from <audit.sqlite> [--to <db url>]
 
