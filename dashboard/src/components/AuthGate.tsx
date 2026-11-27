@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
-import { getAuth, loadMode, login, subscribeAuth, type AuthState } from "../api/auth";
+import { getAuth, loadHealth, loadMode, login, subscribeAuth, type AuthState } from "../api/auth";
 import { ErrorState, Loading } from "./States";
 
 /** The login session as React state (D235). */
@@ -31,8 +31,33 @@ export function AuthGate({ children }: { children: ReactNode }) {
           {auth.demoLabel}
         </p>
       )}
+      <CacheNote />
       {children}
     </>
+  );
+}
+
+export const CACHE_OFF = "Cache off: Redis is down, so pages load straight from the data (slower)";
+const HEALTH_EVERY_MS = 60_000;
+
+/** A small note while the platform's Redis cache is down (D244); nothing when it is up or not used. */
+export function CacheNote() {
+  const [down, setDown] = useState(false);
+  useEffect(() => {
+    let live = true;
+    const check = () => loadHealth().then((h) => live && setDown(h?.redis === "down"));
+    check();
+    const timer = setInterval(check, HEALTH_EVERY_MS);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, []);
+  if (!down) return null;
+  return (
+    <p className="demo-banner xs" role="status">
+      {CACHE_OFF}
+    </p>
   );
 }
 

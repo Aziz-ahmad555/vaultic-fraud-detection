@@ -31,6 +31,7 @@ let token: string | null = null;
 let refreshing: Promise<boolean> | null = null;
 const listeners = new Set<() => void>();
 let base = "http://127.0.0.1:8000";
+let mockSource = false;
 let baseFetch: Fetch = (input, init) => fetch(input, init);
 
 function set(next: Partial<AuthState>): void {
@@ -58,6 +59,7 @@ export function subscribeAuth(fn: () => void): () => void {
 
 /** The mock data source has no backend: demo mode, ready at once. */
 export function setMockMode(): void {
+  mockSource = true;
   token = null;
   set({ mode: "demo", ready: true, user: null, demoLabel: DEMO_LABEL });
 }
@@ -169,8 +171,31 @@ export function withAuth(fetchImpl: Fetch): Fetch {
 
 /** Test helper: back to the initial state. */
 export function resetAuthForTests(): void {
+  mockSource = false;
   token = null;
   refreshing = null;
   state = { mode: "demo", ready: false, user: null, demoLabel: DEMO_LABEL };
   listeners.clear();
+}
+
+export interface Health {
+  api: string;
+  redis: "up" | "down" | "off";
+  postgres: "up" | "down" | "unused";
+}
+
+/**
+ * GET /api/health (D244, Sprint 3 step 3.4): which services answer. null when the backend has no such
+ * route (the plain no-Docker demo backend, the mock data source) or cannot be reached.
+ */
+export async function loadHealth(): Promise<Health | null> {
+  if (mockSource) return null;
+  try {
+    const res = await baseFetch(`${base}/api/health`);
+    if (!res.ok) return null;
+    const body = (await res.json()) as Partial<Health>;
+    return typeof body.redis === "string" ? (body as Health) : null;
+  } catch {
+    return null;
+  }
 }

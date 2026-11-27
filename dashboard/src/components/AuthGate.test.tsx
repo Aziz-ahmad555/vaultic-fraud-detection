@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { configureAuth, resetAuthForTests, setMockMode } from "../api/auth";
 
-const { AuthGate } = await import("./AuthGate");
+const { AuthGate, CACHE_OFF } = await import("./AuthGate");
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
@@ -52,5 +52,33 @@ describe("AuthGate (D235)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Log in" }));
     await waitFor(() => expect(screen.getByText("the pages")).toBeTruthy());
     expect(screen.queryByRole("note")).toBeNull();
+  });
+
+  it("shows a small cache-off note only while the backend reports Redis down (D244)", async () => {
+    const redis = "down";
+    configureAuth("http://api", async (url: string) => {
+      if (url.endsWith("/api/health")) return json(200, { api: "up", redis, postgres: "unused" });
+      return json(200, { mode: "demo", demoLabel: "Demo mode: no login; names and roles are self-declared" });
+    });
+    app();
+    expect(await screen.findByText(CACHE_OFF)).toBeTruthy();
+  });
+
+  it("no cache note with Redis up, off, a backend without /api/health, or the mock data source", async () => {
+    for (const health of [json(200, { api: "up", redis: "up", postgres: "up" }), json(200, { api: "up", redis: "off", postgres: "unused" }), json(404, { detail: "Not Found" })]) {
+      resetAuthForTests();
+      configureAuth("http://api", async (url: string) => (url.endsWith("/api/health") ? health.clone() : json(200, { mode: "demo", demoLabel: "x" })));
+      const { unmount } = app();
+      expect(await screen.findByText("the pages")).toBeTruthy();
+      await new Promise((r) => setTimeout(r, 20));
+      expect(screen.queryByText(CACHE_OFF)).toBeNull();
+      unmount();
+    }
+    resetAuthForTests();
+    setMockMode();
+    const { unmount } = app();
+    expect(await screen.findByText("the pages")).toBeTruthy();
+    expect(screen.queryByText(CACHE_OFF)).toBeNull();
+    unmount();
   });
 });
