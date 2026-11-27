@@ -5,7 +5,8 @@
 #
 #   docker compose up -d                      PostgreSQL (the default service)
 #   docker compose --profile cache up -d      + Redis (3.4, D244): response and session cache
-#   docker compose --profile full up -d       + Redis + Kafka (3.5)
+#   docker compose --profile stream up -d     + Kafka (3.5, D245): replay and stream scoring
+#   docker compose --profile full up -d       + Redis + Kafka
 #   python -m vaultic.infra.db migrate        apply services/db/migrations
 #
 # Needs POSTGRES_PASSWORD in .env (see .env.example).
@@ -55,6 +56,46 @@ services:
       retries: 10
     # no restart policy (D233)
 
+  kafka:
+    # Apache Kafka 4.4.0, single node in KRaft mode (D245), pinned to its digest (pulled 2026-11-27).
+    # Topics tx.raw, tx.scored, alerts and feedback (1 partition each) are created by the replay
+    # (python -m vaultic.infra.replay); auto-creation is off.
+    image: apache/kafka:4.4.0@sha256:833b867a9585a141da455dc2b57431c65cbccb27f11c91f694444cca9f777e0f
+    profiles: ["stream", "full"]
+    environment:
+      CLUSTER_ID: vaultic-kraft-cluster-01
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # EXTERNAL: the host listener (127.0.0.1 only); INTERNAL: the compose network only
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9094,CONTROLLER://localhost:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://127.0.0.1:${VAULTIC_KAFKA_PORT:-9094}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_NUM_PARTITIONS: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_HEAP_OPTS: -Xmx512m -Xms512m
+    ports:
+      - "127.0.0.1:${VAULTIC_KAFKA_PORT:-9094}:9094"
+    volumes:
+      - vaultic-kafka:/var/lib/kafka/data
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:29092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    # no restart policy (D233)
+
 volumes:
   vaultic-postgres:
     name: vaultic-postgres
+  vaultic-kafka:
+    name: vaultic-kafka

@@ -16,7 +16,7 @@ Nothing the platform stores feeds a model, a metric or a research table.
 |---|---|---|---|---|
 | PostgreSQL | `postgres:16.16-alpine` | `VAULTIC_POSTGRES_PORT`, 5442 | 512 MB | 3.1 |
 | Redis | `redis:7.4.11-alpine` (profile `cache`) | `VAULTIC_REDIS_PORT`, 6390 | 128 MB | 3.4 |
-| Kafka (KRaft) | added in 3.5 | `VAULTIC_KAFKA_PORT`, 9094 | 1 GB | 3.5 |
+| Kafka (KRaft) | `apache/kafka:4.4.0` (profile `stream`) | `VAULTIC_KAFKA_PORT`, 9094 | 1 GB | 3.5 |
 
 Every port is bound to 127.0.0.1. The ports, the project name `vaultic` and the `vaultic-*` volumes keep
 this stack apart from other local compose projects, for example one using PostgreSQL 5433 and Redis 6379.
@@ -128,6 +128,52 @@ curl http://127.0.0.1:8000/api/health       # {"api": "up", "redis": "up", "post
 - **Limits:** the cache is per Redis instance and is lost when Redis stops, which is harmless. A cached
   response can be up to 5 minutes old; the bundle is read-only, so it cannot change underneath. The
   copilot's cached summaries stay in their file cache on drive E (D224).
+
+## Stream: Kafka replay and scoring (step 3.5, D245)
+
+```bash
+docker compose --profile stream up -d                       # PostgreSQL + Kafka
+python -m vaultic.infra.scorer                              # waits for tx.raw (loads the system, about 1 min)
+python -m vaultic.infra.replay --start-day 151 --rows 3000 --speed max
+python -m vaultic.infra.stream_parity --n 10000             # the parity proof (heavy, about 2 h)
+```
+
+- **Kafka:** Apache Kafka 4.4.0, one node in KRaft mode, pinned by digest. Heap 512 MB, 1 GB limit,
+  volume `vaultic-kafka`, no restart policy. The host listener is 127.0.0.1:`VAULTIC_KAFKA_PORT`; the
+  internal one is reachable only on the compose network. Topics `tx.raw`, `tx.scored`, `alerts` and
+  `feedback` have 1 partition each, so the order is kept. A replay run recreates them, so `tx.raw` always
+  holds one run.
+- **Replay producer:** sends the test-period rows in `TransactionDT` order (ties by `TransactionID`, the
+  stored order), behind the post-hoc guard (D144).
+  - **Only the raw IEEE-CIS columns leave it:** no `isFraud`, no `day` or `has_identity`, no feature and
+    no score.
+  - Each message carries a run id and a sequence number.
+  - Speed: x1, x100, x1000 or `max`.
+- **Stream scorer:** scores each message with the Test Lab engine (the frozen stage-2 system: MVAF, the
+  E12 decision, B5) and writes `tx.scored`. It sends `alerts` for step-up or higher, and with
+  `VAULTIC_STORE=postgres` writes `decisions` (source `stream`).
+- **No future information, by construction:** the scorer's history (`src/vaultic/infra/stream.py`) holds
+  only the stored rows strictly before the replay's first event plus the events it has consumed.
+  - Consumed events are rebuilt from their messages, with an unknown label. Its customer, entity and graph
+    indexes come from those rows only.
+  - An event's features are computed before the event is added.
+  - **The scorer stops** on a sequence gap, a repeat, or an earlier `TransactionDT`.
+  - `before()` never returns a row at or after the query time and refuses to be asked about a time
+    before what it holds.
+  - **Labels:** a label arrives on `feedback` (`{"TransactionID": ..., "label": 0 or 1}`) and is visible
+    only when its_time + 30 days <= t.
+  - If a consumed row passes that curtain without a label, the scorer stops, because a missing label
+    would read as legitimate. A run without labels is therefore limited to fewer than 30 days.
+- **Parity:** the first 10,000 test-period transactions go through Kafka. Every feature must be within
+  1e-6 of the frozen offline features, and MVAF and B5 within 1e-12 of the stored final-run scores (as
+  D183/D189). The uid grouping must be identical, and `tx.scored` must hold one message per message sent.
+  - The result is in `research/tables/platform/stream_parity.json`: counts, largest differences and
+    timings, no row data.
+  - **Uid codes:** a new customer gets a new uid code, never an offline one. So codes can differ from the
+    offline codes while the grouping is the same, and parity checks the grouping.
+- **Speed (measured, one laptop CPU):** about 0.6 to 0.8 s per transaction in the scorer (features and
+  scoring, no explanation). That is about 1.5 transactions per second for one scorer, so the demo replays
+  a window, not the whole test period.
 
 ## Records in PostgreSQL (step 3.3, D240; fixes 3.3a, D241)
 
